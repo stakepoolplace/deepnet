@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/jdk1.8.0_66"/>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.junit.JUNIT_CONTAINER/4"/>
+	<classpathentry kind="lib" path="lib/poi-3.9-20121203.jar"/>
+	<classpathentry kind="lib" path="/Users/ericmarchand/Documents/workspace_neural/weka.jar" sourcepath="D:/Weka-3-6/weka-src.jar"/>
+	<classpathentry kind="lib" path="lib/log4j-1.2.9.jar"/>
+	<classpathentry kind="lib" path="conf"/>
+	<classpathentry kind="lib" path="lib/controlsfx-8.40.10.jar"/>
+	<classpathentry kind="lib" path="lib/ojalgo-39.0.jar"/>
+	<classpathentry kind="lib" path="lib/ojalgo-ext-39.0.jar"/>
+	<classpathentry kind="lib" path="lib/ojalgo-biz-39.0.jar"/>
+	<classpathentry kind="lib" path="lib/JOCL-0.1.9.jar"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/XLBP"/>
+	<classpathentry kind="output" path="bin"/>
+</classpath>
