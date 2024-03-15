@@ -6,6 +6,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Set;
+import java.util.Spliterator;
 import java.util.TreeSet;
 
 /**
@@ -228,6 +229,12 @@ public class ListSet<E> implements Set<E>, List<E>
 	public <T> T[] toArray(final T[] a)
 	{
 		return list.toArray(a);
+	}
+
+	@Override
+	public Spliterator<E> spliterator() {
+		// TODO Auto-generated method stub
+		return List.super.spliterator();
 	}
 
 }
