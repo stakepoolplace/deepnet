@@ -1,0 +1,32 @@
+XLBP README
+Derek Monner, http://www.cs.umd.edu/~dmonner
+
+XLBP stands for eXtensible Localized Back-Propagation. It is a toolkit for 
+building neural networks for use with the LSTM-g training method, which is a 
+generalized (-g) descendant of LSTM (the Long Short Term Memory) and of error 
+back-propagation methods in general. It can build and train arbitrarily complex 
+networks of neurons that can not only add but multiply inputs and save state 
+across time. For more information about LSTM-g, see the following paper (also 
+available at the project website):
+
+D. Monner and J.A. Reggia (2012). A generalized LSTM-like training algorithm 
+for second-order recurrent neural networks. Neural Networks, 25, pp 70-83. 
+Available at http://www.cs.umd.edu/~dmonner/papers/nn2012.pdf
+
+XLBP is released under the GNU General Public License, version 3. For more 
+information on your rights and responsibilities under this license, see the 
+file LICENSE.
+
+
+INSTALLATION
+
+This XLBP repository doubles as a valid Java project which you can import into 
+the Eclipse IDE. This is the recommended way to compile and run XLBP.
+
+XLBP requires Java 6 or above.
+
+
+USAGE
+
+For a quick start on using XLBP for the most common applications, see the file 
+"tutorial.pdf" in the top level of the source tree.
