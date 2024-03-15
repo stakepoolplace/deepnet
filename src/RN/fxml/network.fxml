@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import java.lang.*?>
+<?import java.util.*?>
+<?import javafx.collections.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.paint.*?>
+<?import javafx.scene.shape.*?>
+
+<AnchorPane id="AnchorPane" maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="767.0" prefWidth="860.0" xmlns:fx="http://javafx.com/fxml" fx:controller="RN.fxml.controllers.NN">
+  <children>
+    <Circle fill="DODGERBLUE" layoutX="345.0" layoutY="538.0" radius="28.500049999998737" stroke="BLACK" strokeType="INSIDE" />
+    <Circle fill="DODGERBLUE" layoutX="501.0" layoutY="538.0" radius="28.500049999998737" stroke="BLACK" strokeType="INSIDE" />
+    <Circle fill="DODGERBLUE" layoutX="273.0" layoutY="355.0" radius="28.500049999998737" stroke="BLACK" strokeType="INSIDE" />
+    <Circle fill="DODGERBLUE" layoutX="430.0" layoutY="355.0" radius="28.500049999998737" stroke="BLACK" strokeType="INSIDE" />
+    <Circle fill="DODGERBLUE" layoutX="576.0" layoutY="355.0" radius="28.500049999998737" stroke="BLACK" strokeType="INSIDE" />
+    <Circle fill="DODGERBLUE" layoutX="428.0" layoutY="173.0" radius="28.500049999998737" stroke="BLACK" strokeType="INSIDE" />
+    <Line endX="-9.0" endY="98.0" layoutX="345.0" layoutY="411.0" startX="-60.0" startY="-28.0" />
+    <Line endX="-10.0" endY="-116.0" layoutX="437.0" layoutY="501.0" startX="-88.0" startY="9.0" />
+    <Line endX="-74.0" endY="23.0" layoutX="572.0" layoutY="487.0" startX="-141.0" startY="-104.0" />
+    <Line endX="-35.0" endY="-94.0" layoutX="605.0" layoutY="479.0" startX="-95.0" startY="31.0" />
+    <Line endX="241.0" endY="-89.0" layoutX="248.0" layoutY="602.0" startX="37.0" startY="-223.0" />
+    <Line endX="-82.0" endY="-208.0" layoutX="648.0" layoutY="593.0" startX="-287.0" startY="-81.0" />
+    <Line endX="-5.0" endY="-20.0" layoutX="348.0" layoutY="639.0" startX="-5.0" startY="-71.0" />
+    <Line endX="-5.0" endY="-20.0" layoutX="505.0" layoutY="639.0" startX="-5.0" startY="-71.0" />
+    <Line endX="169.0" endY="-54.0" layoutX="260.0" layoutY="256.0" startX="11.0" startY="71.0" />
+    <Line endX="103.0" endY="8.0" layoutX="473.0" layoutY="318.0" startX="-42.0" startY="-117.0" />
+    <Line endX="110.0" endY="8.0" layoutX="320.0" layoutY="319.0" startX="110.0" startY="-118.0" />
+    <TextField fx:id="valinp1" layoutX="468.0" layoutY="567.0" prefWidth="61.4141845703125" />
+    <TextField id="inpval0" fx:id="valinp0" layoutX="313.0" layoutY="568.0" prefWidth="61.4141845703125" />
+    <TextField id="valinp0out1" fx:id="valinp1out" layoutX="472.0" layoutY="487.0" prefWidth="59.4141845703125" />
+    <TextField id="valinp0out0" fx:id="valinp0out" layoutX="315.0" layoutY="487.0" prefWidth="61.4141845703125" />
+    <TextField fx:id="valhid0out" layoutX="242.0" layoutY="304.0" prefWidth="61.4141845703125" />
+    <TextField fx:id="valhid2out" layoutX="545.0" layoutY="304.0" prefWidth="61.4141845703125" />
+    <TextField fx:id="valhid1out" layoutX="397.0" layoutY="304.0" prefWidth="61.4141845703125" />
+    <Line endX="-5.0" endY="-20.0" layoutX="434.0" layoutY="164.0" startX="-5.0" startY="-71.0" />
+    <TextField fx:id="valout0out" layoutX="399.0" layoutY="122.0" prefWidth="61.4141845703125" />
+    <Label fx:id="wout0hid0" alignment="CENTER_RIGHT" layoutX="300.0" layoutY="235.0" prefHeight="21.0" prefWidth="60.0" text="Label" />
+    <Label fx:id="wout0hid1" layoutX="399.0" layoutY="235.0" prefHeight="21.0" prefWidth="60.0" text="Label" />
+    <Label fx:id="wout0hid2" layoutX="499.0" layoutY="235.0" prefHeight="21.0" prefWidth="60.0" text="Label" />
+    <Label fx:id="whid2inp1" layoutX="541.0" layoutY="454.0" prefHeight="21.0" prefWidth="60.0" text="Label" />
+    <Label fx:id="whid2inp0" alignment="CENTER_RIGHT" layoutX="487.0" layoutY="378.0" prefHeight="21.0" prefWidth="60.0" text="Label" />
+    <Label fx:id="whid0inp0" alignment="CENTER_RIGHT" layoutX="251.0" layoutY="449.0" prefHeight="21.0" prefWidth="60.0" text="Label" />
+    <Label fx:id="whid0inp1" layoutX="307.0" layoutY="374.0" prefHeight="21.0" prefWidth="60.0" text="Label" />
+    <Label fx:id="whid1inp0" alignment="CENTER_RIGHT" layoutX="344.0" layoutY="399.0" prefHeight="21.0" prefWidth="60.0" text="Label" />
+    <Label fx:id="whid1inp1" layoutX="449.0" layoutY="399.0" prefHeight="21.0" prefWidth="60.0" text="Label" />
+    <Line endX="61.0" endY="-47.0" layoutX="145.0" layoutY="403.0" startX="99.0" startY="-47.0" />
+    <Line endX="38.0" endY="-71.0" layoutX="609.0" layoutY="427.0" startX="-5.0" startY="-71.0" />
+    <Line endX="38.0" endY="-71.0" layoutX="463.0" layoutY="426.0" startX="-5.0" startY="-71.0" />
+    <Line endX="38.0" endY="-71.0" layoutX="460.0" layoutY="245.0" startX="-5.0" startY="-71.0" />
+    <Label fx:id="wbiasout0" layoutX="471.0" layoutY="175.0" prefHeight="21.0" prefWidth="60.0" text="Label" />
+    <Label fx:id="wbiashid2" layoutX="618.0" layoutY="357.0" prefHeight="21.0" prefWidth="60.0" text="Label" />
+    <Label fx:id="wbiashid1" layoutX="470.0" layoutY="356.0" prefHeight="21.0" prefWidth="60.0" text="Label" />
+    <Label fx:id="wbiashid0" alignment="CENTER_RIGHT" layoutX="165.0" layoutY="356.0" prefHeight="21.0" prefWidth="60.0" text="Label" />
+    <TextField fx:id="errhid0" layoutX="198.0" layoutY="324.0" prefWidth="44.0" />
+    <TextField fx:id="errhid1" layoutX="354.0" layoutY="324.0" prefWidth="44.0" />
+    <TextField fx:id="errhid2" layoutX="502.0" layoutY="326.0" prefWidth="44.0" />
+    <TextField fx:id="errout0" layoutX="357.0" layoutY="145.0" prefWidth="44.0" style="&#10;" />
+    <ComboBox fx:id="function" layoutX="41.0" layoutY="346.0" prefHeight="21.0" prefWidth="109.0">
+      <items>
+        <FXCollections fx:factory="observableArrayList">
+          <String fx:value="Item 1" />
+          <String fx:value="Item 2" />
+          <String fx:value="Item 3" />
+        </FXCollections>
+      </items>
+    </ComboBox>
+    <ComboBox layoutX="41.0" layoutY="165.0" prefHeight="21.0" prefWidth="109.0">
+      <items>
+        <FXCollections fx:factory="observableArrayList">
+          <String fx:value="Item 1" />
+          <String fx:value="Item 2" />
+          <String fx:value="Item 3" />
+        </FXCollections>
+      </items>
+    </ComboBox>
+    <Button layoutX="43.0" layoutY="675.0" mnemonicParsing="false" onMouseClicked="#show" prefWidth="115.0" text="Show" />
+    <TextField id="inpval1" fx:id="valhid2inp" layoutX="576.0" layoutY="385.0" prefWidth="61.4141845703125" />
+    <TextField id="inpval1" fx:id="valhid0inp" layoutX="211.0" layoutY="385.0" prefWidth="61.4141845703125" />
+    <TextField id="valhidinp0" fx:id="valhid1inp" layoutX="397.0" layoutY="384.0" prefWidth="61.4141845703125" />
+    <TextField id="inpval1" fx:id="valout0inp" layoutX="398.0" layoutY="202.0" prefWidth="61.4141845703125" />
+    <Button layoutX="43.0" layoutY="701.0" mnemonicParsing="false" onMouseClicked="#selectTrainingSet" text="DefineTrainingSet" />
+    <Button layoutX="167.0" layoutY="701.0" mnemonicParsing="false" onMouseClicked="#nextTrainInputValues" text="Next train set" />
+    <Button layoutX="267.0" layoutY="701.0" mnemonicParsing="false" onMouseClicked="#feedForward" text="Feed forward" />
+    <Button layoutX="364.0" layoutY="701.0" mnemonicParsing="false" onMouseClicked="#computeDeltaWeights" text="Compute delta weights" />
+    <Button layoutX="514.0" layoutY="701.0" mnemonicParsing="false" onMouseClicked="#updateAllWeights" text="Update weights" />
+    <TextField id="valout0out" fx:id="validealout0" layoutX="325.0" layoutY="122.0" prefWidth="61.4141845703125" />
+    <TextField fx:id="valagghid0" layoutX="251.0" layoutY="346.0" prefWidth="44.0" />
+    <TextField fx:id="valagghid1" layoutX="409.0" layoutY="346.0" prefWidth="44.0" />
+    <TextField fx:id="valagghid2" layoutX="555.0" layoutY="346.0" prefWidth="44.0" />
+    <TextField id="errout0" fx:id="valaggout0" layoutX="407.0" layoutY="162.0" prefWidth="44.0" />
+    <Button layoutX="168.0" layoutY="675.0" mnemonicParsing="false" onMouseClicked="#doUpdateAfterEachTrainings" prefWidth="449.0" text="do all" />
+    <Button layoutX="168.0" layoutY="728.0" mnemonicParsing="false" onMouseClicked="#doBatch" prefWidth="339.0" text="calculate deltas (batch method)" />
+    <Button layoutX="43.0" layoutY="728.0" mnemonicParsing="false" onMouseClicked="#initWeights" prefWidth="115.0" text="Initialize" />
+  </children>
+</AnchorPane>

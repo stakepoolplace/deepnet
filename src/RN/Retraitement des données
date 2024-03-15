@@ -1,0 +1,15 @@
+Retraitement des données
+
+ - centrer et reduire la variable -
+chaque observation est transformée de la facon suivante : 
+x1 = x - mu(x) / to(x)
+ou x represente l'observation d'origine, mu(x) la moyenne des observations de la variable et to(x) son ecart type.
+
+
+Remise à l'échelle de la variable :
+x1 = x - min(x) / max(x) - min(x)
+ou min(x) et max(x) representent respectivement, le minimume et le maximum de la variable.
+
+La stationarisation des séries est souvent aussi une nécessité, comme elle l'est dans les modèles d'analayse 
+statistiques classiques car les trends intégrés dan les variables seront appris par le réseau, 
+bien qu'ils n'aient aucun pouvoir prédictif.

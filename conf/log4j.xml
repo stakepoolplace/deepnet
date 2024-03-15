@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE log4j:configuration SYSTEM "log4j.dtd">
+<log4j:configuration xmlns:log4j="http://jakarta.apache.org/log4j/">
+
+    <appender name="console-appender" class="org.apache.log4j.ConsoleAppender">
+        <layout class="org.apache.log4j.PatternLayout">
+            <param name="ConversionPattern" value="%p %d{dd/MM/yy HH:mm:ss,SSS} %C{1} [%t] - %m%n" />
+        </layout>
+    </appender>
+
+    <appender name="error" class="org.apache.log4j.RollingFileAppender">
+        <param name="File" value="log/error.log" />
+        <param name="Threshold" value="ERROR" />
+        <param name="Append" value="true" />
+        <param name="MaxFileSize" value="50MB" />
+	<param name="MaxBackupIndex" value="100" />
+        <layout class="org.apache.log4j.PatternLayout">
+            <param name="ConversionPattern" value="%p %d{dd/MM/yy HH:mm:ss,SSS} %C{1} [%t] - %m%n" />
+        </layout>
+    </appender>
+
+    <appender name="debug" class="org.apache.log4j.RollingFileAppender">
+        <param name="File" value="log/debug.log" />
+        <param name="Threshold" value="DEBUG" />
+        <param name="Append" value="true" />
+        <param name="MaxFileSize" value="50MB" />
+	<param name="MaxBackupIndex" value="100" />
+        <layout class="org.apache.log4j.PatternLayout">
+            <param name="ConversionPattern" value="%p %d{dd/MM/yy HH:mm:ss,SSS} %C{1} [%t] - %m%n" />
+        </layout>
+    </appender>
+
+    <appender name="info" class="org.apache.log4j.RollingFileAppender">
+        <param name="File" value="log/info.log" />
+        <param name="Threshold" value="INFO" />
+        <param name="Append" value="true" />
+        <param name="MaxFileSize" value="50MB" />
+	<param name="MaxBackupIndex" value="100" />
+        <layout class="org.apache.log4j.PatternLayout">
+            <param name="ConversionPattern" value="%p %d{dd/MM/yy HH:mm:ss,SSS} %C{1} [%t] - %m%n" />
+        </layout>
+    </appender>
+<!--
+    <appender name="benchmarkAppender" class="org.apache.log4j.RollingFileAppender">
+        <param name="File" value="log/benchmark.log" />
+        <param name="Threshold" value="INFO" />
+        <param name="Append" value="true" />
+        <param name="MaxFileSize" value="300MB" />
+        <param name="MaxBackupIndex" value="100" />
+        <layout class="org.apache.log4j.PatternLayout">
+            <param name="ConversionPattern" value="%p %d{dd/MM/yy HH:mm:ss,SSS} %C{1} [%t] - %m%n" />
+        </layout>
+    </appender>
+
+    <logger name="benchmark" additivity="false">
+        <level value="debug" />
+        <appender-ref ref="benchmarkAppender" />
+    </logger>
+
+    <root>
+        <priority value="error" />
+        <appender-ref ref="error" />
+    </root>
+
+    <root>
+        <priority value="info" />
+        <appender-ref ref="info" />
+    </root>
+-->
+    <root>
+        <priority value="debug" />
+        <appender-ref ref="debug" />
+    </root>
+
+</log4j:configuration>
