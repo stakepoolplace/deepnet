@@ -99,7 +99,7 @@ public class HessianCourbureTest extends Application{
 				//Image noir et blanc en input
 				System.out.println("Begin lecture image ...");
 				PixelNode pixNode = null;
-				Image image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/clochers.jpg");
+				Image image = new Image("file:D:\\git\\deepnet\\resources\\clochers.jpg");
 				PixelReader pixelReader = image.getPixelReader();
 				for(int idx = 0; idx < nbPixels; idx++){
 					pixNode = (PixelNode) inArea.getNode(idx);

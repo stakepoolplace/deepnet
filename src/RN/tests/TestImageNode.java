@@ -1384,7 +1384,7 @@ public class TestImageNode extends Application{
 			public void run() {
 		
 				//Image noir et blanc en input
-				Image image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/bikes.jpg");
+				Image image = new Image("file:D:\\git\\deepnet\\resources\\bikes.jpg");
 				
 				int nbPixels = (int) (image.getHeight() * image.getWidth());
 				

@@ -59,7 +59,7 @@ public class ParallelTest extends Application{
 		
 		createMultiScaleNetwork();
 		try {
-			Thread.sleep(2000);
+			Thread.sleep(5000);
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
@@ -79,7 +79,7 @@ public class ParallelTest extends Application{
 		net.finalizeConnections();
 		
 		//Image noir et blanc en input
-		Image image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/bikes.jpg");
+		Image image = new Image("file:D:\\git\\deepnet\\resources\\bikes.jpg");
 		PixelReader pixelReader = image.getPixelReader();
 		PixelNode pixNode = null;
 		for(int idx = 0; idx < nbPixels; idx++){

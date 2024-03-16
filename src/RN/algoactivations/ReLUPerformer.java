@@ -12,7 +12,10 @@ public class ReLUPerformer implements IActivation{
 	@Override
 	public double performDerivative(double... value) throws Exception {
 		
-		return 1D;
+		if(value[0] > 0D)
+			return 1.0D;
+		else
+			return 0.0D;
 	}
 
 }
