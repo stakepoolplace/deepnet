@@ -73,7 +73,6 @@ public class ViewerFX extends Application {
 
 	public static List<ActivationFx> activations = new ArrayList<ActivationFx>();
 	final ObservableList<ActivationFx> layerFx = FXCollections.observableArrayList(activations);
-	final ComboBox<ActivationFx> comboLayerFx = new ComboBox<ActivationFx>(layerFx);
 	private static ESamples selectedSample = ESamples.COSINUS;
 	protected EActivation selectedFxNode = EActivation.SYGMOID_0_1;
 
@@ -99,11 +98,6 @@ public class ViewerFX extends Application {
 	public static CheckBox showSeriesIdeals = null;
 	public static CheckBox showLogs = null;
 	public static CheckBox animatedTrain = null;
-	public static CheckBox growingHiddens = null;
-	public static CheckBox backlink = null;
-	final ListView<Link> linkList = new ListView<Link>();
-	final ListView<INode> nodeList = new ListView<INode>();
-	final ListView<INetwork> netList = new ListView<INetwork>();
 
 
 	public static List<ScheduledFuture> futures = new ArrayList<ScheduledFuture>();
@@ -112,12 +106,6 @@ public class ViewerFX extends Application {
 	private static int THREAD_POOL_NUMBER = 5;
 	private static ScheduledExecutorService scheduler = null;
 
-	final ObservableList<InputSample> samples = FXCollections.observableArrayList(new InputSample("No filter", ESamples.NONE), new InputSample("Cosinus",
-			ESamples.COSINUS), new InputSample("Sinus", ESamples.SINUS), new InputSample("Sinus complex", ESamples.COMPLEX), new InputSample("Chaos",
-			ESamples.CHAOS), new InputSample("Exp. Mean 5p", ESamples.MEANEXP1), new InputSample("Exp. Mean 10p", ESamples.MEANEXP2), new InputSample(
-			"Exp. Mean 15p", ESamples.MEANEXP3));
-	
-	final ComboBox<InputSample> fxLinkSample = new ComboBox<InputSample>(samples);
 	public static volatile boolean stopPool = false;
 	public static volatile Integer factor = 0;
 
@@ -134,6 +122,7 @@ public class ViewerFX extends Application {
 	
 	public static Pane scalingPane = new Pane();
 	public static Pane graphPane = null;
+	public static Pane netPane = null;
 
 	public static boolean showLinearSeparation = false;
 
@@ -162,16 +151,13 @@ public class ViewerFX extends Application {
 		
 		createLineChart();
 		graphPane = createGraph();
-		createNetworkPane(stage);
+		netPane = createNetPane();
 		
 		
 		TabPane tabPane = createTabPane();
 		
 		final StackPane stack = new StackPane();
-		//stack.setMaxSize(1000, 800);
-		//stack.setAlignment(Pos.CENTER);		
-		stack.getChildren().addAll(scalingPane, graphPane, lineChart);
-		//StackPane.setMargin(networkPane, new Insets(150, 150, 150, 150));
+		stack.getChildren().addAll(netPane, scalingPane, graphPane, lineChart);
 		
 		Pane commandsPane = createCommands();
 		
@@ -188,44 +174,7 @@ public class ViewerFX extends Application {
 	
 
 	
-	private void createNetworkPane(Stage primaryStage) {
-		
-		
-		Stage stage = new Stage();
-		//stage.setFullScreen(true);
-		//primaryStage.setFullScreen(false);
-		stage.initOwner(primaryStage);
-		primaryStage.setOnCloseRequest(new EventHandler(){
 
-			@Override
-			public void handle(Event event) {
-				stage.close();
-			}
-			
-		});
-		stage.initStyle(StageStyle.DECORATED);
-		stage.setX(0);
-		stage.setY(0);
-		Scene scene = new Scene(Graphics3D.world, 1000, 600, true, SceneAntialiasing.BALANCED);
-		//scene.setFill(Color.rgb(10, 10, 40));
-		scene.setFill(Color.rgb(255, 255, 255));
-        //scene.setCamera(new PerspectiveCamera(false));
-
-        Graphics3D.initCameraLightAndAxes();
-        Graphics3D.handleKeyboard(scene);
-        Graphics3D.handleMouse(scene);
-        
-        stage.setScene(scene);
-        
-		
-//		HBox netPane = new HBox();
-//		netPane.setMaxSize(1000, 100);
-//		netPane.setStyle("-fx-background-color: #FFFFFF;-fx-border-color: #2e8b57;-fx-border-width: 1px;");
-		
-		stage.show();
-		scene.setCamera(Graphics3D.camera);
-		
-	}
 
 	private TabPane createTabPane() {
 		
@@ -236,7 +185,7 @@ public class ViewerFX extends Application {
 			@Override
 			public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) {
 				if(!oldValue && newValue){
-					Graphics3D.world.toFront();
+					//Graphics3D.world.toFront();
 					//lineChart.setVisible(true);
 				}
 				
@@ -244,7 +193,7 @@ public class ViewerFX extends Application {
 			
 		});
 		
-		Tab tabError = new Tab("Error and Results");
+		Tab tabError = new Tab("Training");
 		tabError.setClosable(false);
 		tabError.selectedProperty().addListener(new ChangeListener<Boolean>(){
 
@@ -324,8 +273,6 @@ public class ViewerFX extends Application {
 		showSeriesIdeals = new CheckBox("Show ideal(s)");
 		showLogs = new CheckBox("Logs");
 		animatedTrain = new CheckBox("animated");
-		growingHiddens = new CheckBox("auto grow hiddens");
-		backlink = new CheckBox("backlink");
 		
 		coefActivationFx = new Slider();
 		
@@ -334,9 +281,7 @@ public class ViewerFX extends Application {
 		final HBox hbox0 = new HBox();
 		final HBox hbox1 = new HBox();
 		final HBox hbox2 = new HBox();
-		final HBox hbox3 = new HBox();
-		final HBox hbox4 = new HBox();
-		vbox.getChildren().addAll(hbox0, hbox1, hbox2, hbox3, hbox4);
+		vbox.getChildren().addAll(hbox0, hbox1, hbox2);
 		commandPane.getChildren().add(vbox);
 		
 
@@ -398,33 +343,7 @@ public class ViewerFX extends Application {
 		});
 
 
-		comboLayerFx.getSelectionModel().selectedItemProperty().addListener(new ChangeListener<ActivationFx>() {
-			@Override
-			public void changed(ObservableValue<? extends ActivationFx> arg0, ActivationFx arg1, ActivationFx arg2) {
-				if (arg2 != null) {
-					selectedFxNode = arg2.getFx();
-					if (tester.getNetwork() != null) {
-						try {
 
-							if(nodeList.getSelectionModel().getSelectedItem() != null){
-								
-								if (lineChart.getData() != null && !lineChart.getData().isEmpty())
-									lineChart.setData(null);
-								
-									nodeList.getSelectionModel().getSelectedItem().setActivationFx(arg2.getFx());
-									nodeList.getSelectionModel().getSelectedItem().setActivationFxPerNode(true);
-		
-									tester.launchRealCompute();
-							
-							}
-
-						} catch (Exception e1) {
-							e1.printStackTrace();
-						}
-					}
-				}
-			}
-		});
 
 		final TextField learningRateField = new TextField(String.valueOf(trainer.getLearningRate()));
 		learningRateField.setPrefColumnCount(4);
@@ -446,18 +365,7 @@ public class ViewerFX extends Application {
 			}
 		});
 
-//		showSeriesActFx.setSelected(false);
-//		showSeriesActFx.selectedProperty().addListener(new ChangeListener<Boolean>() {
-//			public void changed(ObservableValue<? extends Boolean> ov, Boolean old_val, Boolean new_val) {
-//				if (tester.getSeriesActFxList() == null)
-//					return;
-//
-//				if (new_val)
-//					lineChart.getData().addAll(tester.getSeriesActFxList());
-//				else
-//					lineChart.getData().removeAll(tester.getSeriesActFxList());
-//			}
-//		});
+
 
 		showSeriesOut.setSelected(false);
 		showSeriesOut.selectedProperty().addListener(new ChangeListener<Boolean>() {
@@ -479,138 +387,10 @@ public class ViewerFX extends Application {
 			}
 		});
 
-		// ObservableList<Link> links = FXCollections.observableArrayList
-		// (TestNetwork.network.getAllNodes());
-		// linkList.setItems(links);
-		linkList.setPrefWidth(100D);
-		linkList.setPrefHeight(70);
 
-		linkList.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
-		linkList.getSelectionModel().selectedItemProperty().addListener(new ChangeListener<Link>() {
-			public void changed(ObservableValue<? extends Link> ov, Link old_val, Link new_val) {
-				// label.setText(new_val);
-				// label.setTextFill(Color.web(new_val));
-			}
-		});
 
-		nodeList.setPrefWidth(100);
-		nodeList.setPrefHeight(70);
-		nodeList.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
-		nodeList.getSelectionModel().selectedItemProperty().addListener(new ChangeListener<INode>() {
-			public void changed(ObservableValue<? extends INode> ov, INode old_val, INode new_val) {
 
-				if (new_val == null)
-					return;
 
-				ObservableList<Link> init = FXCollections.observableArrayList();
-				linkList.setItems(init);
-				
-				for (ActivationFx activation : activations)
-					if (tester.getNetwork() != null && activation.getFx() == new_val.getActivationFx())
-						comboLayerFx.getSelectionModel().select(activation);
-
-				for (INode node : nodeList.getSelectionModel().getSelectedItems()) {
-//					linkList.getItems().addAll(FXCollections.observableArrayList(node.getInputs()));
-					init.addAll(node.getInputs());
-					// linkList.getItems().addAll(node.getInputs());
-					if (node.getBiasInput() != null)
-						init.addAll(node.getBiasInput());
-//						linkList.getItems().add(node.getBiasInput());
-					
-					node.setActivationFx(selectedFxNode);
-				}
-			}
-		});
-
-		netList.setPrefWidth(200);
-		netList.setPrefHeight(70);
-		netList.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
-		netList.getSelectionModel().selectedItemProperty().addListener(new ChangeListener<INetwork>() {
-			public void changed(ObservableValue<? extends INetwork> ov, INetwork old_val, INetwork new_val) {
-
-				if (new_val == null)
-					return;
-
-				tester.setNetwork(new_val);
-				lineChart.setTitle((tester instanceof TestNetwork ? "MLP " : "LSTM ") + tester.getNetwork() + " : " + tester.getInputsCount() + " input(s), "
-						+ tester.getOutputsCount() + " output(s)");
-
-				ObservableList<Link> init = FXCollections.observableArrayList();
-				linkList.setItems(init);
-				ObservableList<INode> init2 = FXCollections.observableArrayList();
-				nodeList.getSelectionModel().clearSelection();
-				nodeList.setItems(init2);
-
-				for (INetwork net : netList.getSelectionModel().getSelectedItems()) {
-					// ObservableList<Node> nodes =
-					// FXCollections.observableArrayList(net.getAllNodes());
-					nodeList.getItems().addAll(net.getAllNodes());
-				}
-
-				GlobalNetwork.getInstance().clear();
-				GlobalNetwork.getInstance().addAll(netList.getSelectionModel().getSelectedItems());
-
-			}
-		});
-
-		Button addNetwork = new Button("add network");
-		addNetwork.setOnAction(new EventHandler<ActionEvent>() {
-			@Override
-			public void handle(ActionEvent e) {
-				netList.getItems().add(tester.getNetwork());
-			}
-		});
-
-		Button removeNetwork = new Button("remove network");
-		removeNetwork.setOnAction(new EventHandler<ActionEvent>() {
-			@Override
-			public void handle(ActionEvent e) {
-
-				ObservableList<Link> init = FXCollections.observableArrayList();
-				linkList.setItems(init);
-				ObservableList<INode> init2 = FXCollections.observableArrayList();
-				nodeList.getSelectionModel().clearSelection();
-				nodeList.setItems(init2);
-
-				for (INetwork net : netList.getSelectionModel().getSelectedItems()) {
-					netList.getItems().remove(net);
-				}
-			}
-		});
-
-		Slider weightSlider = new Slider();
-		weightSlider.setMin(-50);
-		weightSlider.setMax(50);
-		weightSlider.setValue(0);
-		weightSlider.setShowTickLabels(true);
-		weightSlider.setShowTickMarks(true);
-		weightSlider.setMajorTickUnit(50);
-		weightSlider.setMinorTickCount(5);
-		weightSlider.setBlockIncrement(2D);
-
-		weightSlider.valueProperty().addListener(new ChangeListener<Number>() {
-			public void changed(ObservableValue<? extends Number> ov, Number old_val, Number new_val) {
-
-				if (old_val == null || new_val == null || linkList.getSelectionModel() == null)
-					return;
-
-				if (linkList.getSelectionModel().getSelectedItems() != null && !linkList.getSelectionModel().isEmpty()) {
-					for (Link link : linkList.getSelectionModel().getSelectedItems()) {
-						if (link != null)
-							link.setWeight(link.getWeight() + (new_val.doubleValue() - old_val.doubleValue()));
-					}
-					lineChart.setData(null);
-					if (GlobalNetwork.getInstance().size() > 0) {
-						try {
-							GlobalNetwork.getInstance().launchRealCompute();
-						} catch (Exception e1) {
-							// TODO Auto-generated catch block
-							e1.printStackTrace();
-						}
-					}
-				}
-			}
-		});
 
 		Slider trainSpeedSlider = new Slider();
 		trainSpeedSlider.setMin(9000);
@@ -683,163 +463,7 @@ public class ViewerFX extends Application {
 			}
 		});
 
-		
-		
-		Button linkNodes = new Button("Link nodes !");
-		linkNodes.setOnAction(new EventHandler<ActionEvent>() {
-			@Override
-			public void handle(ActionEvent e) {
 
-				INode sourceNode = null;
-				ESamples filter = fxLinkSample.getSelectionModel().getSelectedItem().getSample();
-
-				if (nodeList.getSelectionModel().getSelectedItems().size() > 1) {
-					for (INode targetNode : nodeList.getSelectionModel().getSelectedItems()) {
-						if (sourceNode != null) {
-
-							if (filter != ESamples.NONE) {
-								// sourceNode.getOutput().setFilterActive(true);
-								// sourceNode.getOutput().setFilter(filter);
-							}
-							if(backlink.isSelected())
-								targetNode.link(sourceNode, ELinkType.RECURRENT_LINK);
-							else
-								sourceNode.link(targetNode, ELinkType.REGULAR);
-							// sourceNode.getOutput().setWeight(1.0D);
-							// targetNode.addInput(sourceNode.getOutput());
-
-						} else {
-							sourceNode = targetNode;
-						}
-					}
-				} else {
-					INode targetNode = nodeList.getSelectionModel().getSelectedItem();
-					// Link newLink = new Link(new LinkedValue(1), 1);
-					Link newLink = Link.getInstance(ELinkType.REGULAR, true);
-					newLink.setUnlinkedValue(1.0D);
-					newLink.setFilterActive(true);
-					newLink.setFilter(filter);
-					targetNode.addInput(newLink);
-				}
-			}
-		});
-
-		Button unlinkNodes = new Button("Un-link !");
-		unlinkNodes.setOnAction(new EventHandler<ActionEvent>() {
-			@Override
-			public void handle(ActionEvent e) {
-
-				for (Link target : linkList.getSelectionModel().getSelectedItems()) {
-					target.getTargetNode().getInputs().remove(target);
-				}
-			}
-		});
-
-		Button runGlobalNet = new Button("Run global network !");
-		runGlobalNet.setOnAction(new EventHandler<ActionEvent>() {
-			@Override
-			public void handle(ActionEvent e) {
-
-				if (GlobalNetwork.getInstance().size() > 0) {
-
-					try {
-						GlobalNetwork.getInstance().launchRealCompute();
-					} catch (Exception e1) {
-						e1.printStackTrace();
-					}
-				}
-			}
-		});
-
-		fxLinkSample.getSelectionModel().selectFirst();
-		fxLinkSample.getSelectionModel().selectedItemProperty().addListener(new ChangeListener<InputSample>() {
-
-			@Override
-			public void changed(ObservableValue<? extends InputSample> arg0, InputSample arg1, InputSample arg2) {
-
-				if (arg2 != null) {
-					// selectedSample = arg2.getSample();
-					// try {
-					// tester.createNetwork();
-					// InputSample.setSamples(tester.getInputsCount(),
-					// tester.getOutputsCount(), trainer.getDelta(),
-					// trainer.getDelay());
-					//
-					// } catch (Exception e1) {
-					// e1.printStackTrace();
-					// }
-					//
-					// sc.setTitle((tester instanceof TestNetwork ? "MLP " :
-					// "LSTM ") + "network : " + tester.getInputsCount() +
-					// " input(s), "
-					// + tester.getOutputsCount() + " output(s)");
-					//
-					// if (sc.getData() != null && !sc.getData().isEmpty())
-					// sc.setData(null);
-					//
-					// try {
-					// tester.launchRealCompute();
-					// } catch (Exception e) {
-					// // TODO Auto-generated catch block
-					// e.printStackTrace();
-					// }
-
-				}
-			}
-		});
-
-		Button upNet = new Button("Up");
-		upNet.setOnAction(new EventHandler<ActionEvent>() {
-			@Override
-			public void handle(ActionEvent e) {
-
-				if (netList.getSelectionModel().getSelectedItems().size() != 1)
-					return;
-
-				INetwork tempNet = null;
-				int index = netList.getSelectionModel().getSelectedIndex();
-				if (netList.getSelectionModel().getSelectedIndex() > 0) {
-					netList.getSelectionModel().selectPrevious();
-					for (INetwork net : netList.getSelectionModel().getSelectedItems()) {
-						if (tempNet == null) {
-							tempNet = net;
-						} else {
-							netList.getItems().set(index - 1, net);
-							netList.getItems().set(index, tempNet);
-						}
-
-					}
-					netList.getSelectionModel().clearSelection(index);
-
-				}
-			}
-		});
-
-		Button downNet = new Button("Down");
-		downNet.setOnAction(new EventHandler<ActionEvent>() {
-			@Override
-			public void handle(ActionEvent e) {
-
-				if (netList.getSelectionModel().getSelectedItems().size() != 1)
-					return;
-
-				INetwork tempNet = null;
-				int index = netList.getSelectionModel().getSelectedIndex();
-				if (netList.getSelectionModel().getSelectedIndex() < netList.getItems().size() - 1) {
-					netList.getSelectionModel().selectNext();
-					for (INetwork net : netList.getSelectionModel().getSelectedItems()) {
-						if (tempNet == null) {
-							tempNet = net;
-						} else {
-							netList.getItems().set(index, net);
-							netList.getItems().set(index + 1, tempNet);
-						}
-
-					}
-					netList.getSelectionModel().clearSelection(index);
-				}
-			}
-		});
 
 		animatedTrain.setSelected(false);
 		animatedTrain.selectedProperty().addListener(new ChangeListener<Boolean>() {
@@ -851,7 +475,6 @@ public class ViewerFX extends Application {
 			}
 		});
 
-		growingHiddens.setSelected(false);
 
 		Slider timeSeriesOffset = new Slider();
 		timeSeriesOffset.setMin(0);
@@ -914,21 +537,14 @@ public class ViewerFX extends Application {
 				momentumField, submit, showLogs);
 
 		hbox2.setSpacing(10);
-		hbox2.getChildren().addAll(comboSamples, comboLayerFx, coefActivationFx, showSeriesIn, showSeriesOut, showSeriesIdeals,
+		hbox2.getChildren().addAll(comboSamples, coefActivationFx, showSeriesIn, showSeriesOut, showSeriesIdeals,
 				timeSeriesOffset);
 
-		hbox3.setSpacing(10);
-		hbox3.getChildren().addAll(netList, addNetwork, removeNetwork, nodeList, linkList, weightSlider, backlink, linkNodes, fxLinkSample, unlinkNodes, runGlobalNet
-				);
 
-		hbox4.setSpacing(10);
-		hbox4.getChildren().addAll(upNet, downNet, growingHiddens);
 		
 		hbox0.setPadding(new Insets(5, 0, 5, 20));
 		hbox1.setPadding(new Insets(5, 20, 2, 20));
 		hbox2.setPadding(new Insets(2, 20, 5, 20));
-		hbox3.setPadding(new Insets(5, 20, 5, 20));
-		hbox4.setPadding(new Insets(0, 20, 5, 20));
 		
 		
 		train.setOnAction(new EventHandler<ActionEvent>() {
@@ -1154,6 +770,11 @@ public class ViewerFX extends Application {
 		
 		return commandPane;
 		
+	}
+	
+	public Pane createNetPane() {
+		
+		return new HBox();
 	}
 	
 	public Pane createGraph() {
