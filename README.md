@@ -1,5 +1,5 @@
-# deepnet
+# Deepnet
 Java Neural net framework
 
-Environment
+## Environment
 JDK 8 (version without javaFX) 
