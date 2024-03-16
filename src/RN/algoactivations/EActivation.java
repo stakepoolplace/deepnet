@@ -3,7 +3,7 @@ package RN.algoactivations;
 public enum EActivation {
 
 	
-	COS, SIN, IDENTITY, HEAVISIDE, SYGMOID_0_1, SYGMOID_1_1, TANH, LINEAR, SYGMOID_0_1_INVERSE, SYGMOID_0_1_NEGATIVE, NEGATIVE, RLU;
+	COS, SIN, IDENTITY, HEAVISIDE, SYGMOID_0_1, SYGMOID_1_1, TANH, LINEAR, SYGMOID_0_1_INVERSE, SYGMOID_0_1_NEGATIVE, NEGATIVE, RLU, LEAKY_RELU;
 	
 	public static EActivation getEnum(String function){
 	
@@ -31,6 +31,9 @@ public enum EActivation {
 		return EActivation.SYGMOID_0_1_NEGATIVE;
 	else if (function.equalsIgnoreCase(EActivation.RLU.name()))
 		return EActivation.RLU;
+	else if (function.equalsIgnoreCase(EActivation.LEAKY_RELU.name()))
+		return EActivation.LEAKY_RELU;		
+		
 		
 		return null;
 	
@@ -64,6 +67,9 @@ public enum EActivation {
 			performer = new SygmoidNegativePerformer();
 		else if (function == EActivation.RLU)
 			performer = new ReLUPerformer();
+		else if (function == EActivation.LEAKY_RELU)
+			performer = new LeakyReLUPerformer();		
+		
 		
 		return performer;
 	}
