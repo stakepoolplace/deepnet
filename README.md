@@ -25,9 +25,9 @@ Welcome to DeeperNet developed by Eric Marchand, an educational deep learning fr
 
 1. **Clone the repository:**
 
-\```bash
-git clone https://github.com/yourusername/deeper-net.git
-\```
+```bash
+git clone https://github.com/stakepoolplace/deepnet.git
+```
 
 2. **Open the project in your Java IDE** and make sure it's configured to use Java 8.
 
@@ -37,22 +37,26 @@ git clone https://github.com/yourusername/deeper-net.git
 
 There are two main ways to train a neural network using Deeper Net:
 
-#### Using the JavaFX Interface
+#### Using the API programmatically
 
-1. Launch the `ViewerFX.java` class from your IDE.
-2. Use the interface to configure your neural network and start the training process.
-3. Monitor the training progress and results directly within the JavaFX interface.
+See package /RN/tests
 
 #### Using an Excel Sheet
 
 1. Open the sample Excel sheet in `/RN/Sample.xls` or `.numbers` and configure your network parameters and input data.
 2. Save your changes and close the Excel sheet.
 3. Run `TestNetwork.java` from your IDE, which will read the Excel sheet and launch `ViewerFX.java` with the specified network configuration.
-4. The JavaFX interface will open, allowing you to visualize the training process.
+4. The JavaFX interface will open, allowing you to start and visualize the training process.
+
+#### Next steps 
+1. Add a save button to serialize network and weights on the disk. Which format ?
+2. Add a load button to read a file from disk.
+
 
 ## Utilisation
 XLBP by Derek Monner, http://www.cs.umd.edu/~dmonner
 I tried to integrate LSTM networks with this implementation. Status: TODO
+
 
 ## Contributing
 
