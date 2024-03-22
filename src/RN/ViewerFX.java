@@ -235,11 +235,21 @@ public class ViewerFX extends Application {
 						} catch (Exception e1) {
 							e1.printStackTrace();
 						}
+						
+						boolean isMLP = tester instanceof TestNetwork;
 
-						lineChart.setTitle((tester instanceof TestNetwork ? "MLP " : "LSTM ") + "network : "
-								+ tester.getInputsCount() + " input(s), " + tester.getOutputsCount()
-								+ " output(s)     DataSerie : " + DataSeries.getInstance().getInputDataSet().size()
-								+ " examples");
+						if(isMLP) {
+							lineChart.setTitle("MLP network : "
+									+ tester.getNetwork().getLayers().size() + " layers, " 
+									+ "  DataSerie : " + DataSeries.getInstance().getInputDataSet().size()
+									+ " examples");		
+						} else {
+							lineChart.setTitle("LSTM network : "
+									+ tester.getInputsCount() + " input(s), " + tester.getOutputsCount()
+									+ " output(s)     DataSerie : " + DataSeries.getInstance().getInputDataSet().size()
+									+ " examples");
+						}
+
 
 						System.out.println(DataSeries.getInstance().getString());
 

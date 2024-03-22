@@ -654,7 +654,7 @@ public class TestNetwork implements ITester {
 
 	@Override
 	public String getLineChartTitle() {
-		return "Network : " + inputSize + " input(s), " + outputSize + " output(s)";
+		return "Please select a dataset";
 	}
 
 	public Integer getLayerHidden0NodesCount() {
