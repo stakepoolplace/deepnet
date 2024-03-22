@@ -48,6 +48,10 @@ There are two main ways to train a neural network using Deeper Net:
 3. Run `TestNetwork.java` from your IDE, which will read the Excel sheet and launch `ViewerFX.java` with the specified network configuration.
 4. The JavaFX interface will open, allowing you to visualize the training process.
 
+## Utilisation
+XLBP by Derek Monner, http://www.cs.umd.edu/~dmonner
+I tried to integrate LSTM networks with this implementation. Status: TODO
+
 ## Contributing
 
 We welcome contributions from the community, whether it's improving the documentation, adding new features, or reporting bugs. Please feel free to fork the repository and submit pull requests.
