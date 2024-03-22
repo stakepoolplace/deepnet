@@ -11,6 +11,7 @@ Welcome to DeeperNet developed by Eric Marchand, an educational deep learning fr
 ![XLS Preview](xls.png)
 - **Console Output:** For those who prefer working directly with code, Deeper Net allows for neural network training with results displayed in the console, offering a more traditional development experience.
 - **TestNetwork.java:** A dedicated launcher that reads network configurations from an Excel sheet and initiates the graphical interface `ViewerFX.java` for visualization.
+- **Powerful deep learning PDFs** /resources/ML-Notes.pdf and gradients-histogrammes.pdf.
 
 ## Getting Started
 
