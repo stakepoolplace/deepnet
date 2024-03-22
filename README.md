@@ -24,9 +24,9 @@ Welcome to DeeperNet developed by Eric Marchand, an educational deep learning fr
 
 1. **Clone the repository:**
 
-\```bash
-git clone https://github.com/yourusername/deeper-net.git
-\```
+```bash
+git clone https://github.com/stakepoolplace/deepnet.git
+```
 
 2. **Open the project in your Java IDE** and make sure it's configured to use Java 8.
 
