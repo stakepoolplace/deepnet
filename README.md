@@ -1,6 +1,8 @@
 # DeeperNet: A Deep Learning Educational Framework
 
-Welcome to Deeper Net, an educational deep learning framework designed to facilitate understanding and experimenting with neural networks. Deeper Net combines the power of Java 8 and JavaFX to offer a hands-on learning experience through interactive training interfaces and visual feedback.
+Welcome to DeeperNet developed by Eric Marchand, an educational deep learning framework designed to facilitate understanding and experimenting with neural networks. Deeper Net combines the power of Java 8 and JavaFX to offer a hands-on learning experience through interactive training interfaces and visual feedback.
+
+![GUI Preview](gui.png)
 
 ## Features
 
