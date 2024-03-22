@@ -42,6 +42,7 @@ import javafx.scene.chart.XYChart;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.Slider;
@@ -83,28 +84,17 @@ public class ViewerFX extends Application {
 	final Button trainStop = new Button("Stop train");
 	final Button run = new Button("Run");
 	final Button runTest = new Button("Run test");
-	final Button remove = new Button("Remove last serie");
-	final Button removeAll = new Button("Remove all series");
 	final Button ldseries = new Button("Load Series");
 	final Button load = new Button("Load network");
 	final Button save = new Button("Save network");
 	final Button rand = new Button("Randomize network");
-	final Button clear = new Button("Clear data network");
+	final Button clear = new Button("Clear");
 	final Button print = new Button("Print network");
 
-	public static CheckBox showSeriesIn = null;
-//	public final static CheckBox showSeriesActFx = new CheckBox("Show activation(s) fx");
-	public static CheckBox showSeriesOut = null;
-	public static CheckBox showSeriesIdeals = null;
 	public static CheckBox showLogs = null;
-	public static CheckBox animatedTrain = null;
 
 
-	public static List<ScheduledFuture> futures = new ArrayList<ScheduledFuture>();
-	public static ScheduledFuture future = null;
 	private static int threadPoolDelay = 500000;
-	private static int THREAD_POOL_NUMBER = 5;
-	private static ScheduledExecutorService scheduler = null;
 
 	public static volatile boolean stopPool = false;
 	public static volatile Integer factor = 0;
@@ -112,7 +102,6 @@ public class ViewerFX extends Application {
 	private static SequentialTransition animation = new SequentialTransition();
 	private static Timeline timeline1 = new Timeline();
 
-	public static Slider coefActivationFx = null;
 	public static ObservableList<InputSample> excelSheets = FXCollections.observableArrayList(new InputSample("No training set", ESamples.NONE));
 	
 	public static Rectangle clip = null;
@@ -268,20 +257,13 @@ public class ViewerFX extends Application {
 		
 		Pane commandPane = new Pane();
 		
-		showSeriesIn = new CheckBox("Show input(s)");
-		showSeriesOut = new CheckBox("Show output(s)");
-		showSeriesIdeals = new CheckBox("Show ideal(s)");
 		showLogs = new CheckBox("Logs");
-		animatedTrain = new CheckBox("animated");
-		
-		coefActivationFx = new Slider();
-		
+				
 
 		final VBox vbox = new VBox();
-		final HBox hbox0 = new HBox();
 		final HBox hbox1 = new HBox();
 		final HBox hbox2 = new HBox();
-		vbox.getChildren().addAll(hbox0, hbox1, hbox2);
+		vbox.getChildren().addAll(hbox1, hbox2);
 		commandPane.getChildren().add(vbox);
 		
 
@@ -349,202 +331,33 @@ public class ViewerFX extends Application {
 		learningRateField.setPrefColumnCount(4);
 		final TextField momentumField = new TextField(String.valueOf(trainer.getAlphaDeltaWeight()));
 		momentumField.setPrefColumnCount(4);
-		// final TextField momentumField = new
-		// TextField(String.valueOf(TestNetwork.getAlphaDeltaWeight()));
-		final Button submit = new Button("Change it!");
+		final Button submit = new Button("Apply");
 
 		showLogs.setSelected(true);
 
-		showSeriesIn.setSelected(false);
-		showSeriesIn.selectedProperty().addListener(new ChangeListener<Boolean>() {
-			public void changed(ObservableValue<? extends Boolean> ov, Boolean old_val, Boolean new_val) {
-				if (new_val)
-					lineChart.getData().addAll(tester.getSeriesInList());
-				else
-					lineChart.getData().removeAll(tester.getSeriesInList());
-			}
-		});
-
-
-
-		showSeriesOut.setSelected(false);
-		showSeriesOut.selectedProperty().addListener(new ChangeListener<Boolean>() {
-			public void changed(ObservableValue<? extends Boolean> ov, Boolean old_val, Boolean new_val) {
-				if (new_val)
-					lineChart.getData().addAll(tester.getSeriesOutList());
-				else
-					lineChart.getData().removeAll(tester.getSeriesOutList());
-			}
-		});
-
-		showSeriesIdeals.setSelected(false);
-		showSeriesIdeals.selectedProperty().addListener(new ChangeListener<Boolean>() {
-			public void changed(ObservableValue<? extends Boolean> ov, Boolean old_val, Boolean new_val) {
-				if (new_val)
-					lineChart.getData().addAll(tester.getSeriesIdealList());
-				else
-					lineChart.getData().removeAll(tester.getSeriesIdealList());
-			}
-		});
-
-
-
-
-
-
-		Slider trainSpeedSlider = new Slider();
-		trainSpeedSlider.setMin(9000);
-		trainSpeedSlider.setMax(1000000);
-		trainSpeedSlider.setValue(getThreadPoolDelay());
-		trainSpeedSlider.setShowTickLabels(true);
-		trainSpeedSlider.setShowTickMarks(true);
-		trainSpeedSlider.setMajorTickUnit(500000);
-		trainSpeedSlider.setMinorTickCount(10);
-		trainSpeedSlider.setBlockIncrement(2);
-
-		trainSpeedSlider.valueProperty().addListener(new ChangeListener<Number>() {
-			public void changed(ObservableValue<? extends Number> ov, Number old_val, Number new_val) {
-
-				if (old_val == null || new_val == null)
-					return;
-
-				if (future != null) {
-					future.cancel(true);
-					futures.remove(future);
-					future = null;
-				}
-				setThreadPoolDelay(getThreadPoolDelay() + (new_val.intValue() - old_val.intValue()));
-				future = scheduler.scheduleWithFixedDelay(task, 0, getThreadPoolDelay(), TimeUnit.MICROSECONDS);
-				futures.add(future);
-
-			}
-		});
-
-		Slider trainingSetSlider = new Slider();
-		trainingSetSlider.setMin(0);
-		trainingSetSlider.setMax(50000);
-		trainingSetSlider.setValue(0);
-		trainingSetSlider.setShowTickLabels(true);
-		trainingSetSlider.setShowTickMarks(true);
-		trainingSetSlider.setMajorTickUnit(25000);
-		trainingSetSlider.setMinorTickCount(10);
-		trainingSetSlider.setBlockIncrement(500);
-		trainingSetSlider.setPrefWidth(1200);
-
-		trainingSetSlider.valueProperty().addListener(new ChangeListener<Number>() {
-			DataSeries data = DataSeries.getInstance();
-
-			public void changed(ObservableValue<? extends Number> ov, Number old_val, Number new_val) {
-
-				if (old_val == null || new_val == null)
-					return;
-
-				int counter = 0;
-
-				try {
-					while (counter++ < data.getInputDataSet().size()) {
-						try {
-							lineChart.setData(null);
-
-							trainer.train();
-							// absoluteError += trainer.getErrorRate();
-
-						} catch (Exception e1) {
-							System.out.println("Message" + e1.getMessage());
-							e1.printStackTrace();
-						}
-					}
-					tester.launchRealCompute();
-					// System.out.println("Epoch" + counter);
-				} catch (Throwable t) {
-					System.out.println("Message" + t.getMessage());
-				}
-
-			}
-		});
-
-
-
-		animatedTrain.setSelected(false);
-		animatedTrain.selectedProperty().addListener(new ChangeListener<Boolean>() {
-			public void changed(ObservableValue<? extends Boolean> ov, Boolean old_val, Boolean new_val) {
-
-				if (new_val) {
-					showLogs.setSelected(false);
-				}
-			}
-		});
-
-
-		Slider timeSeriesOffset = new Slider();
-		timeSeriesOffset.setMin(0);
-		timeSeriesOffset.setMax(300);
-		timeSeriesOffset.setValue(tester.getTimeSeriesOffset());
-		timeSeriesOffset.setShowTickLabels(true);
-		timeSeriesOffset.setShowTickMarks(true);
-		timeSeriesOffset.setMajorTickUnit(150);
-		timeSeriesOffset.setMinorTickCount(5);
-		timeSeriesOffset.setBlockIncrement(1.0D);
-
-		timeSeriesOffset.valueProperty().addListener(new ChangeListener<Number>() {
-			public void changed(ObservableValue<? extends Number> ov, Number old_val, Number new_val) {
-
-				if (old_val == null || new_val == null)
-					return;
-
-				INetwork network = tester.getNetwork();
-				Integer offset = network.getTimeSeriesOffset() + (new_val.intValue() - old_val.intValue());
-				tester.getNetwork().setTimeSeriesOffset(offset);
-				lineChart.setData(null);
-				try {
-					tester.launchRealCompute();
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
-				System.out.println("setting offset to : " + offset);
-			}
-		});
-
-		coefActivationFx.setMin(0);
-		coefActivationFx.setMax(5);
-		coefActivationFx.setValue(1);
-		coefActivationFx.setShowTickLabels(true);
-		coefActivationFx.setShowTickMarks(true);
-		coefActivationFx.setMajorTickUnit(1D);
-		coefActivationFx.setMinorTickCount(5);
-		coefActivationFx.setBlockIncrement(0.1D);
-
-		coefActivationFx.valueProperty().addListener(new ChangeListener<Number>() {
-			public void changed(ObservableValue<? extends Number> ov, Number old_val, Number new_val) {
-
-				if (old_val == null || new_val == null)
-					return;
-				System.out.println("setting coef to : " + new_val);
-				lineChart.setData(null);
-				try {
-					tester.launchRealCompute();
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
-			}
-		});
-
-		hbox0.setSpacing(10);
-		hbox0.getChildren().addAll(trainingSetSlider);
 
 		hbox1.setSpacing(10);
-		hbox1.getChildren().addAll(animatedTrain, train, trainSpeedSlider, trainStop, run, runTest, remove, removeAll, rand, clear, print, learningRateField,
-				momentumField, submit, showLogs);
+		hbox1.getChildren().addAll(train, trainStop, run, runTest, rand, clear, print, new Label("Learning rate"), learningRateField,
+				new Label("Momentum"), momentumField, submit, showLogs);
 
 		hbox2.setSpacing(10);
-		hbox2.getChildren().addAll(comboSamples, coefActivationFx, showSeriesIn, showSeriesOut, showSeriesIdeals,
-				timeSeriesOffset);
+		hbox2.getChildren().addAll(comboSamples);
 
 
 		
-		hbox0.setPadding(new Insets(5, 0, 5, 20));
 		hbox1.setPadding(new Insets(5, 20, 2, 20));
 		hbox2.setPadding(new Insets(2, 20, 5, 20));
+		
+		animation.setOnFinished(new EventHandler<ActionEvent>() {
+
+			@Override
+			public void handle(ActionEvent arg0) {
+		        Platform.runLater(() -> {
+					train.setDisable(false);
+		        });
+			}
+			
+		});
 		
 		
 		train.setOnAction(new EventHandler<ActionEvent>() {
@@ -552,12 +365,11 @@ public class ViewerFX extends Application {
 			@Override
 			public void handle(ActionEvent e) {
 
-				if (animatedTrain.isSelected()) {
-					train.setText("Train x" + ++factor);
-					startScheduledExecutorService();
-				} else {
+			
 					try {
-
+				        Platform.runLater(() -> {
+							train.setDisable(true);
+				        });
 						trainer.getErrorLevelLines().clear();
 
 						if (lineChart.getData() == null)
@@ -573,13 +385,15 @@ public class ViewerFX extends Application {
 						series.setName("Train " + (lineChart.getData().size() + 1));
 
 						trainer.launchTrain(showLogs.isSelected());
+						
+						
 						timeline1.setCycleCount(trainer.getErrorLevelLines().size());
 						animation.play();
+
 
 					} catch (Exception e1) {
 						e1.printStackTrace();
 					}
-				}
 			}
 		});
 
@@ -629,21 +443,9 @@ public class ViewerFX extends Application {
 
 				try {
 					trainer.setBreakTraining(true);
-					System.out.println("futures : " + futures.size());
-					for (ScheduledFuture future : futures) {
-						future.cancel(true);
-					}
 					train.setText("Train");
 					factor = 0;
 					Thread.sleep(500);
-					java.util.ListIterator<ScheduledFuture> futuresItr = futures.listIterator();
-					while (futuresItr.hasNext()) {
-						ScheduledFuture future = futuresItr.next();
-						if (future.isDone()) {
-							futuresItr.remove();
-							futures.remove(future);
-						}
-					}
 
 				} catch (Exception e1) {
 					e1.printStackTrace();
@@ -673,25 +475,8 @@ public class ViewerFX extends Application {
 			}
 		});		
 		
-		remove.setOnAction(new EventHandler<ActionEvent>() {
-			@Override
-			public void handle(ActionEvent e) {
-				if (!lineChart.getData().isEmpty())
-					lineChart.getData().remove(lineChart.getData().size() - 1);
-			}
-		});
 
-		removeAll.setOnAction(new EventHandler<ActionEvent>() {
-			@Override
-			public void handle(ActionEvent e) {
-				if (!lineChart.getData().isEmpty())
-					lineChart.setData(null);
-				
-//				createImageData();
-				//loadImageData("file:C:\\Users\\Eric\\Pictures\\blank.png");
-				//drawImageData();
-			}
-		});
+
 
 		// Setting an action for the Submit button
 		submit.setOnAction(new EventHandler<ActionEvent>() {
@@ -701,8 +486,8 @@ public class ViewerFX extends Application {
 
 					trainer.setLearningRate(Double.valueOf(learningRateField.getText()));
 					trainer.setAlphaDeltaWeight(Double.valueOf(momentumField.getText()));
-					System.out.println("learningRateField set to " + learningRateField.getText());
-					System.out.println("momentumField set to " + momentumField.getText());
+					System.out.println("learningRate set to " + learningRateField.getText());
+					System.out.println("momentum set to " + momentumField.getText());
 				} else {
 					System.out.println("nothing happened !");
 				}
@@ -742,6 +527,8 @@ public class ViewerFX extends Application {
 				System.out.println("series input and ideals cleared !");
 				trainer.getErrorLevelLines().clear();
 				System.out.println("error level cleared !");
+				if (!lineChart.getData().isEmpty())
+					lineChart.setData(null);
 			}
 		});
 
@@ -749,7 +536,6 @@ public class ViewerFX extends Application {
 			@Override
 			public void handle(ActionEvent e) {
 				System.out.println(tester.getNetwork().getString());
-//				System.out.println(DataSeries.getInstance().getString());
 			}
 		});
 
@@ -757,13 +543,7 @@ public class ViewerFX extends Application {
 			@Override
 			public void handle(ActionEvent e) {
 
-				// new Thread(new Runnable(){
-				// @Override
-				// public void run() {
-				// RerateServices.insertOrder(Long.valueOf(adapter.getText()),
-				// Long.valueOf(network.getText()));
-				// AdminServices.jobRunRerating("2013_03", "yes");
-				// }}).start();
+
 				System.out.println("nothing happened !");
 			}
 		});
@@ -875,16 +655,9 @@ public class ViewerFX extends Application {
 		Text text = new Text(x, y, label);
 		text.setFill(Color.DARKGRAY);
 		text.setFont(Font.font(Font.getDefault().getFamily(), 16));
-		// text.rotateProperty().set( -theta );
 		text.textAlignmentProperty().setValue(TextAlignment.CENTER);
 		text.setX(text.getX() - text.getBoundsInLocal().getWidth() / 2.0);
 		text.textOriginProperty().set(vPos);
-		// if( vPos == VPos.BOTTOM ) {
-		// text.setY( text.getY() + 1 );
-		// }
-		// else {
-		// text.setY( text.getY() - 1 );
-		// }
 		return text;
 	}
 
@@ -933,111 +706,10 @@ public class ViewerFX extends Application {
 		ViewerFX.trainer = trainer;
 	}
 
-	// public volatile static int counter = 1;
-	private void startScheduledExecutorService() {
 
-		scheduler = Executors.newScheduledThreadPool(THREAD_POOL_NUMBER);
-		future = scheduler.scheduleWithFixedDelay(task, 0, threadPoolDelay, TimeUnit.MICROSECONDS);
-		futures.add(future);
-
-	}
-
-	private Runnable task = new Runnable() {
-
-		volatile int counter = 1;
-		volatile double absoluteError = 0.0D;
-
-		DataSeries data = DataSeries.getInstance();
-
-		@Override
-		public void run() {
-
-			counter++;
-			// if (!stopPool) {
-			// System.out.println("task1: " + Thread.currentThread().getName());
-
-			if (counter <= data.getInputDataSet().size() * 50000) {
-				// if (((float)counter / dataSerieSize) % 100 == 0)
-
-				Platform.runLater(new Runnable() {
-					@Override
-					public void run() {
-						int dataSetCounter = 0;
-						try {
-
-							while (dataSetCounter++ < data.getInputDataSet().size()) {
-								try {
-									lineChart.setData(null);
-
-									trainer.train();
-
-//									drawImageData();
-									absoluteError += trainer.getErrorRate();
-									
-								} catch (Exception e1) {
-									System.out.println("Message" + e1.getMessage());
-									e1.printStackTrace();
-								}
-							}
-							
-							if(showLinearSeparation)
-								tester.showLinearSeparation();
-							
-							tester.launchRealCompute();
-							
-						} catch (Throwable t) {
-							System.out.println("Message" + t.getMessage());
-						}
-					}
-				});
-
-			} else {
-				// scheduler.shutdown();
-				//train.setText("Train");
-				factor = 0;
-				Platform.runLater(new Runnable() {
-					@Override
-					public void run() {
-						System.out.println("fin du training. Nb valeurs:" + counter + "  erreur:" + absoluteError / 2.0D);
-						scheduler.shutdown();
-						counter = 1;
-						
-						try {
-							trainer.setBreakTraining(true);
-							System.out.println("futures : " + futures.size());
-							for (ScheduledFuture future : futures) {
-								future.cancel(true);
-							}
-							train.setText("Train");
-							factor = 0;
-							Thread.sleep(500);
-							java.util.ListIterator<ScheduledFuture> futuresItr = futures.listIterator();
-							while (futuresItr.hasNext()) {
-								ScheduledFuture future = futuresItr.next();
-								if (future.isDone()) {
-									futuresItr.remove();
-									futures.remove(future);
-								}
-							}
-
-						} catch (Exception e1) {
-							e1.printStackTrace();
-						}
-					}
-				});
-			}
-		}
-	};
 
 	public static void addSeriesToLineChart() {
-		if (showSeriesIn.isSelected())
-			lineChart.getData().addAll(tester.getSeriesInList());
-		if (showSeriesOut.isSelected())
-			lineChart.getData().addAll(tester.getSeriesOutList());
-		if (showSeriesIdeals.isSelected())
-			lineChart.getData().addAll(tester.getSeriesIdealList());
-//		if (showSeriesActFx.isSelected())
-//			lineChart.getData().addAll(tester.getSeriesActFxList());
+
 	}
 
 	public static int getThreadPoolDelay() {
@@ -1047,93 +719,5 @@ public class ViewerFX extends Application {
 	public static void setThreadPoolDelay(int threadPoolDelay) {
 		ViewerFX.threadPoolDelay = threadPoolDelay;
 	}
-	
-//	private void createImageData() {
-//        int i = 0;
-//        for (int y = 0; y < IMAGE_HEIGHT; y++) {
-//            int r = y * 255 / IMAGE_HEIGHT;
-//            for (int x = 0; x < IMAGE_WIDTH; x++) {
-//                int g = x * 255 / IMAGE_WIDTH;
-//                imageData[i] = (byte) 1;
-//                imageData[i + 1] = (byte) 1;
-//                imageData[i + 2] = (byte) 1;
-//                i += 3;
-//            }
-//        }
-//    }
-//	
-//	private void loadImageData(String path){
-//		Image image = new Image(path);
-//		PixelReader pixelReader = image.getPixelReader();
-//        System.out.println("Image Width: " + image.getWidth());
-//        System.out.println("Image Height: " + image.getHeight());
-//        System.out.println("Pixel Format: " + pixelReader.getPixelFormat());
-//        
-//        int i = 0;
-//        // Determine the color of each pixel in the image
-//        for (int readY = 0; readY < image.getHeight(); readY++) {
-//            for (int readX = 0; readX < image.getWidth(); readX++) {
-//                Color color = pixelReader.getColor(readX, readY);
-////                System.out.println("\nPixel color at coordinates ("
-////                        + readX + "," + readY + ") "
-////                        + color.toString());
-////                System.out.println("R = " + color.getRed());
-////                System.out.println("G = " + color.getGreen());
-////                System.out.println("B = " + color.getBlue());
-////                System.out.println("Opacity = " + color.getOpacity());
-////                System.out.println("Saturation = " + color.getSaturation());
-//                imageData[i] = (byte) (color.getRed() * 255);
-//                imageData[i + 1] = (byte) (color.getGreen() * 255);
-//                imageData[i + 2] = (byte) (color.getBlue() * 255);
-//                i += 3;
-//            }
-//        }
-//	}
-// 
-//	public static void createImageData(double input1, double input2, double red, double green, double blue) {
-//        int x = (int) (input1 * IMAGE_WIDTH);
-//        int y = (int) (input2 * IMAGE_HEIGHT);
-//        int idx;
-//        if(y == 0){
-//        	idx = x * 3;
-//        }else{
-//        	idx =  (y * IMAGE_WIDTH - (IMAGE_WIDTH - x)) * 3 ;	
-//        }
-//        
-//        if(idx < IMAGE_WIDTH * IMAGE_WIDTH * 3){
-//        	imageData[idx] = (byte) (red * 255);
-//        	imageData[idx + 1] = (byte) (green * 255);
-//        	imageData[idx + 2] = (byte) (blue * 255);
-//        }
-//        
-//    }
-	
-//	public static void createImageData(List<INode> input1) {
-//        int idx = 0;
-//		for (INode node : input1) {
-//			for (Link link : node.getInputs()) {
-//				if (idx < IMAGE_WIDTH * IMAGE_WIDTH * 3) {
-//					imageData[idx] = (byte) (255);
-//					imageData[idx + 1] = (byte) (link.getValue() * 255);
-//					imageData[idx + 2] = (byte) (255);
-//					idx = idx + 3;
-//				}
-//			}
-//			//premier neurone seulement
-//			if(node.getNodeId() == 0)
-//			break;
-//		}
-//        
-//    }
-//	
-//    public static void drawImageData(int width, int height) {
-//    	
-//        PixelWriter pixelWriter = gc.getPixelWriter();
-//        
-//        pixelWriter.setPixels(0, 0, width, height, pixelFormat, imageData, 0, width * 3);
-//
-//        // Add drop shadow effect
-////        gc.applyEffect(new DropShadow(20, 20, 20, Color.GRAY));
-//    }
 
 }

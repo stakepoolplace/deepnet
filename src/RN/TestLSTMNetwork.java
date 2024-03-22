@@ -272,12 +272,7 @@ public class TestLSTMNetwork implements ITester {
 		}
 		
 
-		if (ViewerFX.showSeriesIn.isSelected())
-			sc.getData().addAll(seriesInList);
-		if (ViewerFX.showSeriesOut.isSelected())
-			sc.getData().addAll(seriesOutList);
-		if (ViewerFX.showSeriesIdeals.isSelected())
-			sc.getData().addAll(seriesIdealList);
+
 
 		
 

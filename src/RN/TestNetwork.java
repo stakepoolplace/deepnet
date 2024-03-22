@@ -12,7 +12,6 @@ import javax.xml.parsers.FactoryConfigurationError;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.log4j.xml.DOMConfigurator;
-import org.apache.poi.hssf.usermodel.HSSFCell;
 
 import RN.algoactivations.EActivation;
 import RN.algotrainings.BackPropagationTrainer;
@@ -51,7 +50,6 @@ public class TestNetwork implements ITester {
 	private static Integer outputSize = null;
 	private static boolean dropOutActive = false;
 
-	private static String geneticCode = "";
 	private static String key = null;
 	private static String value = null;
 	private static Integer layerOutNodesCount = null;
@@ -81,8 +79,6 @@ public class TestNetwork implements ITester {
 	public static List<LineChart.Series<Number, Number>> seriesInList = new ArrayList<LineChart.Series<Number, Number>>();
 	public static List<LineChart.Series<Number, Number>> seriesOutList = new ArrayList<LineChart.Series<Number, Number>>();
 	public static List<LineChart.Series<Number, Number>> seriesIdealList = new ArrayList<LineChart.Series<Number, Number>>();
-//	public static List<LineChart.Series<Number, Number>> seriesActFxList = new ArrayList<LineChart.Series<Number, Number>>();
-	// public static LineChart<Number, Number> lineChart = ViewerFX.lineChart;
 	public final double[] initWeightRange = new double[] { 0D, 1.0D };
 	public static Properties properties = null;
 
@@ -97,11 +93,11 @@ public class TestNetwork implements ITester {
 		String fileS = properties.getProperty("data.series.filepath");
 		if (fileS != null && !"".equals(fileS))
 			filepath = fileS;
-		
-		String dropOutActive = properties.getProperty("nn.dropout.active");
-		if (dropOutActive != null && !"".equals(dropOutActive))
-			dropOutActive = dropOutActive;
-		
+
+		String dropOutActiveStr = properties.getProperty("nn.dropout.active");
+		if (dropOutActiveStr != null && !"".equals(dropOutActiveStr))
+			dropOutActive = dropOutActiveStr.equalsIgnoreCase("true");
+
 	}
 
 	private TestNetwork() {
@@ -122,36 +118,14 @@ public class TestNetwork implements ITester {
 		ViewerFX.startViewerFX();
 		ViewerFX.setTrainer(trainer);
 		ViewerFX.setTester(tester);
-		
-		
+
 		int idx = 1;
-		
+
 		for (String sheetName : InputSample.getSheetsName(filepath)) {
 			ViewerFX.excelSheets.add(new InputSample("Sheet" + idx + ": " + sheetName, ESamples.FILE, idx));
 			idx++;
 		}
-		// ViewerFX.lineChart.setTitle( "MLP network : " + inputSize +
-		// " input(s), " + outputSize + " output(s)");
 
-		// showExcelData(sheetData);
-
-	}
-
-	private static void showExcelData(List sheetData) {
-		//
-		// Iterates the data and print it out to the console.
-		//
-		for (int i = 0; i < sheetData.size(); i++) {
-			List list = (List) sheetData.get(i);
-			for (int j = 0; j < list.size(); j++) {
-				HSSFCell cell = (HSSFCell) list.get(j);
-				System.out.print(cell.getNumericCellValue());
-				if (j < list.size() - 1) {
-					System.out.print(", ");
-				}
-			}
-			System.out.println("");
-		}
 	}
 
 	/*
@@ -162,7 +136,6 @@ public class TestNetwork implements ITester {
 	@Override
 	public INetwork createNetwork(String networkName) {
 
-		geneticCode = "";
 		key = null;
 		value = null;
 		layerOutNodesCount = null;
@@ -260,7 +233,8 @@ public class TestNetwork implements ITester {
 		optimizedNumHiddens = getTrainingVectorNumber() / (5 * (getInputSize() + getOutputSize()));
 		optimizedNumHiddens = Math.max(5, optimizedNumHiddens);
 
-		Layer layer = new Layer(layerInActivation == null ? EActivation.IDENTITY : EActivation.getEnum(layerInActivation));
+		Layer layer = new Layer(
+				layerInActivation == null ? EActivation.IDENTITY : EActivation.getEnum(layerInActivation));
 		Area area = new Area(inputSize != null ? inputSize : layerInNodesCount);
 		layer.addArea(area);
 		area.configureLinkage(ELinkage.ONE_TO_ONE, null, false);
@@ -296,7 +270,7 @@ public class TestNetwork implements ITester {
 		if (layerHidden1NodesCount != null && layerHidden1NodesCount > 0) {
 			layer = new Layer(EActivation.getEnum(layerHidden1Activation));
 			Area area1 = null;
-			if (!hiddensNodeNumberOptimized){
+			if (!hiddensNodeNumberOptimized) {
 				area1 = new Area(layerHidden1NodesCount);
 				layer.addArea(area1);
 				area1.configureLinkage(ELinkage.MANY_TO_MANY, null, true);
@@ -319,7 +293,7 @@ public class TestNetwork implements ITester {
 		if (layerHidden2NodesCount != null && layerHidden2NodesCount > 0) {
 			layer = new Layer(EActivation.getEnum(layerHidden2Activation));
 			Area area2 = null;
-			if (!hiddensNodeNumberOptimized){
+			if (!hiddensNodeNumberOptimized) {
 				area2 = new Area(layerHidden2NodesCount);
 				layer.addArea(area2);
 				area2.configureLinkage(ELinkage.MANY_TO_MANY, null, true);
@@ -350,7 +324,6 @@ public class TestNetwork implements ITester {
 		layer.setDropOut(layerOutNodesDropOut);
 		network.addLayer(layer);
 
-
 		network.setName(network.getName() + network.geneticCodec());
 		// network.show();
 
@@ -359,15 +332,15 @@ public class TestNetwork implements ITester {
 		return network;
 
 	}
-	
+
 	@Override
 	public INetwork createXLSNetwork(String networkName, NetworkContext netContext) {
 
 		TestNetwork.network = null;
-		
+
 		INetwork network = netContext.newNetwork(networkName);
 
-		//network.show();
+		// network.show();
 
 		TestNetwork.network = network;
 
@@ -375,57 +348,6 @@ public class TestNetwork implements ITester {
 
 	}
 
-
-//	public static String geneticCode() {
-//		String geneticCode = "";
-//		geneticCode += "I" + layerInNodesCount;
-//		geneticCode += Genetic.CODE_SEPARATOR;
-//		if (layerHidden0NodesCount != null && layerHidden0NodesCount > 0)
-//			geneticCode += !hiddensNodeNumberOptimized ? "H" + layerHidden0NodesCount : "H+" + optimizedNumHiddens;
-//		geneticCode += Genetic.CODE_SEPARATOR;
-//		if (layerHidden1NodesCount != null && layerHidden1NodesCount > 0)
-//			geneticCode += !hiddensNodeNumberOptimized ? "H" + layerHidden1NodesCount : "H+" + optimizedNumHiddens;
-//		geneticCode += Genetic.CODE_SEPARATOR;
-//		if (layerHidden2NodesCount != null && layerHidden2NodesCount > 0)
-//			geneticCode += !hiddensNodeNumberOptimized ? "H" + layerHidden2NodesCount : "H+" + optimizedNumHiddens;
-//		geneticCode += Genetic.CODE_SEPARATOR;		
-//		geneticCode += "O" + layerOutNodesCount;
-//		geneticCode += Genetic.CODE_SEPARATOR;
-//		if (layerOutRecurrent != null)
-//			geneticCode += layerOutRecurrent ? "Ro" : "";
-//		geneticCode += Genetic.CODE_SEPARATOR;
-//		if (layerHidden0Recurrent != null)
-//			geneticCode += layerHidden0Recurrent ? "Rh1" : "";
-//		geneticCode += Genetic.CODE_SEPARATOR;
-//		if (layerHidden1Recurrent != null)
-//			geneticCode += layerHidden1Recurrent ? "Rh2" : "";
-//		geneticCode += Genetic.CODE_SEPARATOR;
-//		if (layerHidden2Recurrent != null)
-//			geneticCode += layerHidden2Recurrent ? "Rh3" : "";
-//		geneticCode += Genetic.CODE_SEPARATOR;
-//		if (lateralLinkRecurrentNodes != null)
-//			geneticCode += lateralLinkRecurrentNodes ? "-R-" : "";
-//		geneticCode += Genetic.CODE_SEPARATOR;
-//		if (layerHidden0Activation != null)
-//			geneticCode += layerHidden0Activation != null ? "Xh0" + layerHidden0Activation.charAt(0) : "";
-//		geneticCode += Genetic.CODE_SEPARATOR;
-//		if (layerHidden1Activation != null)
-//			geneticCode += layerHidden1Activation != null ? "Xh1" + layerHidden1Activation.charAt(0) : "";
-//		geneticCode += Genetic.CODE_SEPARATOR;
-//		if (layerHidden2Activation != null)
-//			geneticCode += layerHidden2Activation != null ? "Xh2" + layerHidden2Activation.charAt(0) : "";
-//		geneticCode += Genetic.CODE_SEPARATOR;
-//		if (layerOutActivation != null)
-//			geneticCode += layerOutActivation != null ? "Xo" + layerOutActivation.charAt(0) : "";
-//		
-//		geneticCode += Genetic.GENE_SEPARATOR;
-//		
-//		return geneticCode;
-//	}
-
-
-	
-	
 	private static Properties init() throws FactoryConfigurationError {
 		Properties properties;
 		/**
@@ -445,7 +367,7 @@ public class TestNetwork implements ITester {
 
 		} catch (final IOException e) {
 
-			final String message = "Unable to load properties file for Midas.";
+			final String message = "Unable to load properties file for Deepnet.";
 			logger.error(message);
 
 		} catch (final NullPointerException npe) {
@@ -467,21 +389,21 @@ public class TestNetwork implements ITester {
 		}
 		return properties;
 	}
-	
-	public Double computeY(INode node, Double x){
+
+	public Double computeY(INode node, Double x) {
 		List<Link> inputs = node.getInputs();
-		return  (-inputs.get(0).getWeight() * x + node.getBiasInput().getValue() * node.getBiasInput().getWeight()) / inputs.get(1).getWeight();
+		return (-inputs.get(0).getWeight() * x + node.getBiasInput().getValue() * node.getBiasInput().getWeight())
+				/ inputs.get(1).getWeight();
 	}
-	
+
 	@Override
 	public void showLinearSeparation() {
-		
+
 		INetwork network = getNetwork();
 		ILayer hiddenLayer = network.getLayer(1);
-		
+
 		for (INode node : hiddenLayer.getLayerNodes()) {
-			
-			
+
 			Double x1 = -1d;
 			Double y1 = computeY(node, x1);
 			Double xCenter = 0D;
@@ -489,75 +411,67 @@ public class TestNetwork implements ITester {
 			Double x2 = 1d;
 			Double y2 = computeY(node, x2);
 
-			
 			Pane graph = ViewerFX.hiddenGraphPane1;
 			Double halfGraphWidth = graph.getMaxWidth() / 2D;
-			
-			// on reverse l'axe des y car origine en haut à gauche et on translate pour x = y = [-1...1] --> [-width/2...width/2]
-			
+
+			// on reverse l'axe des y car origine en haut à gauche et on translate pour x =
+			// y = [-1...1] --> [-width/2...width/2]
+
 			x1 = halfGraphWidth * (x1 + 1);
 			y1 = halfGraphWidth * (-y1 + 1);
 			xCenter = halfGraphWidth * (xCenter + 1);
 			yCenter = halfGraphWidth * (-yCenter + 1);
 			x2 = halfGraphWidth * (x2 + 1);
 			y2 = halfGraphWidth * (-y2 + 1);
-			
-			
-			if(graph.getChildren().size() < hiddenLayer.getLayerNodes().size() * 3){
-				Line line = new Line(x1,y1,x2,y2);
-				Circle circle = new Circle(x2,y2,4D, Color.RED);
-				Text     tPlus   = createText( xCenter.intValue(), yCenter.intValue() + 20, (yCenter + 20D > computeY(node, xCenter) ? "+" : "-"), VPos.BOTTOM );
+
+			if (graph.getChildren().size() < hiddenLayer.getLayerNodes().size() * 3) {
+				Line line = new Line(x1, y1, x2, y2);
+				Circle circle = new Circle(x2, y2, 4D, Color.RED);
+				Text tPlus = createText(xCenter.intValue(), yCenter.intValue() + 20,
+						(yCenter + 20D > computeY(node, xCenter) ? "+" : "-"), VPos.BOTTOM);
 				graph.getChildren().addAll(line, tPlus, circle);
-				
-			}else{
+
+			} else {
 				Line line = (Line) graph.getChildren().get(node.getNodeId() * 3);
 				line.setStartX(x1);
 				line.setStartY(y1);
 				line.setEndX(x2);
 				line.setEndY(y2);
-				Text     tPlus   = (Text) graph.getChildren().get(node.getNodeId() * 3 + 1);
+				Text tPlus = (Text) graph.getChildren().get(node.getNodeId() * 3 + 1);
 				tPlus.setX(xCenter);
 				tPlus.setY(yCenter + 20);
 				tPlus.setText(tPlus.getY() > computeY(node, tPlus.getX()) ? "+" : "-");
-					
+
 				Circle circle = (Circle) graph.getChildren().get(node.getNodeId() * 3 + 2);
 				circle.setCenterX(x2);
 				circle.setCenterY(y2);
 			}
-			
+
 			Pane inputsGraph = ViewerFX.hiddenGraphPane2;
 			DataSeries dataSeries = DataSeries.getInstance();
-			if(inputsGraph.getChildren().size() < hiddenLayer.getLayerNodes().size()){
+			if (inputsGraph.getChildren().size() < hiddenLayer.getLayerNodes().size()) {
 				for (InputData entry : dataSeries.getInputDataSet()) {
-					Circle circle = new Circle((entry.getInput(0) + 1) * halfGraphWidth, (-entry.getInput(1) + 1) * halfGraphWidth, 4D, Color.RED);
-					if(entry.getIdeal(0) > 0)
+					Circle circle = new Circle((entry.getInput(0) + 1) * halfGraphWidth,
+							(-entry.getInput(1) + 1) * halfGraphWidth, 4D, Color.RED);
+					if (entry.getIdeal(0) > 0)
 						circle.setFill(Paint.valueOf("BLUE"));
 					else
 						circle.setFill(Paint.valueOf("GREY"));
-					
+
 					inputsGraph.getChildren().add(circle);
 				}
-				
+
 			}
 		}
 	}
-	
-	   private Text createText( int x, int y, String label, VPos vPos ) {
-		      Text text = new Text( x, y, label );
-		      text.setFill( Color.DARKGRAY );
-		      text.setFont( Font.font( Font.getDefault().getFamily(), 16 ));
-		      //text.rotateProperty().set( -theta );
-//		      text.textAlignmentProperty().setValue( TextAlignment.CENTER );
-//		      text.setX( text.getX() - text.getBoundsInLocal().getWidth()/2.0);
-//		      text.textOriginProperty().set( vPos );
-//		      if( vPos == VPos.BOTTOM ) {
-//		         text.setY( text.getY() + 1 );
-//		      }
-//		      else {
-//		         text.setY( text.getY() - 1 );
-//		      }
-		      return text;
-		   }
+
+	private Text createText(int x, int y, String label, VPos vPos) {
+		Text text = new Text(x, y, label);
+		text.setFill(Color.DARKGRAY);
+		text.setFont(Font.font(Font.getDefault().getFamily(), 16));
+
+		return text;
+	}
 
 	/*
 	 * (non-Javadoc)
@@ -576,7 +490,7 @@ public class TestNetwork implements ITester {
 			OutputData output = null;
 
 			if (lineChart.getData() == null)
-				lineChart.setData(FXCollections.<XYChart.Series<Number, Number>> observableArrayList());
+				lineChart.setData(FXCollections.<XYChart.Series<Number, Number>>observableArrayList());
 
 			LineChart.Series<Number, Number> series = null;
 			initLineChartSeries();
@@ -598,12 +512,6 @@ public class TestNetwork implements ITester {
 				series.setName("Run ideal[" + idx + "]" + (lineChart.getData().size() + 1));
 				seriesIdealList.add(series);
 			}
-
-//			for (Layer layer : network.getLayers()) {
-//				series = new LineChart.Series<Number, Number>();
-//				series.setName("Run FX[" + layer.getFunction().name() + "]" + (lineChart.getData().size() + 1));
-//				seriesActFxList.add(series);
-//			}
 
 			int runCycle = 0;
 			ListIterator<InputData> computeItr = dataSeries.getInputDataSet().listIterator();
@@ -630,24 +538,11 @@ public class TestNetwork implements ITester {
 					for (double ideal : entry.getIdeal()) {
 						log += ideal + "  ";
 					}
-					
+
 					log += "]\r\n";
 					System.out.println(log);
 					log = null;
 				}
-				
-//				ViewerFX.createImageData(entry.getInput(0), entry.getInput(1), output.getOutput(0), output.getOutput(1), output.getOutput(2));
-				
-//				idx = 0;
-//				IActivation activationFx;
-//				for (LineChart.Series<Number, Number> seriesActFx : seriesActFxList) {
-//					Layer layer = network.getLayer(idx);
-//					activationFx = EActivation.getPerformer(layer.getFunction());
-//					seriesActFx.getData()
-//							.add(new LineChart.Data<Number, Number>(runCycle, activationFx.perform((double) runCycle
-//									/ (double) dataSeries.getInputDataSet().size())));
-//					idx++;
-//				}
 
 				idx = 0;
 				for (LineChart.Series<Number, Number> seriesIn : seriesInList) {
@@ -666,7 +561,7 @@ public class TestNetwork implements ITester {
 			ViewerFX.addSeriesToLineChart();
 		}
 	}
-	
+
 	@Override
 	public void launchTestCompute() throws Exception {
 
@@ -679,7 +574,7 @@ public class TestNetwork implements ITester {
 			OutputData output = null;
 
 			if (lineChart.getData() == null)
-				lineChart.setData(FXCollections.<XYChart.Series<Number, Number>> observableArrayList());
+				lineChart.setData(FXCollections.<XYChart.Series<Number, Number>>observableArrayList());
 
 			LineChart.Series<Number, Number> series = null;
 			initLineChartSeries();
@@ -695,12 +590,6 @@ public class TestNetwork implements ITester {
 				series.setName("Run out[" + idx + "]" + (lineChart.getData().size() + 1));
 				seriesOutList.add(series);
 			}
-
-//			for (int idx = 0; idx < getOutputsCount(); idx++) {
-//				series = new LineChart.Series<Number, Number>();
-//				series.setName("Run ideal[" + idx + "]" + (lineChart.getData().size() + 1));
-//				seriesIdealList.add(series);
-//			}
 
 			int runCycle = 0;
 			ListIterator<InputData> computeItr = dataSeries.getInputTestDataSet().listIterator();
@@ -721,21 +610,9 @@ public class TestNetwork implements ITester {
 
 					for (double out : output.getOutput()) {
 						System.out.print(", [actual=" + out);
-//						System.out.print(", ideal=" + entry.getIdeal(idx++) + "]");
 					}
 					System.out.println(" ");
 				}
-				
-//				idx = 0;
-//				IActivation activationFx;
-//				for (LineChart.Series<Number, Number> seriesActFx : seriesActFxList) {
-//					Layer layer = network.getLayer(idx);
-//					activationFx = EActivation.getPerformer(layer.getFunction());
-//					seriesActFx.getData()
-//							.add(new LineChart.Data<Number, Number>(runCycle, activationFx.perform((double) runCycle
-//									/ (double) dataSeries.getInputDataSet().size())));
-//					idx++;
-//				}
 
 				idx = 0;
 				for (LineChart.Series<Number, Number> seriesIn : seriesInList) {
@@ -745,10 +622,7 @@ public class TestNetwork implements ITester {
 				for (LineChart.Series<Number, Number> seriesOut : seriesOutList) {
 					seriesOut.getData().add(new LineChart.Data<Number, Number>(runCycle, output.getOutput(idx++)));
 				}
-//				idx = 0;
-//				for (LineChart.Series<Number, Number> seriesIdeal : seriesIdealList) {
-//					seriesIdeal.getData().add(new LineChart.Data<Number, Number>(runCycle, entry.getIdeal(idx++)));
-//				}
+
 				runCycle++;
 			}
 			ViewerFX.addSeriesToLineChart();
@@ -822,14 +696,6 @@ public class TestNetwork implements ITester {
 		TestNetwork.seriesIdealList = seriesIdealList;
 	}
 
-//	public List<LineChart.Series<Number, Number>> getSeriesActFxList() {
-//		return seriesActFxList;
-//	}
-//
-//	public void setSeriesActFxList(List<LineChart.Series<Number, Number>> seriesActFxList) {
-//		TestNetwork.seriesActFxList = seriesActFxList;
-//	}
-
 	public void setNetwork(INetwork network) {
 		TestNetwork.network = network;
 	}
@@ -870,7 +736,7 @@ public class TestNetwork implements ITester {
 	public static Integer getOutputSize() {
 		return outputSize;
 	}
-	
+
 	@Override
 	public String getLineChartTitle() {
 		return "Network : " + inputSize + " input(s), " + outputSize + " output(s)";
@@ -995,11 +861,10 @@ public class TestNetwork implements ITester {
 	public void setOptimizedNumHiddens(int optimizedNumHiddens) {
 		TestNetwork.optimizedNumHiddens = optimizedNumHiddens;
 	}
+
 	@Override
 	public boolean isDropOutActive() {
 		return dropOutActive;
 	}
-
-
 
 }

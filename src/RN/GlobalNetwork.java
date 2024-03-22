@@ -172,14 +172,7 @@ public class GlobalNetwork {
 				
 				
 			}
-			if (ViewerFX.showSeriesIn.isSelected())
-				sc.getData().addAll(seriesFirstNETInputs);
-			if (ViewerFX.showSeriesOut.isSelected())
-				sc.getData().addAll(seriesFirstNETOutputs);
-			if (ViewerFX.showSeriesIn.isSelected())
-				sc.getData().addAll(seriesLastNETInputs);
-			if (ViewerFX.showSeriesOut.isSelected())
-				sc.getData().addAll(seriesLastNETOutputs);			
+		
 //			if (ViewerFX.showSeriesIdeals.isSelected())
 //				sc.getData().addAll(seriesIdealList);
 //			if (ViewerFX.showSeriesActFx.isSelected())
