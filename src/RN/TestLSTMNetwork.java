@@ -703,11 +703,6 @@ public class TestLSTMNetwork implements ITester {
 		return false;
 	}
 
-	@Override
-	public void showLinearSeparation() {
-		// TODO Auto-generated method stub
-		
-	}
 
 
 }

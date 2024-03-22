@@ -25,16 +25,8 @@ import RN.links.Link;
 import RN.nodes.ENodeType;
 import RN.nodes.INode;
 import javafx.collections.FXCollections;
-import javafx.geometry.VPos;
 import javafx.scene.chart.LineChart;
 import javafx.scene.chart.XYChart;
-import javafx.scene.layout.Pane;
-import javafx.scene.paint.Color;
-import javafx.scene.paint.Paint;
-import javafx.scene.shape.Circle;
-import javafx.scene.shape.Line;
-import javafx.scene.text.Font;
-import javafx.scene.text.Text;
 
 public class TestNetwork implements ITester {
 
@@ -349,6 +341,7 @@ public class TestNetwork implements ITester {
 	}
 
 	private static Properties init() throws FactoryConfigurationError {
+		
 		Properties properties;
 		/**
 		 * Mise en place log4j
@@ -396,82 +389,9 @@ public class TestNetwork implements ITester {
 				/ inputs.get(1).getWeight();
 	}
 
-	@Override
-	public void showLinearSeparation() {
 
-		INetwork network = getNetwork();
-		ILayer hiddenLayer = network.getLayer(1);
 
-		for (INode node : hiddenLayer.getLayerNodes()) {
 
-			Double x1 = -1d;
-			Double y1 = computeY(node, x1);
-			Double xCenter = 0D;
-			Double yCenter = computeY(node, xCenter);
-			Double x2 = 1d;
-			Double y2 = computeY(node, x2);
-
-			Pane graph = ViewerFX.hiddenGraphPane1;
-			Double halfGraphWidth = graph.getMaxWidth() / 2D;
-
-			// on reverse l'axe des y car origine en haut à gauche et on translate pour x =
-			// y = [-1...1] --> [-width/2...width/2]
-
-			x1 = halfGraphWidth * (x1 + 1);
-			y1 = halfGraphWidth * (-y1 + 1);
-			xCenter = halfGraphWidth * (xCenter + 1);
-			yCenter = halfGraphWidth * (-yCenter + 1);
-			x2 = halfGraphWidth * (x2 + 1);
-			y2 = halfGraphWidth * (-y2 + 1);
-
-			if (graph.getChildren().size() < hiddenLayer.getLayerNodes().size() * 3) {
-				Line line = new Line(x1, y1, x2, y2);
-				Circle circle = new Circle(x2, y2, 4D, Color.RED);
-				Text tPlus = createText(xCenter.intValue(), yCenter.intValue() + 20,
-						(yCenter + 20D > computeY(node, xCenter) ? "+" : "-"), VPos.BOTTOM);
-				graph.getChildren().addAll(line, tPlus, circle);
-
-			} else {
-				Line line = (Line) graph.getChildren().get(node.getNodeId() * 3);
-				line.setStartX(x1);
-				line.setStartY(y1);
-				line.setEndX(x2);
-				line.setEndY(y2);
-				Text tPlus = (Text) graph.getChildren().get(node.getNodeId() * 3 + 1);
-				tPlus.setX(xCenter);
-				tPlus.setY(yCenter + 20);
-				tPlus.setText(tPlus.getY() > computeY(node, tPlus.getX()) ? "+" : "-");
-
-				Circle circle = (Circle) graph.getChildren().get(node.getNodeId() * 3 + 2);
-				circle.setCenterX(x2);
-				circle.setCenterY(y2);
-			}
-
-			Pane inputsGraph = ViewerFX.hiddenGraphPane2;
-			DataSeries dataSeries = DataSeries.getInstance();
-			if (inputsGraph.getChildren().size() < hiddenLayer.getLayerNodes().size()) {
-				for (InputData entry : dataSeries.getInputDataSet()) {
-					Circle circle = new Circle((entry.getInput(0) + 1) * halfGraphWidth,
-							(-entry.getInput(1) + 1) * halfGraphWidth, 4D, Color.RED);
-					if (entry.getIdeal(0) > 0)
-						circle.setFill(Paint.valueOf("BLUE"));
-					else
-						circle.setFill(Paint.valueOf("GREY"));
-
-					inputsGraph.getChildren().add(circle);
-				}
-
-			}
-		}
-	}
-
-	private Text createText(int x, int y, String label, VPos vPos) {
-		Text text = new Text(x, y, label);
-		text.setFill(Color.DARKGRAY);
-		text.setFont(Font.font(Font.getDefault().getFamily(), 16));
-
-		return text;
-	}
 
 	/*
 	 * (non-Javadoc)
@@ -630,14 +550,9 @@ public class TestNetwork implements ITester {
 	}
 
 	private void initLineChartSeries() {
-		seriesInList = null;
-		seriesOutList = null;
-		seriesIdealList = null;
-//		seriesActFxList = null;
 		seriesInList = new ArrayList<LineChart.Series<Number, Number>>();
 		seriesOutList = new ArrayList<LineChart.Series<Number, Number>>();
 		seriesIdealList = new ArrayList<LineChart.Series<Number, Number>>();
-//		seriesActFxList = new ArrayList<LineChart.Series<Number, Number>>();
 	}
 
 	@Override

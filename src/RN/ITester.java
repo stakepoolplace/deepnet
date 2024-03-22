@@ -36,9 +36,6 @@ public interface ITester {
 
 	void setSeriesIdealList(List<LineChart.Series<Number, Number>> seriesIdealList);
 
-//	List<LineChart.Series<Number, Number>> getSeriesActFxList();
-//
-//	void setSeriesActFxList(List<LineChart.Series<Number, Number>> seriesActFxList);
 
 	void setNetwork(INetwork net);
 	
@@ -118,6 +115,5 @@ public interface ITester {
 
 	boolean isDropOutActive();
 
-	void showLinearSeparation();
 
 }
