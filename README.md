@@ -52,10 +52,10 @@ We welcome contributions from the community, whether it's improving the document
 
 ## License
 
-Deeper Net is released under the MIT License. See the LICENSE file for more details.
+DeeperNet is released under the MIT License. See the LICENSE file for more details.
 
 ## Acknowledgments
 
-This project was created as an educational tool for students and enthusiasts wanting to dive deeper into the world of deep learning and neural networks. Special thanks to all contributors and users for their support and feedback.
+Created by Eric Marchand, this project was created as an educational tool for students and enthusiasts wanting to dive deeper into the world of deep learning and neural networks. Special thanks to all contributors and users for their support and feedback.
 
 Happy learning!
