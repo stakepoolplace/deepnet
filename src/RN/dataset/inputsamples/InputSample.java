@@ -29,7 +29,7 @@ import javafx.scene.paint.Color;
 
 /**
  * 
- * @author Eric
+ * @author Eric Marchand
  * 
  */
 public class InputSample extends NetworkElement{
@@ -1199,11 +1199,33 @@ public class InputSample extends NetworkElement{
 		
 	}
 	
+	private static String getPath(String imgPath) {
+		
+		// Détection du système d'exploitation
+		String osName = System.getProperty("os.name").toLowerCase();
+		String formattedPath;
+
+		if (osName.contains("win")) {
+		    // Sur Windows, les chemins peuvent commencer par un lecteur, donc on les laisse tels quels
+		    formattedPath = "file:./" + imgPath.replace("\\", "/");
+		} else {
+		    // Sur macOS et Linux, on s'assure simplement que le chemin commence par "file:"
+		    formattedPath = "file:./" + imgPath.replace("\\", "/");
+		}
+		
+		return formattedPath;
+	}
+	
 	private static void processImage(HSSFRow row, int valuesSize) throws Exception {
 		
 		// Loading of image
 		HSSFCell cellImgPath = (HSSFCell) row.getCell(1);
-		Image image = new Image("file:" + cellImgPath.getRichStringCellValue().getString());
+		
+		String imgPath = cellImgPath.getRichStringCellValue().getString();
+
+		// Création de l'objet Image avec le chemin formaté
+		Image image = new Image(getPath(imgPath));		
+		
 		if(image.getException() != null)
 			throw image.getException();
 		
@@ -1215,7 +1237,7 @@ public class InputSample extends NetworkElement{
 			
 			HSSFCell cell = (HSSFCell) row.getCell(indCol);
 			
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 			
 			if (cell.getCellType() == HSSFCell.CELL_TYPE_NUMERIC
@@ -1242,7 +1264,9 @@ public class InputSample extends NetworkElement{
 				} else if (getContext().getKind(cell.getColumnIndex() - 1).indexOf("OUTPUT") != -1) {
 					
 					if(cell.getCellType() == HSSFCell.CELL_TYPE_STRING){
-						image = new Image("file:" + cell.getRichStringCellValue().getString());
+
+						// Création de l'objet Image avec le chemin formaté
+						image = new Image(getPath("file:" + cell.getRichStringCellValue().getString()));	
 						if(image.getException() != null)
 							throw image.getException();
 
@@ -1324,14 +1348,14 @@ public class InputSample extends NetworkElement{
 		
 		// Loading of image
 		HSSFCell cellImgPath = (HSSFCell) row.getCell(1);
-		Image image = new Image("file:" + cellImgPath.getRichStringCellValue().getString());
+		Image image = new Image(getPath("file:" + cellImgPath.getRichStringCellValue().getString()));	
 		
 		PixelReader pixelReader = image.getPixelReader();
 		List<Double> dataInput = new ArrayList<Double>(getContext().getNodeSumByLayerAndKind(0, "INPUT"));
 		
 		for (int indCol = 1; indCol <= valuesSize; indCol++) {
 			HSSFCell cell = (HSSFCell) row.getCell(indCol);
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 			
 			if (cell.getCellType() == HSSFCell.CELL_TYPE_NUMERIC 
@@ -1382,7 +1406,7 @@ public class InputSample extends NetworkElement{
 		
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 
 			getContext().addLabel(cell.getStringCellValue().toUpperCase(), cell.getColumnIndex() - 1);
@@ -1395,7 +1419,7 @@ public class InputSample extends NetworkElement{
 		
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 
 			getContext().addSample((int) cell.getNumericCellValue(), cell.getColumnIndex() - 1);
@@ -1408,7 +1432,7 @@ public class InputSample extends NetworkElement{
 		
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 
 			getContext().addScale((int) cell.getNumericCellValue(), cell.getColumnIndex() - 1);
@@ -1420,7 +1444,6 @@ public class InputSample extends NetworkElement{
 
 		tester.setTrainingVectorNumber(sheet.getLastRowNum() - rowDataIdx + 1);
 
-		// SimpleDateFormat f = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
 		// tester.createNetwork("NN-" + sheetName + "-" + f.format(new Date()));
 		tester.createXLSNetwork("NN-" + sheet.getSheetName() + "-", getContext());
 		tester.getNetwork().finalizeConnections();
@@ -1435,7 +1458,7 @@ public class InputSample extends NetworkElement{
 		
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 			
 			if (cell.getStringCellValue().toUpperCase().equals("SOURCE")) {
@@ -1458,7 +1481,7 @@ public class InputSample extends NetworkElement{
 		
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 			getContext().addLinkage(cell.getStringCellValue().toUpperCase(), cell.getColumnIndex() - 1);
 		}
@@ -1471,7 +1494,7 @@ public class InputSample extends NetworkElement{
 		
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 			getContext().addLinkageBetweenAreas(cell.getStringCellValue().toUpperCase(), cell.getColumnIndex() - 1);
 		}
@@ -1487,7 +1510,7 @@ public class InputSample extends NetworkElement{
 		
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 			
 			areaIds = cell.getStringCellValue().split(";");
@@ -1511,7 +1534,7 @@ public class InputSample extends NetworkElement{
 			
 			HSSFCell cell = (HSSFCell) cells.next();
 			
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 			
 			params = cell.getStringCellValue().split(";");
@@ -1529,7 +1552,7 @@ public class InputSample extends NetworkElement{
 		
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 			getContext().addLinkageWeightModifiable(EBoolean.valueOf(cell.getStringCellValue().toUpperCase()), cell.getColumnIndex() - 1);
 		}
@@ -1544,7 +1567,7 @@ public class InputSample extends NetworkElement{
 
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 				
 			getContext().addNodeRecurrent("RECURRENT".equalsIgnoreCase(cell.getStringCellValue().toUpperCase()), cell.getColumnIndex() - 1);
@@ -1559,7 +1582,7 @@ public class InputSample extends NetworkElement{
 
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 			getContext().addNodeActivation(cell.getStringCellValue().toUpperCase(), cell.getColumnIndex() - 1);
 		}
@@ -1573,7 +1596,7 @@ public class InputSample extends NetworkElement{
 
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 			getContext().addNodeType(cell.getStringCellValue().toUpperCase(), cell.getColumnIndex() - 1);
 		}
@@ -1587,7 +1610,7 @@ public class InputSample extends NetworkElement{
 
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 			getContext().addNode((int) cell.getNumericCellValue(), cell.getColumnIndex() - 1);
 		}
@@ -1600,7 +1623,7 @@ public class InputSample extends NetworkElement{
 		
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 			getContext().addNodeBiasWeight((double) cell.getNumericCellValue(), cell.getColumnIndex() - 1);
 		}
@@ -1612,7 +1635,7 @@ public class InputSample extends NetworkElement{
 
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 			getContext().addAreaImage(EBoolean.valueOf(cell.getStringCellValue().toUpperCase()), cell.getColumnIndex() - 1);
 		}
@@ -1625,7 +1648,7 @@ public class InputSample extends NetworkElement{
 
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 			getContext().addAreaType(cell.getStringCellValue().toUpperCase(), cell.getColumnIndex() - 1);
 		}
@@ -1638,7 +1661,7 @@ public class InputSample extends NetworkElement{
 
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 			getContext().addArea((int) cell.getNumericCellValue(), cell.getColumnIndex() - 1);
 		}
@@ -1651,7 +1674,7 @@ public class InputSample extends NetworkElement{
 
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 			getContext().addLayer((int) cell.getNumericCellValue(), cell.getColumnIndex() - 1);
 		}
@@ -1663,7 +1686,7 @@ public class InputSample extends NetworkElement{
 
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 			getContext().addNetworkType(cell.getStringCellValue().toUpperCase());
 		}
@@ -1675,7 +1698,7 @@ public class InputSample extends NetworkElement{
 
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 			getContext().addKind(cell.getStringCellValue().toUpperCase(), cell.getColumnIndex() - 1);
 		}
@@ -1687,7 +1710,7 @@ public class InputSample extends NetworkElement{
 
 		while (cells.hasNext()) {
 			HSSFCell cell = (HSSFCell) cells.next();
-			if(cell.CELL_TYPE_BLANK == cell.getCellType())
+			if(HSSFCell.CELL_TYPE_BLANK == cell.getCellType())
 				continue;
 			if(!"".equals(cell.getStringCellValue().trim()))
 				getContext().addFilter(cell.getStringCellValue().toUpperCase(), cell.getColumnIndex() - 1);
@@ -1700,8 +1723,9 @@ public class InputSample extends NetworkElement{
 		List<Double> dataIdeal = new ArrayList<Double>(getContext().getNodeSumByKind("OUTPUT"));
 		// while(cells.hasNext()){
 		for (int indCol = 1; indCol <= size; indCol++) {
+			
 			HSSFCell cell = (HSSFCell) row.getCell(indCol);
-			if (cell.getCellType() == HSSFCell.CELL_TYPE_NUMERIC || cell.getCellType() == HSSFCell.CELL_TYPE_BLANK || cell.getCellType() == HSSFCell.CELL_TYPE_FORMULA) {
+			if (cell.getCellType() == HSSFCell.CELL_TYPE_NUMERIC  || cell.getCellType() == HSSFCell.CELL_TYPE_FORMULA) {
 				
 				double value = cell.getNumericCellValue();
 				

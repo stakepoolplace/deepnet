@@ -115,7 +115,11 @@ public class Link extends NetworkElement {
 	}
 
 	public void setWeight(double weight) {
-		this.weight.setWeight(weight);
+		if(this.weight == null) {
+			this.weight = new Weight(weight);
+		} else {
+			this.weight.setWeight(weight);
+		}
 		Graphics3D.setWeightOnLink(this);
 	}
 

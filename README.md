@@ -7,7 +7,7 @@ Welcome to DeeperNet developed by Eric Marchand, an educational deep learning fr
 ## Features
 
 - **Interactive Training Interface:** Built with JavaFX, Deeper Net provides a user-friendly platform for training neural networks, allowing users to visually track their experiment results in real-time.
-- **Excel Integration:** Deeper Net supports the initiation and configuration of neural networks directly from Excel sheets (`/RN/Sample.xls` or `.numbers`), making it easy to manipulate network parameters and input data.
+- **Excel Integration:** Deeper Net supports the initiation and configuration of neural networks directly from Excel sheets (`/RN/Samples.xls` or `.numbers`), making it easy to manipulate network parameters and input data.
 ![XLS Preview](xls.png)
 - **Console Output:** For those who prefer working directly with code, Deeper Net allows for neural network training with results displayed in the console, offering a more traditional development experience.
 - **TestNetwork.java:** A dedicated launcher that reads network configurations from an Excel sheet and initiates the graphical interface `ViewerFX.java` for visualization.

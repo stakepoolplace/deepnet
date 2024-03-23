@@ -325,6 +325,8 @@ public class NetworkContext {
 	public int getNodeSumByLayerAreaAndKind(Integer layerIdCounted, Integer areaIdCounted, String kindCounted) {
 		int sum = 0;
 		for (int idx = 0; idx < kinds.length; idx++) {
+			if(kinds[idx] == null)
+				break;
 			Integer layerId = layers[idx];
 			Integer areaId = areas[idx];
 			String kind = kinds[idx];
@@ -340,6 +342,8 @@ public class NetworkContext {
 	public int getNodeSumByLayerAndKind(Integer layerIdCounted, String kindCounted) {
 		int sum = 0;
 		for (int idx = 0; idx < kinds.length; idx++) {
+			if(kinds[idx] == null)
+				break;
 			int layerId = layers[idx];
 			String kind = kinds[idx];
 			int nodeCount = nodes[idx];
@@ -354,6 +358,8 @@ public class NetworkContext {
 	public int getNodeSumByKind(String kindCounted) {
 		int sum = 0;
 		for (int idx = 0; idx < kinds.length; idx++) {
+			if(kinds[idx] == null)
+				break;
 			String kind = kinds[idx];
 			int nodeCount = nodes[idx];
 			if (kindCounted.equals(kind)) {
@@ -379,7 +385,7 @@ public class NetworkContext {
 		int idx = 0;
 		for(Integer areaId : areas){
 			
-			if(layers[idx] == layerId && areaId != null && areaId > max)
+			if(layers.length <= idx && layers[idx] == layerId && areaId != null && areaId > max)
 				max = areaId;
 			
 			idx++;
