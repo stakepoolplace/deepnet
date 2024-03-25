@@ -13,6 +13,8 @@ Welcome to DeeperNet developed by Eric Marchand, an educational deep learning fr
 ![XLS Preview](resources/xls.png)
 - **Layer Visualizer** If your neurons are of type PixelNode in a layer you can easily view the layer as an image.
 ![Layer Preview](resources/layer-visualizer.png)
+- **Implement your own visualizers** Take a look at this implementation of the SIFT vision algorithm.
+![Easy integration Preview](resources/vision-sift.png)
 - **TestNetwork.java:** A dedicated launcher that reads network configurations from an Excel sheet and initiates the graphical interface `ViewerFX.java` for visualization.
 - **Powerful deep learning PDFs** /resources/ML-Notes.pdf and gradients-histogrammes.pdf.
 
