@@ -637,6 +637,7 @@ public class Node extends NetworkElement implements INode {
 		 copy_node.setPerformer(performer);
 		 copy_node.setOutputs(copy_outputs);
 		 copy_node.setAggregatedValue(aggregatedValue);
+		 copy_node.setActivationFx(activationFx);
 		 if(biasInput != null){
 			 copy_node.setBiasInput(biasInput.deepCopy());
 		 }

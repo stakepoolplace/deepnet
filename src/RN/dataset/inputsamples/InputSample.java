@@ -1266,7 +1266,7 @@ public class InputSample extends NetworkElement{
 					if(cell.getCellType() == HSSFCell.CELL_TYPE_STRING){
 
 						// Création de l'objet Image avec le chemin formaté
-						image = new Image(getPath("file:" + cell.getRichStringCellValue().getString()));	
+						image = new Image(getPath(cell.getRichStringCellValue().getString()));	
 						if(image.getException() != null)
 							throw image.getException();
 
@@ -1348,7 +1348,7 @@ public class InputSample extends NetworkElement{
 		
 		// Loading of image
 		HSSFCell cellImgPath = (HSSFCell) row.getCell(1);
-		Image image = new Image(getPath("file:" + cellImgPath.getRichStringCellValue().getString()));	
+		Image image = new Image(getPath(cellImgPath.getRichStringCellValue().getString()));	
 		
 		PixelReader pixelReader = image.getPixelReader();
 		List<Double> dataInput = new ArrayList<Double>(getContext().getNodeSumByLayerAndKind(0, "INPUT"));

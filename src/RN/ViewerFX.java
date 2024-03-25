@@ -67,6 +67,9 @@ public class ViewerFX extends Application {
 	final Button rand = new Button("Randomize network");
 	final Button clear = new Button("Clear");
 	final Button print = new Button("Print network");
+	
+	public final static int nbCycles = 500;
+
 
 	public static CheckBox showLogs = null;
 
@@ -88,6 +91,11 @@ public class ViewerFX extends Application {
 
 	public static boolean showLinearSeparation = false;
 
+	// Ajoutez un champ pour stocker la dernière valeur du cycle d'entraînement
+	private static int lastTrainingCycle = 0;
+	private static int origTrainingCycle = 0;
+	
+	
 	static {
 		activations.add(new ActivationFx("Cosinus", EActivation.COS));
 		activations.add(new ActivationFx("Sinus", EActivation.SIN));
@@ -222,6 +230,16 @@ public class ViewerFX extends Application {
 					rand.setDisable(selectedSample == ESamples.NONE);
 					clear.setDisable(selectedSample == ESamples.NONE);
 					print.setDisable(selectedSample == ESamples.NONE);
+					
+		            lastTrainingCycle = 0; // Réinitialisez la dernière valeur du cycle d'entraînement
+		            origTrainingCycle = 0;
+		            if (!lineChart.getData().isEmpty())
+		                lineChart.getData().clear(); // Nettoyez toutes les séries de données du graphique
+		            series = null; // Réinitialisez la série
+		            
+	                xAxis.setAutoRanging(false); // Désactivez l'auto-range pour définir manuellement les limites
+	                xAxis.setLowerBound(origTrainingCycle); // Démarrez à partir de la dernière valeur du cycle d'entraînement
+	                xAxis.setUpperBound(lastTrainingCycle + nbCycles);
 
 					if (ESamples.FILE == selectedSample) {
 
@@ -308,34 +326,41 @@ public class ViewerFX extends Application {
 			}
 
 		});
-
+		
 		train.setOnAction(new EventHandler<ActionEvent>() {
 
 			@Override
 			public void handle(ActionEvent e) {
 
 				try {
+									
+					
+					trainer.getErrorLevelLines().clear();
+
+					animation.stop(); // Arrêtez l'animation avant de commencer l'entraînement
+			        //timeline1.stop(); // Vous pouvez également avoir besoin d'arrêter la timeline si elle est séparée
 					Platform.runLater(() -> {
 						train.setDisable(true);
 					});
-					trainer.getErrorLevelLines().clear();
+		            // S'il n'y a pas encore de données, initialisez l'axe des X en fonction de la dernière valeur de cycle d'entraînement
+		            if (lineChart.getData() == null || lineChart.getData().isEmpty()) {
+		                xAxis.setAutoRanging(false); // Désactivez l'auto-range pour définir manuellement les limites
+		                xAxis.setLowerBound(origTrainingCycle); // Démarrez à partir de la dernière valeur du cycle d'entraînement
+		            }
+	                xAxis.setUpperBound(lastTrainingCycle + nbCycles); // Exemple: +500 pour définir une nouvelle plage
 
-					if (lineChart.getData() == null)
-						lineChart.setData(FXCollections.<XYChart.Series<Number, Number>>observableArrayList());
-					if (series == null) {
-						series = new LineChart.Series<Number, Number>();
-						lineChart.getData().add(series);
-					}
+		            if (series == null) {
+		                series = new LineChart.Series<Number, Number>();
+		                lineChart.getData().add(series);
+		            }
 
-					if (!lineChart.getData().contains(series))
-						lineChart.getData().add(series);
-
-					series.setName("Train " + (lineChart.getData().size() + 1));
+		            series.setName("Train " + (lineChart.getData().size() + 1));
 
 					trainer.launchTrain(showLogs.isSelected());
 
 					timeline1.setCycleCount(trainer.getErrorLevelLines().size());
 					animation.play();
+					lastTrainingCycle = lastTrainingCycle + nbCycles;
 
 				} catch (Exception e1) {
 					e1.printStackTrace();
@@ -458,12 +483,14 @@ public class ViewerFX extends Application {
 		clear.setOnAction(new EventHandler<ActionEvent>() {
 			@Override
 			public void handle(ActionEvent e) {
-				DataSeries.getInstance().clearSeries();
+				origTrainingCycle = lastTrainingCycle;
+				//DataSeries.getInstance().clearSeries();
 				System.out.println("series input and ideals cleared !");
-				trainer.getErrorLevelLines().clear();
+				//trainer.getErrorLevelLines().clear();
 				System.out.println("error level cleared !");
 				if (!lineChart.getData().isEmpty())
-					lineChart.setData(null);
+			           lineChart.getData().clear(); // Utilisez clear() au lieu de setData(null)
+		        series = null; // Réinitialisez la série pour être sûrs qu'une nouvelle série sera créée lors du prochain entraînement
 			}
 		});
 
@@ -492,10 +519,16 @@ public class ViewerFX extends Application {
 		VBox vbox = new VBox();
 
 		Slider scaleNode = null;
+		Label label = null;
 		for (int idxLayerHidden = 1; idxLayerHidden <= network.getLayers().size() - 2; idxLayerHidden++) {
-			scaleNode = new Slider(0D, 1000D, network.getLayer(idxLayerHidden).getNodeCount());
-			scaleNode.setMinorTickCount(5);
-			scaleNode.setMajorTickUnit(50);
+			int nodecount = network.getLayer(idxLayerHidden).getNodeCount();
+			scaleNode = new Slider(0D, nodecount * 10D + 1D, nodecount);
+			double majTick = 100D;
+			if(nodecount <= 10) majTick = 10; else if(nodecount > 10 && nodecount < 100) majTick = 100; else if(nodecount > 100 && nodecount < 1000) majTick = 1000; else majTick = 10000;
+			label = new Label("Hidden layer #" + idxLayerHidden + " nodes: " + nodecount);
+
+			scaleNode.setMinorTickCount(10);
+			scaleNode.setMajorTickUnit(majTick);
 			scaleNode.setSnapToTicks(false);
 			scaleNode.setShowTickLabels(true);
 			scaleNode.setShowTickMarks(true);
@@ -536,7 +569,8 @@ public class ViewerFX extends Application {
 
 				}
 			});
-			vbox.getChildren().add(scaleNode);
+			vbox.setPadding(new Insets(15,15,15,15));
+			vbox.getChildren().addAll(label, scaleNode);
 		}
 
 		scalingPane.getChildren().add(vbox);
