@@ -1,5 +1,9 @@
 package RN;
 
+/**
+ * @author Eric Marchand
+ * 
+ */
 public enum EBoolean {
 	
 	YES(Boolean.TRUE),

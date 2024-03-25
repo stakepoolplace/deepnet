@@ -28,7 +28,7 @@ import RN.nodes.RecurrentNode;
 import RN.utils.ReflexionUtils;
 
 /**
- * @author Eric
+ * @author Eric Marchand
  * 
  */
 public class Area extends NetworkElement implements IArea{
@@ -343,11 +343,8 @@ public class Area extends NetworkElement implements IArea{
 		INode sourceNode = this.getNode(thisNode.getNodeId());
 		
 		if(sourceNode != null){	
-			//if(getContext().getClock() == -1 || input.getFireTimeT() == getContext().getClock()){
 			
 				sigmaWI.sum(sourceNode.getComputedOutput() * linkage.getFilterValue(index, EFilterPosition.CENTER, thisNode, (IPixelNode) sourceNode));
-				//input.synchFutureFire();
-			//}
 			
 		}
 		

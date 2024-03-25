@@ -16,6 +16,10 @@ import dmonner.xlbp.WeightUpdaterType;
 import dmonner.xlbp.layer.InputLayer;
 import dmonner.xlbp.layer.TargetLayer;
 
+/**
+ * @author Eric Marchand
+ * 
+ */
 public class NetLSTMNetwork extends Network implements INetwork {
 
 	public NetLSTMNetwork(String name) {

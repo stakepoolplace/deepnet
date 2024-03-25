@@ -5,7 +5,10 @@ import java.util.List;
 import RN.nodes.IPixelNode;
 import RN.nodes.Node;
 
-public class AreaSquareSampled extends AreaSquare implements IAreaSquare, IArea{
+/**
+ * @author Eric Marchand
+ * 
+ */public class AreaSquareSampled extends AreaSquare implements IAreaSquare, IArea{
 	
 	private Integer sampling = 1;
 	

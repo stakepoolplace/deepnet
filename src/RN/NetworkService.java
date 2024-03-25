@@ -2,6 +2,10 @@ package RN;
 
 import org.apache.log4j.Logger;
 
+/**
+ * @author Eric Marchand
+ * 
+ */
 public class NetworkService {
 	
 	

@@ -23,6 +23,10 @@ import javafx.scene.shape.DrawMode;
 import javafx.scene.shape.Line;
 import javafx.scene.shape.Sphere;
 
+/**
+ * @author Eric Marchand
+ * 
+ */
 public class Graphics3D {
 
 	private static Map<Link, Line> shapeLinks = new HashMap<Link, Line>();

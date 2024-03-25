@@ -19,6 +19,10 @@ import RN.nodes.INode;
 import RN.nodes.IPixelNode;
 import RN.utils.StatUtils;
 
+/**
+ * @author Eric Marchand
+ * 
+ */
 public class Network extends NetworkElement implements INetwork{
 
 	private List<ILayer> layers = null;

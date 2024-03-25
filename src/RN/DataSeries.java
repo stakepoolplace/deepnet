@@ -8,6 +8,10 @@ import java.util.List;
 import RN.dataset.InputData;
 import RN.dataset.InputDataList;
 
+/**
+ * @author Eric Marchand
+ * 
+ */
 public class DataSeries {
 
 	private static DataSeries instance = null;

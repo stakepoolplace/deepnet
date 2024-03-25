@@ -1,5 +1,9 @@
 package RN;
 
+/**
+ * @author Eric Marchand
+ * 
+ */
 public class Identification {
 	
 	private Integer layerId = null;

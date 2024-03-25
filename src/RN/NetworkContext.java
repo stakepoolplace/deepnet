@@ -11,6 +11,10 @@ import RN.nodes.ENodeType;
 import RN.nodes.INode;
 import RN.utils.ReflexionUtils;
 
+/**
+ * @author Eric Marchand
+ * 
+ */
 public class NetworkContext {
 	
 	private static NetworkContext context = null;

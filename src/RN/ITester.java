@@ -4,6 +4,10 @@ import java.util.List;
 
 import javafx.scene.chart.LineChart;
 
+/**
+ * @author Eric Marchand
+ * 
+ */
 public interface ITester {
 
 	public final static String NEWLINE = System.getProperty("line.separator");

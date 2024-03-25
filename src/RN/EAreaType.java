@@ -1,5 +1,9 @@
 package RN;
 
+/**
+ * @author Eric Marchand
+ * 
+ */
 public enum EAreaType {
 	
 	INLINE("RN.Area"), SQUARE("RN.AreaSquare");

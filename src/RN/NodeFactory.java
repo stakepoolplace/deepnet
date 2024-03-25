@@ -8,6 +8,10 @@ import RN.nodes.ENodeType;
 import RN.nodes.INode;
 import RN.utils.ReflexionUtils;
 
+/**
+ * @author Eric Marchand
+ * 
+ */
 public class NodeFactory {
 	
 	public NodeFactory(){

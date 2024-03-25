@@ -6,15 +6,12 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
 
-import javafx.collections.FXCollections;
-import javafx.scene.chart.LineChart;
-import javafx.scene.chart.ScatterChart;
-import javafx.scene.chart.XYChart;
-import RN.algoactivations.EActivation;
-import RN.algoactivations.IActivation;
 import RN.dataset.InputData;
 import RN.dataset.OutputData;
 import RN.nodes.ENodeType;
+import javafx.collections.FXCollections;
+import javafx.scene.chart.LineChart;
+import javafx.scene.chart.XYChart;
 
 public class GlobalNetwork {
 	
@@ -24,8 +21,6 @@ public class GlobalNetwork {
 
 	public List<LineChart.Series<Number, Number>> seriesFirstNETInputs = new ArrayList<LineChart.Series<Number, Number>>();
 	public List<LineChart.Series<Number, Number>> seriesFirstNETOutputs = new ArrayList<LineChart.Series<Number, Number>>();
-//	public List<LineChart.Series<Number, Number>> seriesFirstNETIdealList = new ArrayList<LineChart.Series<Number, Number>>();
-//	public List<LineChart.Series<Number, Number>> seriesFirstNETActFxList = new ArrayList<LineChart.Series<Number, Number>>();
 	public List<LineChart.Series<Number, Number>> seriesLastNETInputs = new ArrayList<LineChart.Series<Number, Number>>();
 	public List<LineChart.Series<Number, Number>> seriesLastNETOutputs = new ArrayList<LineChart.Series<Number, Number>>();
 	public LineChart<Number, Number> sc = ViewerFX.lineChart;
@@ -58,8 +53,6 @@ public class GlobalNetwork {
 			seriesFirstNETOutputs = new ArrayList<LineChart.Series<Number, Number>>();
 			seriesLastNETInputs = new ArrayList<LineChart.Series<Number, Number>>();
 			seriesLastNETOutputs = new ArrayList<LineChart.Series<Number, Number>>();
-//			seriesFirstNETIdealList = new ArrayList<LineChart.Series<Number, Number>>();
-//			seriesFirstNETActFxList = new ArrayList<LineChart.Series<Number, Number>>();
 
 			for (int idx = 0; idx < network.getFirstLayer().getLayerNodes(ENodeType.REGULAR).size(); idx++) {
 				series = new LineChart.Series<Number, Number>();
@@ -74,18 +67,6 @@ public class GlobalNetwork {
 			}
 			
 
-
-//			for (int idx = 0; idx < network.getLastLayer().getNodeCount(); idx++) {
-//				series = new LineChart.Series<Number, Number>();
-//				series.setName("Run ideal[" + idx + "]" + (sc.getData().size() + 1));
-//				seriesIdealList.add(series);
-//			}
-
-//			for (Layer layer : network.getLayers()) {
-//				series = new LineChart.Series<Number, Number>();
-//				series.setName("Run FX[" + layer.getFunction().name() + "]" + (sc.getData().size() + 1));
-//				seriesActFxList.add(series);
-//			}
 
 			int runCycle = 0;
 			ListIterator computeItr = dataSeries.getInputDataSet().listIterator();
@@ -152,31 +133,11 @@ public class GlobalNetwork {
 					System.out.println(" ");
 				}
 
-//				idx = 0;
-//				IActivation activationFx;
-//				for (LineChart.Series<Number, Number> seriesActFx : seriesActFxList) {
-//					Layer layer = network.getLayer(idx);
-//					activationFx = EActivation.getPerformer(layer.getFunction());
-//					seriesActFx.getData().add(
-//							new ScatterChart.Data<Number, Number>(runCycle, activationFx.perform((double) runCycle
-//									/ (double) dataSeries.getInputDataSet().size())));
-//					idx++;
-//				}
-
-
-//				idx = 0;
-//				for (LineChart.Series<Number, Number> seriesIdeal : seriesIdealList) {
-//					seriesIdeal.getData().add(new LineChart.Data<Number, Number>(runCycle, entry.getIdeal(idx++)));
-//				}
 				runCycle++;
 				
 				
 			}
 		
-//			if (ViewerFX.showSeriesIdeals.isSelected())
-//				sc.getData().addAll(seriesIdealList);
-//			if (ViewerFX.showSeriesActFx.isSelected())
-//				sc.getData().addAll(seriesActFxList);
 		}
 	}
 

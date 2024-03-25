@@ -7,6 +7,10 @@ import RN.dataset.OutputData;
 import RN.nodes.INode;
 
 
+/**
+ * @author Eric Marchand
+ * 
+ */
 public class NetworkLSTM implements INetwork{
 
 

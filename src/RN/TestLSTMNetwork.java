@@ -31,6 +31,10 @@ import dmonner.xlbp.compound.MemoryCellCompound;
 import dmonner.xlbp.compound.XEntropyTargetCompound;
 import dmonner.xlbp.trial.Step;
 
+/**
+ * @author Eric Marchand
+ * 
+ */
 public class TestLSTMNetwork implements ITester {
 
 	private static Logger logger = Logger.getLogger(TestLSTMNetwork.class);

@@ -28,6 +28,10 @@ import javafx.collections.FXCollections;
 import javafx.scene.chart.LineChart;
 import javafx.scene.chart.XYChart;
 
+/**
+ * @author Eric Marchand
+ * 
+ */
 public class TestNetwork implements ITester {
 
 	private static Logger logger = Logger.getLogger(TestNetwork.class);

@@ -9,6 +9,10 @@ import RN.links.Weight;
 import RN.nodes.ENodeType;
 import RN.nodes.INode;
 
+/**
+ * @author Eric Marchand
+ * 
+ */
 public interface ILayer {
 
 

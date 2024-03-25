@@ -27,7 +27,6 @@ import javafx.scene.Group;
 import javafx.scene.Scene;
 import javafx.scene.chart.LineChart;
 import javafx.scene.chart.NumberAxis;
-import javafx.scene.chart.XYChart;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
@@ -44,6 +43,10 @@ import javafx.scene.shape.Rectangle;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
+/**
+ * @author Eric Marchand
+ * 
+ */
 public class ViewerFX extends Application {
 
 	public static NumberAxis xAxis = null;
@@ -338,7 +341,6 @@ public class ViewerFX extends Application {
 					trainer.getErrorLevelLines().clear();
 
 					animation.stop(); // Arrêtez l'animation avant de commencer l'entraînement
-			        //timeline1.stop(); // Vous pouvez également avoir besoin d'arrêter la timeline si elle est séparée
 					Platform.runLater(() -> {
 						train.setDisable(true);
 					});
@@ -396,7 +398,6 @@ public class ViewerFX extends Application {
 								}
 							} catch (ConcurrentModificationException cme) {
 								System.out.println("Concurrent modif KeyFrame :  nextIndex :" + nextIndex);
-								// errorItr = trainer.getLines().listIterator(nextIndex);
 							}
 						}
 					}
@@ -484,10 +485,6 @@ public class ViewerFX extends Application {
 			@Override
 			public void handle(ActionEvent e) {
 				origTrainingCycle = lastTrainingCycle;
-				//DataSeries.getInstance().clearSeries();
-				System.out.println("series input and ideals cleared !");
-				//trainer.getErrorLevelLines().clear();
-				System.out.println("error level cleared !");
 				if (!lineChart.getData().isEmpty())
 			           lineChart.getData().clear(); // Utilisez clear() au lieu de setData(null)
 		        series = null; // Réinitialisez la série pour être sûrs qu'une nouvelle série sera créée lors du prochain entraînement
@@ -612,7 +609,6 @@ public class ViewerFX extends Application {
 	public static void addSeriesToLineChart() {
 
 		// TODO implement a new tab to visualize inferences
-
 	}
 
 	public static int getThreadPoolDelay() {

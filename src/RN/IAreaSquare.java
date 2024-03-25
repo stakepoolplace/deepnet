@@ -14,6 +14,10 @@ import RN.nodes.Node;
 import RN.nodes.PixelNode;
 import javafx.scene.paint.Color;
 
+/**
+ * @author Eric Marchand
+ * 
+ */
 public interface IAreaSquare {
 
 	int getNodeCount();

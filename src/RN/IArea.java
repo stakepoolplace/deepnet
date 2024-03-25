@@ -13,6 +13,10 @@ import RN.nodes.ENodeType;
 import RN.nodes.INode;
 import RN.nodes.IPixelNode;
 
+/**
+ * @author Eric Marchand
+ * 
+ */
 public interface IArea {
 
 	int getNodeCount();

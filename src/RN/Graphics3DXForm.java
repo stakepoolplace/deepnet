@@ -1,6 +1,9 @@
 package RN;
 
-
+/**
+ * @author Eric Marchand
+ * 
+ */
 import javafx.scene.Group;
 import javafx.scene.transform.Rotate;
 import javafx.scene.transform.Scale;

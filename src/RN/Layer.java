@@ -10,6 +10,10 @@ import RN.nodes.ENodeType;
 import RN.nodes.INode;
 import RN.nodes.RecurrentNode;
 
+/**
+ * @author Eric Marchand
+ * 
+ */
 public class Layer extends NetworkElement implements ILayer{
 
 	protected int layerId;

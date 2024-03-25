@@ -22,7 +22,10 @@ import RN.nodes.Node;
 import RN.nodes.PixelNode;
 import javafx.scene.paint.Color;
 
-public class AreaSquare extends Area implements IAreaSquare, IArea{
+/**
+ * @author Eric Marchand
+ * 
+ */public class AreaSquare extends Area implements IAreaSquare, IArea{
 	
 	private Integer nodeCount = null;
 	
@@ -98,8 +101,6 @@ public class AreaSquare extends Area implements IAreaSquare, IArea{
 			return (IPixelNode) nodes.get(id);
 			
 		} catch (Exception ignore) {
-			//ignore.printStackTrace();
-			//System.err.println("getNodeXY() : coordonnées invalides pour  (x,y) = (" + x + "," + y + ")  (x0,y0) = (" + x0 + "," + y0 + ")  theta :" + theta + "   cause : "+ e.getMessage());
 		}
 		
 		return null;
@@ -115,7 +116,6 @@ public class AreaSquare extends Area implements IAreaSquare, IArea{
 			return (IPixelNode) nodes.get(nodeXYToNodeId(x, y, sampling));
 		} catch (Exception ignore) {
 			ignore.printStackTrace();
-			//System.err.println("getNodeXY() : coordonnées invalides pour  (x,y) = (" + x + "," + y + ")  (x0,y0) = (" + x0 + "," + y0 + ")  theta :" + theta + "   cause : "+ e.getMessage());
 		}
 		
 		return null;
@@ -136,7 +136,6 @@ public class AreaSquare extends Area implements IAreaSquare, IArea{
 		try{
 			node = (IPixelNode) nodes.get(nodeXYToNodeId(x, y, x0, y0, theta));
 		} catch (Exception ignore) {
-			//System.err.println("getNodeXY() : coordonnées invalides pour  (x,y) = (" + x + "," + y + ")  (x0,y0) = (" + x0 + "," + y0 + ")  theta :" + theta + "   cause : "+ e.getMessage());
 		}
 		
 		return node;
@@ -245,8 +244,6 @@ public class AreaSquare extends Area implements IAreaSquare, IArea{
 		if(pixSizeX == 0)
 			throw new RuntimeException("Le nombre de neurones dans la liste est vide.");
 		
-//		if(width.intValue() - width.doubleValue() != 0)
-//			throw new RuntimeException("Le nombre de neurones doit être un carré d'un entier. nbr=" + pixSize);
 		
 		// Rectangle
 		this.widthPx = pixSizeX;
@@ -294,12 +291,6 @@ public class AreaSquare extends Area implements IAreaSquare, IArea{
 		int newX = (int) Math.round((x-x0) * Math.cos(theta) - (y-y0) * Math.sin(theta)) + x0 ;
 		int newY = (int) Math.round((x-x0) * Math.sin(theta) + (y-y0) * Math.cos(theta)) + y0 ;
 		
-//		newX = Math.min( Math.max(newX, 0), widthPx - 1 );
-//		newY = Math.min( Math.max(newY, 0), widthPx - 1 );
-		
-		
-//		if(newX < 0 || newX > widthPx - 1 || newY < 0 || newY > heightPx - 1)
-//			throw new RuntimeException("nodeXYToNodeId(x,y,x0,y0,theta) : coordonnées invalides pour (x,y) = (" + x + "," + y + ")   ou  widthPx=" + widthPx + " heightPx=" + heightPx);
 		
 		return newX + newY * widthPx ;
 		
@@ -359,9 +350,6 @@ public class AreaSquare extends Area implements IAreaSquare, IArea{
 		
 		double value = 0D;
 		
-//		FilterIndex index = new FilterIndex(thisNode.getAreaSquare().getIdentification(), idFilter);
-//		Filter filter = linkage.getFilter(index);
-		
 		int sampling = linkage.getSampling();
 		int topLeftX = thisNode.getX();
 		int topLeftY = thisNode.getY();
@@ -403,8 +391,6 @@ public class AreaSquare extends Area implements IAreaSquare, IArea{
 	
 	public void applyMaxPoolingFilter(IFilterLinkage linkage, int width, int stride, IPixelNode thisNode, SigmaWi sigmaWI){
 		
-//		FilterIndex index = new FilterIndex(thisNode.getAreaSquare().getIdentification(), idFilter);
-//		Filter filter = linkage.getFilter(index);
 		
 		int sampling = linkage.getSampling();
 		int topLeftX = thisNode.getX();
@@ -415,7 +401,6 @@ public class AreaSquare extends Area implements IAreaSquare, IArea{
 		int xstop = x0 + width - 1;
 		
 		IPixelNode sourceNode = null;
-		//IPixelNode targetNode = this.getNodeXY(x0, y0);
 		
 		Double value = null;
 		
@@ -425,7 +410,7 @@ public class AreaSquare extends Area implements IAreaSquare, IArea{
 				if(x >= 0 && x <= this.getWidthPx() - 1 && y >=0 && y <= this.getHeightPx() - 1){
 					
 					sourceNode = this.getNodeXY(x, y);
-					value = /*linkage.getFilterValue(index, EFilterPosition.TOP_LEFT, targetNode, sourceNode) */ sourceNode.getComputedOutput();
+					value = sourceNode.getComputedOutput();
 					
 					if(value > sigmaWI.value() ){
 						sigmaWI.setSigmaWi(value);
@@ -580,7 +565,6 @@ public class AreaSquare extends Area implements IAreaSquare, IArea{
 		IPixelNode pix = null;
 		for(int idx = 0; idx < nodeCount; idx++){
 			pix = (PixelNode) getNode(idx);
-			//if(gradient != null && gradient.getMagnitude() > magnitudeThreshold && ((!gradient.equals(pix.getRight().getGradient()) &&!gradient.equals(pix.getLeft().getGradient()) &&!gradient.equals(pix.getDown().getGradient()) && !gradient.equals(pix.getUp().getGradient())) || (pix.getX() % sampling == 0 && pix.getY() % sampling == 0))){
 			if(pix.getX() % sampling == 0 && pix.getY() % sampling == 0){
 				try {
 					Gradient subGradient = null;
