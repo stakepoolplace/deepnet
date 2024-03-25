@@ -2,7 +2,6 @@ package RN.linkage;
 
 import RN.IAreaSquare;
 import RN.ILayer;
-import RN.dataset.Coordinate;
 import RN.dataset.inputsamples.ESamples;
 import RN.dataset.inputsamples.InputSample;
 import RN.links.ELinkType;

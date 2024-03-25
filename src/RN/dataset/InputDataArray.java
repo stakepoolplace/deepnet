@@ -5,6 +5,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.RandomAccess;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class InputDataArray<E> extends AbstractList<E> implements List<E>, RandomAccess, Cloneable, java.io.Serializable{
 	
 	/**

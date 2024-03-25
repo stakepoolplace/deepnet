@@ -9,19 +9,19 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import RN.AreaSquare;
-import RN.IArea;
-import RN.ILayer;
 import RN.INetwork;
 import RN.ITester;
 import RN.TestNetwork;
 import RN.algotrainings.BackPropagationTrainer;
 import RN.algotrainings.ITrainer;
 import RN.dataset.inputsamples.InputSample;
-import RN.nodes.ImageNode;
 import javafx.application.Application;
 import javafx.stage.Stage;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class BackPropagationTrainingTest extends Application{
 
 	public static ITester tester = null;

@@ -5,6 +5,10 @@ import RN.TestNetwork;
 import RN.links.Link;
 import RN.nodes.Node;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class GrowingNetworkStrategy extends AbstractStrategyDecorator implements IStrategy{
 
 	

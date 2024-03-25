@@ -1,5 +1,9 @@
 package RN.dataset;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class Coordinate {
 	
 	// x the abscissa coordinate with origin 0 of the image

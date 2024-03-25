@@ -6,6 +6,10 @@ import RN.dataset.inputsamples.ESamples;
 import RN.nodes.INode;
 import RN.nodes.IPixelNode;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class V1OrientationsStaticCellLinkage extends V1OrientationsCellLinkage {
 
 

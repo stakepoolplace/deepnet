@@ -6,6 +6,10 @@ import RN.dataset.inputsamples.ESamples;
 import RN.nodes.INode;
 import RN.nodes.IPixelNode;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class LOGStaticLinkage extends LaplacianOfGaussianLinkage {
 
 	// Coefficients issus du calcul avec :

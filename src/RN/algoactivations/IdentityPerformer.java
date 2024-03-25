@@ -2,6 +2,10 @@ package RN.algoactivations;
 
 import RN.algoactivations.utils.BoundNumbers;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class IdentityPerformer implements IActivation{
 
 	@Override

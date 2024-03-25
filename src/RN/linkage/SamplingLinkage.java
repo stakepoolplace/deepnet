@@ -7,6 +7,10 @@ import RN.dataset.inputsamples.InputSample;
 import RN.nodes.INode;
 import RN.nodes.IPixelNode;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class SamplingLinkage extends FilterLinkage {
 
 	

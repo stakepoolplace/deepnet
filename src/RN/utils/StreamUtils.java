@@ -6,6 +6,10 @@ import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.stream.Collectors;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class StreamUtils {
 
 	public StreamUtils() {

@@ -10,6 +10,10 @@ import RN.nodes.INode;
 import RN.nodes.IPixelNode;
 import javafx.scene.layout.Pane;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class CartesianToPolarImageLinkage extends FilterLinkage {
 	
 

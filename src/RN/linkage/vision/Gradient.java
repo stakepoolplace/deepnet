@@ -4,6 +4,10 @@ import RN.nodes.IPixelNode;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.paint.Color;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class Gradient {
 	
 	private IPixelNode pixNode = null; 

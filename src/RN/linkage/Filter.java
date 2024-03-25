@@ -9,6 +9,10 @@ import RN.dataset.inputsamples.ESamples;
 import RN.linkage.FilterLinkage.FilterIndex;
 import RN.nodes.ImageNode;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class Filter extends NetworkElement{
 	
 	private Integer id = null;

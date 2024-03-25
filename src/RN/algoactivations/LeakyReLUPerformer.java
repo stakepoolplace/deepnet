@@ -1,6 +1,10 @@
 package RN.algoactivations;
 
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class LeakyReLUPerformer implements IActivation{
 	
 	public static Double alpha = 0.01D;

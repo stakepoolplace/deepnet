@@ -7,6 +7,10 @@ import RN.links.ELinkType;
 import RN.nodes.ENodeType;
 import RN.nodes.INode;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class GanglionaryCellLinkage extends OneToOneLinkage{
 
 	

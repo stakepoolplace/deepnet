@@ -1,5 +1,9 @@
 package RN.linkage;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public enum ELinkageBetweenAreas {
 	
 	// DEFAULT MAPPING

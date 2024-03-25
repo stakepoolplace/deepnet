@@ -3,6 +3,10 @@ package RN.dataset;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class InputData {
 
 	public List<Double> input;

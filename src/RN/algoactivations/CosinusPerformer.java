@@ -3,7 +3,10 @@ package RN.algoactivations;
 import RN.algoactivations.utils.BoundMath;
 
 
-
+/**
+ * @author Eric Marchand
+ *
+ */
 public class CosinusPerformer implements IActivation {
 
 	@Override

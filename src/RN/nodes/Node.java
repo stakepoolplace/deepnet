@@ -24,6 +24,10 @@ import RN.links.Link;
 import RN.links.Weight;
 import javafx.scene.layout.Pane;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class Node extends NetworkElement implements INode {
 
 	protected Integer nodeId = null;

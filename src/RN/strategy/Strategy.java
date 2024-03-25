@@ -2,6 +2,10 @@ package RN.strategy;
 
 import RN.INetwork;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class Strategy {
 
 	protected static INetwork network = null;

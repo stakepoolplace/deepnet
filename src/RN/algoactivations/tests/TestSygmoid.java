@@ -6,6 +6,10 @@ import org.junit.Test;
 
 import RN.algoactivations.SygmoidPerformer;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class TestSygmoid {
 
 	@Test

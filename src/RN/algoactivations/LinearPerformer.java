@@ -1,6 +1,10 @@
 package RN.algoactivations;
 
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class LinearPerformer implements IActivation{
 
 	@Override

@@ -3,6 +3,10 @@ package RN.utils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class MathUtils {
 
 	public MathUtils() {

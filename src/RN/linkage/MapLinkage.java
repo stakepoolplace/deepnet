@@ -8,6 +8,10 @@ import RN.links.ELinkType;
 import RN.nodes.INode;
 import RN.nodes.IPixelNode;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class MapLinkage extends FilterLinkage {
 
 	Integer stride = null;

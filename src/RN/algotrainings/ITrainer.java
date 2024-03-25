@@ -8,6 +8,10 @@ import RN.dataset.InputData;
 import RN.dataset.OutputData;
 
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public interface ITrainer {
 
 	void train() throws Exception;
@@ -15,10 +19,6 @@ public interface ITrainer {
 	double getErrorRate();
 
 	public abstract void nextTrainInputValues();
-
-//	public abstract void computeDeltaWeights() throws Exception;
-
-//	public abstract void updateAllWeights() throws Exception;
 
 	void launchTrain() throws Exception;
 	

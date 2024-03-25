@@ -5,6 +5,10 @@ import RN.dataset.inputsamples.ESamples;
 import RN.linkage.FilterLinkage.FilterIndex;
 import RN.nodes.IPixelNode;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public interface IFilterLinkage {
 	
 	Double processFilter(ESamples filterFunction, IPixelNode sublayerNode, Double... params);

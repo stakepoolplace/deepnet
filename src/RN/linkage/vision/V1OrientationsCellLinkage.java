@@ -18,6 +18,10 @@ import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class V1OrientationsCellLinkage  extends FilterLinkage{
 
 	private  Slider sigmaSlider = null;

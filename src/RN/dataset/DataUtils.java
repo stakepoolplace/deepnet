@@ -1,8 +1,11 @@
 package RN.dataset;
 
-import java.util.ArrayDeque;
 import java.util.Deque;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class DataUtils {
 
 	private static Integer latestPeriodsCount = 26;

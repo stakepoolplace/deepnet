@@ -6,6 +6,10 @@ import RN.links.ELinkType;
 import RN.links.Link;
 import RN.nodes.INode;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class FullFanOutLinkage extends Linkage implements ILinkage {
 
 	

@@ -1,6 +1,10 @@
 package RN.algoactivations;
 
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class ReLUPerformer implements IActivation{
 
 	@Override

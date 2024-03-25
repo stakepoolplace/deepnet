@@ -1,15 +1,15 @@
 package RN.strategy;
 
-
-
+/**
+ * @author Eric Marchand
+ *
+ */
 public abstract class AbstractStrategyDecorator extends Strategy implements IStrategy{
-
-
 
 	protected Strategy decoratedStrategy = null;
 	
-	
 	public abstract void beforeProcess();
+	
 	
 	@Override
 	public void apply(){

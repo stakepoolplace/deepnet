@@ -3,6 +3,10 @@ package RN.genetic.alteration;
 import RN.INetwork;
 import RN.algotrainings.ITrainer;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class Alteration {
 
 	protected static INetwork network = null;

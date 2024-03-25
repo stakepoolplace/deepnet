@@ -5,9 +5,7 @@ import java.util.Comparator;
 
 import RN.INetwork;
 import RN.ITester;
-import RN.Network;
 import RN.TestNetwork;
-import RN.ViewerFX;
 import RN.algotrainings.BackPropagationTrainer;
 import RN.algotrainings.ITrainer;
 import RN.dataset.inputsamples.InputSample;
@@ -15,6 +13,10 @@ import RN.genetic.alteration.AlterationFactory;
 import RN.genetic.alteration.EAlteration;
 import RN.utils.StatUtils;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class Generation {
 
 	

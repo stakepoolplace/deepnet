@@ -1,5 +1,9 @@
 package RN.strategy;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class TestStrategy extends AbstractStrategyDecorator implements IStrategy{
 
 	public TestStrategy(Strategy strategy) {

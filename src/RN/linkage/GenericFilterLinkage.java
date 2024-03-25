@@ -6,7 +6,6 @@ import RN.IAreaSquare;
 import RN.ILayer;
 import RN.dataset.inputsamples.ESamples;
 import RN.dataset.inputsamples.InputSample;
-import RN.linkage.FilterLinkage.FilterIndex;
 import RN.nodes.INode;
 import RN.nodes.IPixelNode;
 import RN.nodes.PixelNode;
@@ -17,11 +16,12 @@ import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class GenericFilterLinkage extends FilterLinkage {
 
-
-	
-	
 
 	public GenericFilterLinkage() {
 	}

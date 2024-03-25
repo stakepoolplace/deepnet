@@ -2,6 +2,10 @@ package RN.genetic.alteration;
 
 
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public abstract class AbstractAlterationDecorator extends Alteration implements IAlteration{
 
 

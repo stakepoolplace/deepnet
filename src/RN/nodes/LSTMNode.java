@@ -5,6 +5,10 @@ import RN.ITester;
 import RN.algoactivations.EActivation;
 import RN.links.ELinkType;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class LSTMNode extends Node {
 
 	public ProductNode getInputProductUnit() {

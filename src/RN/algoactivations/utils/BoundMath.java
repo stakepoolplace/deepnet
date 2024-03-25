@@ -2,7 +2,7 @@ package RN.algoactivations.utils;
 
 /**
  * Avoid Math.Nan
- * 
+ * @author Eric Marchand
  */
 public final class BoundMath {
 

@@ -7,6 +7,10 @@ import RN.links.ELinkType;
 import RN.nodes.INode;
 import RN.nodes.IPixelNode;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class OneToOneFetchAreaLinkage extends Linkage {
 
 	

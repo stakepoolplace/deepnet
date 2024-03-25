@@ -1,5 +1,9 @@
 package RN.linkage;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class SigmaWi {
 	
 	Double sigmaWi = null;

@@ -5,6 +5,10 @@ import RN.Network;
 import RN.algotrainings.BackPropagationTrainer;
 import RN.algotrainings.ITrainer;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class AlterationFactory {
 
 	public static Alteration create(INetwork network, ITrainer trainer, EAlteration eAlteration){

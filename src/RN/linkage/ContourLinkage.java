@@ -7,6 +7,10 @@ import RN.nodes.INode;
 import RN.nodes.IPixelNode;
 import RN.nodes.PixelNode;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class ContourLinkage extends Linkage {
 
 	

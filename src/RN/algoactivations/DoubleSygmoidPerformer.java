@@ -2,6 +2,10 @@ package RN.algoactivations;
 
 
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class DoubleSygmoidPerformer implements IActivation {
 
 	@Override

@@ -1,6 +1,5 @@
 package RN.linkage;
 
-import RN.IArea;
 import RN.IAreaSquare;
 import RN.ILayer;
 import RN.dataset.inputsamples.ESamples;
@@ -14,6 +13,10 @@ import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class FirstDerivatedGaussianLinkage extends FilterLinkage {
 	
 	// GAUSSIENNE ELLIPTIQUE

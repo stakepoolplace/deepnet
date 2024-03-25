@@ -3,6 +3,10 @@ package RN.genetic.alteration;
 import RN.genetic.Genetic;
 import RN.utils.StatUtils;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class LearningRateAlteration extends AbstractAlterationDecorator implements IAlteration{
 
 	private String geneticCodeAlteration = "";

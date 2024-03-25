@@ -1,5 +1,9 @@
 package RN.algoactivations;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public enum EActivation {
 
 	

@@ -9,6 +9,10 @@ import RN.dataset.inputsamples.ESamples;
 import RN.dataset.inputsamples.InputSample;
 import RN.nodes.INode;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class Link extends NetworkElement {
 
 	public static final long SIMPLE_DELAY = 1;

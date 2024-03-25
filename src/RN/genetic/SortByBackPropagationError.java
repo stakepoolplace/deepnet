@@ -4,6 +4,10 @@ import java.util.Comparator;
 
 import RN.INetwork;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class SortByBackPropagationError implements Comparator<INetwork> {
 
 	@Override

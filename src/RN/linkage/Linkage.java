@@ -16,6 +16,10 @@ import RN.links.Weight;
 import RN.nodes.INode;
 import javafx.scene.layout.Pane;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public abstract class Linkage extends NetworkElement implements ILinkage {
 	
 	protected ELinkage linkageType = null;

@@ -1,5 +1,9 @@
 package RN.nodes;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public enum ENodeType {
 
 	//GAUSSIAN : used in vision to perform gaussian elliptic mask on a picture

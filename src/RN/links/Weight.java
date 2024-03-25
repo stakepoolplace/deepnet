@@ -1,5 +1,9 @@
 package RN.links;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class Weight {
 	
 	private double weight = 1.0D;

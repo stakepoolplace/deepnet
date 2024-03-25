@@ -1,6 +1,5 @@
 package RN.linkage;
 
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,7 +10,6 @@ import RN.ILayer;
 import RN.Identification;
 import RN.algoactivations.EActivation;
 import RN.dataset.inputsamples.ESamples;
-import RN.dataset.inputsamples.InputSample;
 import RN.links.Weight;
 import RN.nodes.INode;
 import RN.nodes.IPixelNode;

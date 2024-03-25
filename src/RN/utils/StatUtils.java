@@ -3,6 +3,10 @@ package RN.utils;
 import java.text.DecimalFormat;
 import java.util.Random;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class StatUtils {
 	
 

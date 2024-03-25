@@ -9,7 +9,6 @@ import RN.IAreaSquare;
 import RN.ILayer;
 import RN.Identification;
 import RN.dataset.inputsamples.ESamples;
-import RN.links.ELinkType;
 import RN.links.Link;
 import RN.links.Weight;
 import RN.nodes.INode;

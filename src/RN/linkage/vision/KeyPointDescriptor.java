@@ -3,6 +3,10 @@ package RN.linkage.vision;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class KeyPointDescriptor {
 	
 	List<Histogram> histograms = null;

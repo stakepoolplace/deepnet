@@ -21,6 +21,10 @@ import RN.strategy.Strategy;
 import RN.strategy.StrategyFactory;
 import javafx.scene.chart.LineChart;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class LSTMBackwardPassTraining implements ITrainer {
 
 	private static int maxTrainingCycles = 500;
@@ -35,8 +39,6 @@ public class LSTMBackwardPassTraining implements ITrainer {
 
 	private static int trainCycleAbsolute = 0;
 
-	// double learningRate = 0.2;
-	// double alphaDeltaWeight = 0.9;
 	private double learningRate = 1.0D;
 	private double alphaDeltaWeight = 0.0D;
 	private int meanPeriodCount = 0;

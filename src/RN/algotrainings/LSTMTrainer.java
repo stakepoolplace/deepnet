@@ -18,6 +18,10 @@ import dmonner.xlbp.Network;
 import dmonner.xlbp.compound.InputCompound;
 import dmonner.xlbp.compound.XEntropyTargetCompound;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class LSTMTrainer implements ITrainer {
 
 	private static LSTMTrainer instance;

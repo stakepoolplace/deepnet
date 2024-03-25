@@ -6,6 +6,10 @@ import RN.links.Link;
 import RN.nodes.INode;
 import RN.nodes.Node;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class GrowingHiddensAlteration extends AbstractAlterationDecorator implements IAlteration{
 
 	private String geneticCodeAlteration = "";

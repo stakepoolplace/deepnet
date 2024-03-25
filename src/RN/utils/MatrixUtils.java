@@ -4,10 +4,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import RN.nodes.PixelNode;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class MatrixUtils {
 	
 	public static <T> List<T> toList(T[][] matrix) {

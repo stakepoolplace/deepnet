@@ -3,6 +3,10 @@ package RN.utils;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class ReflexionUtils {
 	
 	public static <T>  T newClass(String classPath){

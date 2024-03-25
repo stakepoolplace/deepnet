@@ -17,6 +17,10 @@ import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class LaplacianOfGaussianLinkage extends FilterLinkage {
 	
 	private  Slider sigmaSlider = null;

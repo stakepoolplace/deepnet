@@ -1,5 +1,9 @@
 package RN.linkage;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public enum ELinkage {
 	
 	ONE_TO_ONE("RN.linkage.OneToOneLinkage"),

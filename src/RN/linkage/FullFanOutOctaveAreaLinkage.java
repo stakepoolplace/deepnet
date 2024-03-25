@@ -9,6 +9,10 @@ import RN.links.Link;
 import RN.nodes.INode;
 import RN.nodes.IPixelNode;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class FullFanOutOctaveAreaLinkage extends Linkage implements ILinkage {
 
 	

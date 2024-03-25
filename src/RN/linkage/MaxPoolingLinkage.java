@@ -18,8 +18,6 @@ public class MaxPoolingLinkage extends FilterLinkage {
 	Integer filterWidth = null;
 	
 	
-	//private static Double[][] staticFilter = null;
-	
 
 	public MaxPoolingLinkage() {
 	}
@@ -39,13 +37,6 @@ public class MaxPoolingLinkage extends FilterLinkage {
 		if(params[1] != null)
 			stride = params[1].intValue();
 		
-//		staticFilter = new Double[filterWidth][filterWidth];
-//		
-//		for(int y=0; y < filterWidth; y++){
-//			for(int x=0; x < filterWidth; x++){
-//				staticFilter[x][y] = 1D;
-//			}
-//		}
 		
 	}
 	
@@ -62,9 +53,7 @@ public class MaxPoolingLinkage extends FilterLinkage {
 		IAreaSquare subArea = null;
 		for(IArea area : getLinkedAreas()){
 			 subArea = (IAreaSquare) area;
-		
-			//initFilter(this, ID_FILTER_MAX_POOLING, null, (IPixelNode) thisNode, subArea);
-			
+					
 			subArea.applyMaxPoolingFilter(this, filterWidth, stride, (IPixelNode) thisNode);
 		
 		}
@@ -86,9 +75,7 @@ public class MaxPoolingLinkage extends FilterLinkage {
 		IAreaSquare subArea = null;
 		for(IArea area : getLinkedAreas()){
 			 subArea = (IAreaSquare) area;
-		
-			//initFilter(this, ID_FILTER_MAX_POOLING, null, (IPixelNode) thisNode, subArea);
-			
+					
 			subArea.applyMaxPoolingFilter(this, filterWidth, stride, (IPixelNode) thisNode, sigmaWI);
 		
 		}
@@ -99,24 +86,13 @@ public class MaxPoolingLinkage extends FilterLinkage {
 	
 	@Override
 	public void sublayerFanOutLinkage(INode thisNode, ILayer sublayer) {
-		
-		//IAreaSquare subArea = (IAreaSquare) getLinkedArea();
 
-		//initFilter(this, ID_FILTER_MAX_POOLING, null, (IPixelNode) thisNode, subArea);
-		
-		//subArea.applyMaxPoolingFilter(this, filterWidth, stride, (IPixelNode) thisNode);
 	}
 	
 	
 	@Override
 	public Double processFilter(ESamples filterFunction, IPixelNode sublayerNode, Double... params) {
 		
-//		int x = sublayerNode.getX();
-//		int y = sublayerNode.getY();
-//		
-//		if(x >= 0 && x <= (filterWidth-1) && y >= 0 && y <= (filterWidth-1)){
-//			return staticFilter[x][y];
-//		}
 		
 		return 0D;
 	}

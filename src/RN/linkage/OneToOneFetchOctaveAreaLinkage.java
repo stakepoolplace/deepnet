@@ -22,6 +22,10 @@ import RN.nodes.IPixelNode;
 import RN.nodes.PixelNode;
 import javafx.scene.layout.Pane;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class OneToOneFetchOctaveAreaLinkage extends FilterLinkage {
 
 	// GAUSSIENNE ELLIPTIQUE

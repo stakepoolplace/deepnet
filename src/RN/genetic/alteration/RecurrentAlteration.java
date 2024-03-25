@@ -11,6 +11,10 @@ import RN.nodes.Node;
 import RN.nodes.RecurrentNode;
 import RN.utils.StatUtils;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class RecurrentAlteration extends AbstractAlterationDecorator implements IAlteration {
 
 	

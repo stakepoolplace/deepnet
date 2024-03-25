@@ -22,6 +22,10 @@ import javafx.scene.control.TextField;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class LogPolarLinkage extends FilterLinkage {
 	
 	private Slider numOrientsSlider = null;

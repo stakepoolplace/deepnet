@@ -1,5 +1,9 @@
 package RN.nodes;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class RecurrentNode extends Node {
 	
 	

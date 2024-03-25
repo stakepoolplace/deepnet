@@ -12,6 +12,10 @@ import RN.links.Link;
 import RN.links.Weight;
 import javafx.scene.layout.Pane;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public interface IPixelNode {
 	
 	Coordinate getCoordinate();

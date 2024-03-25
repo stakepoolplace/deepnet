@@ -3,6 +3,10 @@ package RN.linkage;
 import RN.ILayer;
 import RN.nodes.INode;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class TimeSerieLinkage extends Linkage {
 
 	@Override

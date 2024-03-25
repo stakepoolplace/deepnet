@@ -13,6 +13,10 @@ import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class GaborLogLinkage extends FilterLinkage {
 
 	//Number of orientations (between 3 to 20) 8 is a typical value

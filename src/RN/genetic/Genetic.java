@@ -3,7 +3,10 @@ package RN.genetic;
 import RN.INetwork;
 
 
-
+/**
+ * @author Eric Marchand
+ *
+ */
 public class Genetic {
 
 	// nb of generations

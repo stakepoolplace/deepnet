@@ -11,12 +11,13 @@ import RN.links.Link;
 import RN.links.Weight;
 import javafx.scene.layout.Pane;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public interface INode {
 
-	/**
-	 * @throws Exception
-	 * 
-	 */
+
 	double computeOutput(boolean playAgain) throws Exception;
 	
 	Link link(INode node, ELinkType type, boolean modifiable, boolean filterActive, ESamples filter );

@@ -1,15 +1,16 @@
 package RN.linkage;
 
-import RN.IArea;
 import RN.IAreaSquare;
 import RN.ILayer;
 import RN.dataset.inputsamples.ESamples;
 import RN.dataset.inputsamples.InputSample;
-import RN.linkage.FilterLinkage.FilterIndex;
 import RN.nodes.INode;
 import RN.nodes.IPixelNode;
-import RN.nodes.PixelNode;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class HessianCourbureLinkage extends FilterLinkage {
 
 	// GAUSSIENNE ELLIPTIQUE

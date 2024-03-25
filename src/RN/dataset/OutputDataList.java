@@ -6,6 +6,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.RandomAccess;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class OutputDataList <E> extends AbstractList<E> implements List<E>, RandomAccess, Cloneable, java.io.Serializable{
 
 	private List<Double[]> outputs; 

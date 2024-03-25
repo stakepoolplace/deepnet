@@ -21,6 +21,10 @@ import RN.strategy.Strategy;
 import RN.strategy.StrategyFactory;
 import javafx.scene.chart.LineChart;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class BackPropagationTrainer implements ITrainer {
 
 	private static int maxTrainingCycles = 500;

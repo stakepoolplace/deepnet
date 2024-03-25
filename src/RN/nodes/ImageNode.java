@@ -26,6 +26,10 @@ import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class ImageNode extends PixelNode {
 	
 	public Stage stage = new Stage();
@@ -52,9 +56,7 @@ public class ImageNode extends PixelNode {
 	private Boolean negativeValuesActivated = Boolean.FALSE;
 	
 	private INode node = null;
-	
-	//private Area area = null;
-	
+		
 	
 	public ImageNode() {
 		super();

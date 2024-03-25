@@ -1,16 +1,16 @@
 package RN.linkage;
 
 import java.util.List;
-import java.util.Map;
 
 import RN.IArea;
 import RN.ILayer;
-import RN.Identification;
-import RN.links.Link;
-import RN.links.Weight;
 import RN.nodes.INode;
 import javafx.scene.layout.Pane;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public interface ILinkage {
 	
 	

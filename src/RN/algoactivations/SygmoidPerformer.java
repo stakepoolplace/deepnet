@@ -3,6 +3,10 @@ package RN.algoactivations;
 import RN.algoactivations.utils.BoundMath;
 
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class SygmoidPerformer implements IActivation {
 
 	@Override

@@ -8,6 +8,10 @@ import RN.dataset.Coordinate;
 import RN.linkage.vision.Gradient;
 import RN.links.Link;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class PixelNode extends Node implements IPixelNode, INode{
 	
 	private Coordinate coordinate = new Coordinate();

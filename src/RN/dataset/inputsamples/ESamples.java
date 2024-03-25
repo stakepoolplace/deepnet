@@ -1,5 +1,9 @@
 package RN.dataset.inputsamples;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public enum ESamples {
 	ADD, SUBSTRACT,
 	SINUS, COSINUS,

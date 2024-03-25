@@ -17,6 +17,10 @@ import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class DifferenceOfGaussianLinkage extends FilterLinkage {
 	
 	// GAUSSIENNE ELLIPTIQUE

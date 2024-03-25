@@ -4,6 +4,10 @@ import java.util.AbstractList;
 import java.util.List;
 import java.util.RandomAccess;
 
+/**
+ * @author Eric Marchand
+ *
+ */
 public class InputDataList<E> extends AbstractList<E> implements List<E>, RandomAccess, Cloneable, java.io.Serializable{
 	
 	/**
