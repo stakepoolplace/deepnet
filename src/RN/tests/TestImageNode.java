@@ -136,7 +136,7 @@ public class TestImageNode extends Application{
 	@Test
 	public void testRotateImageData() {
 		
-		Image image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/bikes.jpg");
+		Image image = new Image("file:./resources/bikes.jpg");
 		int pixels = (int) (image.getWidth() * image.getHeight());
 		int width = (int) Math.sqrt(pixels);
 		PixelReader pixelReader = image.getPixelReader();
@@ -563,7 +563,7 @@ public class TestImageNode extends Application{
 			public void run() {
 		
 				
-				Image image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/circle-square-1.png");
+				Image image = new Image("file:./resources/circle-square-1.png");
 				int width = (int) image.getWidth();
 				int height = (int) image.getHeight();
 				int nbPixels = width * height;
@@ -668,7 +668,7 @@ public class TestImageNode extends Application{
 			@Override
 			public void run() {
 		
-				Image image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/icon_128x128.png");
+				Image image = new Image("file:./resources/icon_128x128.png");
 				int nbPixels = (int) (image.getWidth() * image.getHeight());
 				
 				
@@ -737,7 +737,7 @@ public class TestImageNode extends Application{
 			@Override
 			public void run() {
 		
-				Image image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/icon_128x128.png");
+				Image image = new Image("file:./resources/icon_128x128.png");
 				int nbPixels = (int) (image.getWidth() * image.getHeight());
 				
 				
@@ -821,7 +821,7 @@ public class TestImageNode extends Application{
 			@Override
 			public void run() {
 		
-				Image image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/square-2.png");
+				Image image = new Image("file:./resources/square-2.png");
 				int nbPixels = (int) (image.getWidth() * image.getHeight());
 				
 				Network net = Network.getInstance(ENetworkImplementation.UNLINKED);
@@ -941,7 +941,7 @@ public class TestImageNode extends Application{
 			@Override
 			public void run() {
 				
-				Image image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/square-2.png");
+				Image image = new Image("file:./resources/square-2.png");
 				int nbPixels = (int) (image.getWidth() * image.getHeight());
 				
 				Network net = Network.getInstance(ENetworkImplementation.UNLINKED);
@@ -1044,7 +1044,7 @@ public class TestImageNode extends Application{
 				}
 				System.out.println("\n SQUARE 1 : nb key points: "+ kpList1.size());
 				
-				image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/square-3.png");
+				image = new Image("file:./resources/square-3.png");
 				
 				pixelReader = image.getPixelReader();
 				for(int idx = 0; idx < nbPixels; idx++){
@@ -1089,7 +1089,7 @@ public class TestImageNode extends Application{
 			@Override
 			public void run() {
 		
-				Image image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/e-16x16.png");
+				Image image = new Image("file:./resources/e-16x16.png");
 				int nbPixels = (int) (image.getWidth() * image.getHeight());
 				
 				Network net = Network.getInstance(ENetworkImplementation.UNLINKED);
@@ -1313,7 +1313,7 @@ public class TestImageNode extends Application{
 				}
 				System.out.println("\n SQUARE 1 : nb key points: "+ kpList1.size());
 				
-				image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/e-translated-16x16.png");
+				image = new Image("file:./resources/e-translated-16x16.png");
 				
 				pixelReader = image.getPixelReader();
 				for(int idx = 0; idx < nbPixels; idx++){
@@ -1531,7 +1531,7 @@ public class TestImageNode extends Application{
 				//Image noir et blanc en input
 				System.out.println("Begin lecture image ...");
 				PixelNode pixNode = null;
-				Image image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/logo-transparent.png");
+				Image image = new Image("file:./resources/logo-transparent.png");
 				PixelReader pixelReader = image.getPixelReader();
 				for(int idx = 0; idx < nbPixels; idx++){
 					pixNode = (PixelNode) inArea.getNode(idx);

@@ -307,7 +307,7 @@ public class TestVisionNode extends Application{
 			@Override
 			public void run() {
 				
-				Image image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/a-16x16.png");
+				Image image = new Image("file:./resources/a-16x16.png");
 				int width = (int) image.getWidth();
 				int height = (int) image.getHeight();
 				
@@ -478,7 +478,7 @@ public class TestVisionNode extends Application{
 				
 				//Image noir et blanc en input
 				System.out.println("Begin lecture image ...");
-				Image image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/logo-transparent.png");
+				Image image = new Image("file:./resources/logo-transparent.png");
 				PixelReader pixelReader = image.getPixelReader();
 				for(int idx = 0; idx < nbPixels; idx++){
 					pixNode = (PixelNode) inArea.getNode(idx);
@@ -524,8 +524,8 @@ public class TestVisionNode extends Application{
 			@Override
 			public void run() {
 				
-				//Image image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/empreinte.png");
-				Image image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/a-16x16.png");
+				//Image image = new Image("file:./resources/empreinte.png");
+				Image image = new Image("file:./resources/a-16x16.png");
 				int width = (int) image.getWidth();
 				int height = (int) image.getHeight();
 				
@@ -637,7 +637,7 @@ public class TestVisionNode extends Application{
 			@Override
 			public void run() {
 				
-				Image image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/icon_48x48.png");
+				Image image = new Image("file:./resources/icon_48x48.png");
 				int width = (int) image.getWidth();
 				int height = (int) image.getHeight();
 				System.out.println("image :" + width + "x" + height);
@@ -733,7 +733,7 @@ public class TestVisionNode extends Application{
 			@Override
 			public void run() {
 				
-				Image image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/sinsum13.gif");
+				Image image = new Image("file:./resources/sinsum13.gif");
 				int width = (int) image.getWidth();
 				int height = (int) image.getHeight();
 				
@@ -943,7 +943,7 @@ public class TestVisionNode extends Application{
 			@Override
 			public void run() {
 				
-				Image image = new Image("file:/Users/ericmarchand/Documents/workspace_neural/lena128.jpg");
+				Image image = new Image("file:./resources/lena128.jpg");
 				int width = (int) image.getWidth();
 				int height = (int) image.getHeight();
 				

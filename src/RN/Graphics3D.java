@@ -83,7 +83,7 @@ public class Graphics3D {
 		ambient.setLightOn(false);
 
 		
-		Image cells = new Image("file:/Users/ericmarchand/Documents/workspace_neural/cells.png", true);
+		Image cells = new Image("file:./resources/cells.png", true);
 		material.setSelfIlluminationMap(cells);
 		material.setDiffuseColor(Color.WHITE);
 		//material.setBumpMap(new Image("http://www.inserm.fr/var/inserm/storage/images/mediatheque/infr-grand-public/images/images-de-sciences/inserm_52314neuroneaxone4/325924-1-fre-FR/inserm_52314neuroneaxone4.jpg"));
