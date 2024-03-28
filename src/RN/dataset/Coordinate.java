@@ -1,10 +1,12 @@
 package RN.dataset;
 
+import java.io.Serializable;
+
 /**
  * @author Eric Marchand
  *
  */
-public class Coordinate {
+public class Coordinate implements Serializable {
 	
 	// x the abscissa coordinate with origin 0 of the image
 	private Double x = null;

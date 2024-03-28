@@ -1,5 +1,7 @@
 package RN.algoactivations;
 
+import java.io.Serializable;
+
 import RN.algoactivations.utils.BoundMath;
 
 
@@ -7,7 +9,7 @@ import RN.algoactivations.utils.BoundMath;
  * @author Eric Marchand
  *
  */
-public class SygmoidNegativePerformer implements IActivation {
+public class SygmoidNegativePerformer implements Serializable, IActivation {
 
 	@Override
 	public double perform(double... value) throws Exception {

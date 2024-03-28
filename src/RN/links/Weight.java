@@ -1,10 +1,12 @@
 package RN.links;
 
+import java.io.Serializable;
+
 /**
  * @author Eric Marchand
  *
  */
-public class Weight {
+public class Weight implements Serializable{
 	
 	private double weight = 1.0D;
 

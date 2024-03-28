@@ -1,11 +1,12 @@
 package RN.algoactivations;
 
+import java.io.Serializable;
 
 /**
  * @author Eric Marchand
  *
  */
-public class ReLUPerformer implements IActivation{
+public class ReLUPerformer implements Serializable, IActivation{
 
 	@Override
 	public double perform(double... value) throws Exception {

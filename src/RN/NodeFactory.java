@@ -1,5 +1,6 @@
 package RN;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -12,7 +13,7 @@ import RN.utils.ReflexionUtils;
  * @author Eric Marchand
  * 
  */
-public class NodeFactory {
+public class NodeFactory implements Serializable {
 	
 	public NodeFactory(){
 	}

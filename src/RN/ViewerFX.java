@@ -1,5 +1,8 @@
 package RN;
 
+import java.io.File;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
 import java.util.List;
@@ -40,6 +43,7 @@ import javafx.scene.layout.Pane;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.shape.Rectangle;
+import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
@@ -67,6 +71,7 @@ public class ViewerFX extends Application {
 	final Button run = new Button("Run");
 	final Button runTest = new Button("Run test");
 	final Button save = new Button("Save network");
+	final Button load = new Button("Load network");
 	final Button rand = new Button("Randomize network");
 	final Button clear = new Button("Clear");
 	final Button print = new Button("Print network");
@@ -310,11 +315,11 @@ public class ViewerFX extends Application {
 		showLogs.setSelected(true);
 
 		hbox1.setSpacing(10);
-		hbox1.getChildren().addAll(train, trainStop, run, runTest, rand, clear, print, new Label("Learning rate"),
+		hbox1.getChildren().addAll(train, trainStop, run, runTest, rand, clear, print, save, new Label("Learning rate"),
 				learningRateField, new Label("Momentum"), momentumField, submit, showLogs);
 
 		hbox2.setSpacing(10);
-		hbox2.getChildren().addAll(comboSamples);
+		hbox2.getChildren().addAll(comboSamples, load);
 
 		hbox1.setPadding(new Insets(5, 20, 2, 20));
 		hbox2.setPadding(new Insets(2, 20, 5, 20));
@@ -464,13 +469,89 @@ public class ViewerFX extends Application {
 		});
 
 		save.setOnAction(new EventHandler<ActionEvent>() {
-			@Override
-			public void handle(ActionEvent e) {
-				// NetworkService.saveNetwork(Long.valueOf(adapter.getText()),
-				// Long.valueOf(network.getText()));
-				System.out.println("nothing happened !");
-			}
+		    @Override
+		    public void handle(ActionEvent e) {
+		        // Format pour le timestamp
+		        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+		        // Obtenir le timestamp actuel
+		        String timestamp = LocalDateTime.now().format(formatter);
+
+		        // Chemin du dossier models à la racine du projet
+		        String cheminDossier = "models/";
+		        // Vérifier l'existence du dossier et le créer si nécessaire
+		        File dossier = new File(cheminDossier);
+		        if (!dossier.exists()) {
+		            dossier.mkdirs();
+		        }
+
+		        // Nom du fichier avec timestamp
+		        String nomFichier = "deeper-net-model-" + timestamp + ".ser";
+		        // Chemin complet du fichier de sauvegarde
+		        String cheminFichier = cheminDossier + nomFichier;
+
+		        // Obtenir le réseau de neurones à sauvegarder
+		        Object reseauNeurone = tester.getNetwork();
+
+		        // Appeler saveNetwork pour sauvegarder le réseau
+		        saveNetwork(reseauNeurone, cheminFichier);
+
+		        System.out.println("Réseau sauvegardé sous : " + cheminFichier);
+		    }
 		});
+		
+		
+		load.setOnAction(new EventHandler<ActionEvent>() {
+		    @Override
+		    public void handle(ActionEvent event) {
+		        FileChooser fileChooser = new FileChooser();
+		        // Définir le filtre d'extension pour ne montrer que les fichiers .ser
+		        FileChooser.ExtensionFilter extFilter = new FileChooser.ExtensionFilter("SER files (*.ser)", "*.ser");
+		        fileChooser.getExtensionFilters().add(extFilter);
+
+		        // Ouvrir la boîte de dialogue de sélection de fichier
+		        File file = fileChooser.showOpenDialog(null);
+
+		        if (file != null) {
+		            // Charger le réseau de neurones depuis le fichier sélectionné
+
+			        try {
+			            Network network = NetworkService.loadNetwork(file.getPath());
+
+			            if (network != null) {
+			            	
+			                if (tester != null) {
+			                    tester.setNetwork(network); // Suppose que tester a une méthode setNetwork pour configurer le réseau
+				                // Update your application's state with the loaded network if necessary
+				                // For example, set the loaded network as the current network in your application context
+					            Network.network = network;
+				                // Assuming you have the network object loaded successfully
+				                // Enable the Run and Print Network buttons here
+				                run.setDisable(false);
+				                print.setDisable(false);
+			                } else {
+			                    // Gérer le cas où tester n'est pas initialisé
+			                    // Peut-être initialiser tester ici ou loguer une erreur
+			                    System.out.println("Tester n'est pas initialisé.");
+			                }
+
+			            }
+			            
+			        } catch (Exception e) {
+			            e.printStackTrace();
+			            // You might want to keep the buttons disabled if loading fails
+			            run.setDisable(true);
+			            print.setDisable(true);
+			        }
+		        
+		        }
+		        
+		        
+		    }
+		});
+		
+
+
+
 
 		rand.setOnAction(new EventHandler<ActionEvent>() {
 			@Override
@@ -588,6 +669,25 @@ public class ViewerFX extends Application {
 			}
 		}).start();
 	}
+	
+	public void saveNetwork(Object reseauNeurone, String cheminFichier) {
+	    try {
+			NetworkService.saveNetwork(reseauNeurone, cheminFichier);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+	
+	public void loadNetwork(String cheminFichier) {
+	    try {
+			NetworkService.loadNetwork(cheminFichier);
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	
+
 
 	public static ESamples getSelectedSample() {
 		return selectedSample;
@@ -607,8 +707,6 @@ public class ViewerFX extends Application {
 	}
 
 	public static void addSeriesToLineChart() {
-
-		// TODO implement a new tab to visualize inferences
 	}
 
 	public static int getThreadPoolDelay() {

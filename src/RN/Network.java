@@ -1,5 +1,6 @@
 package RN;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
@@ -23,7 +24,7 @@ import RN.utils.StatUtils;
  * @author Eric Marchand
  * 
  */
-public class Network extends NetworkElement implements INetwork{
+public class Network extends NetworkElement implements Serializable, INetwork{
 
 	private List<ILayer> layers = null;
 

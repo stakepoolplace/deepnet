@@ -1,5 +1,6 @@
 package RN.algoactivations;
 
+import java.io.Serializable;
 
 /**
  * 
@@ -9,7 +10,7 @@ package RN.algoactivations;
  * @author Eric
  *
  */
-public class HeaviSidePerformer implements IActivation {
+public class HeaviSidePerformer implements Serializable, IActivation {
 
 	@Override
 	public double perform(double... value) throws Exception {

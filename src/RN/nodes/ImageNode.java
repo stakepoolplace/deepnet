@@ -32,12 +32,12 @@ import javafx.stage.Stage;
  */
 public class ImageNode extends PixelNode {
 	
-	public Stage stage = new Stage();
-	public Scene scene2 = null;
-	public Canvas canvas;
-	public GraphicsContext gc;
-	public PixelWriter pixelWriter;
-	public PixelFormat<ByteBuffer> pixelFormat = PixelFormat.getByteRgbInstance();
+	public transient Stage stage = new Stage();
+	public transient Scene scene2 = null;
+	public transient Canvas canvas;
+	public transient GraphicsContext gc;
+	public transient PixelWriter pixelWriter;
+	public transient PixelFormat<ByteBuffer> pixelFormat = PixelFormat.getByteRgbInstance();
 
 	// Image Data
 	private int IMAGE_WIDTH = 100;
@@ -48,10 +48,10 @@ public class ImageNode extends PixelNode {
 	private Boolean green = Boolean.TRUE;
 	private Boolean blue = Boolean.TRUE;
 	
-	private CheckBox redCB = null;
-	private CheckBox greenCB = null;
-	private CheckBox blueCB = null;
-	private CheckBox negativeValuesCB = null;
+	private transient CheckBox redCB = null;
+	private transient CheckBox greenCB = null;
+	private transient CheckBox blueCB = null;
+	private transient CheckBox negativeValuesCB = null;
 	
 	private Boolean negativeValuesActivated = Boolean.FALSE;
 	

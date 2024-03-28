@@ -1,5 +1,12 @@
 package RN;
 
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+
 import org.apache.log4j.Logger;
 
 /**
@@ -7,20 +14,44 @@ import org.apache.log4j.Logger;
  * 
  */
 public class NetworkService {
-	
-	
+
 	private static Logger logger = Logger.getLogger(NetworkService.class);
-	
-	public static void saveNetwork(Long idAdapter, Long idSource){
-		
+
+    public static void saveNetwork(Object reseauNeurone, String filename) throws Exception {
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(filename))) {
+            oos.writeObject(reseauNeurone);
+        } catch (FileNotFoundException e) {
+            throw new Exception("File not found", e);
+        } catch (IOException e) {
+            throw new Exception("Error initializing stream", e);
+        }
+    }
+
+	public static void saveNetwork(Long idAdapter, Long idSource) {
+
 //		DBConnection con = TestNetwork.getNetconnection();
 //		Network network = TestNetwork.getNetwork(idAdapter, idSource);
 //		if(network == null)
 //			network = TestNetwork.addNewNetwork(idAdapter, idSource);
 //		insertNodes(con, network);
-		
+
 	}
+
+
 	
+    public static Network loadNetwork(String filename) throws Exception {
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(filename))) {
+            return (Network) ois.readObject();
+        } catch (FileNotFoundException e) {
+            throw new Exception("File not found", e);
+        } catch (IOException e) {
+            throw new Exception("Error initializing stream", e);
+        } catch (ClassNotFoundException e) {
+            throw new Exception("Class not found", e);
+        }
+    }	
+	
+
 //	private static void insertNodes(final DBConnection connection, Network network){
 //		
 //        try {
@@ -76,12 +107,12 @@ public class NetworkService {
 //        }
 //		
 //	}
-	
+
 //	public static Network loadNetwork(Long idAdapter, Long idNetwork){
 //		DBConnection con = TestNetwork.getNetconnection();
 //		return fetchNetwork(idAdapter, idNetwork, con);
 //	}
-	
+
 //	private static Network fetchNetwork(Long idAdapter, Long idNetwork, DBConnection con){
 //		
 //		Network network = TestNetwork.getNetwork(idAdapter, idNetwork);
@@ -131,7 +162,5 @@ public class NetworkService {
 //        
 //	}
 //	
-
-	
 
 }

@@ -1,12 +1,14 @@
 package RN.algoactivations;
 
+import java.io.Serializable;
+
 import RN.algoactivations.utils.BoundNumbers;
 
 /**
  * @author Eric Marchand
  *
  */
-public class IdentityPerformer implements IActivation{
+public class IdentityPerformer implements Serializable, IActivation{
 
 	@Override
 	public double perform(double... value) throws Exception {

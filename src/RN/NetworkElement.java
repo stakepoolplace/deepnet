@@ -1,10 +1,12 @@
 package RN;
 
+import java.io.Serializable;
+
 /**
  * @author Eric Marchand
  * 
  */
-public class NetworkElement {
+public class NetworkElement implements Serializable{
 
 	protected static NetworkContext context = NetworkContext.getContext();
 	

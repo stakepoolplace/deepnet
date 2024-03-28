@@ -1,10 +1,12 @@
 package RN.algoactivations;
 
+import java.io.Serializable;
+
 /**
  * @author Eric Marchand
  *
  */
-public class NegativePerformer implements IActivation {
+public class NegativePerformer implements Serializable, IActivation {
 
 	@Override
 	public double perform(double... value) throws Exception {

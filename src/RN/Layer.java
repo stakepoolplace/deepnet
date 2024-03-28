@@ -1,5 +1,6 @@
 package RN;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -14,7 +15,7 @@ import RN.nodes.RecurrentNode;
  * @author Eric Marchand
  * 
  */
-public class Layer extends NetworkElement implements ILayer{
+public class Layer extends NetworkElement implements Serializable, ILayer{
 
 	protected int layerId;
 	

@@ -1,11 +1,12 @@
 package RN.algoactivations;
 
+import java.io.Serializable;
 
 /**
  * @author Eric Marchand
  *
  */
-public class LeakyReLUPerformer implements IActivation{
+public class LeakyReLUPerformer implements Serializable, IActivation{
 	
 	public static Double alpha = 0.01D;
 
