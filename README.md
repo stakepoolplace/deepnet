@@ -54,9 +54,7 @@ See package /RN/tests
 4. The JavaFX interface will open, allowing you to start and visualize the training process.
 
 #### Next steps 
-0. Mavenize project
-1. Add a save button to serialize network and weights on the disk. Which format ?
-2. Add a load button to read a file from disk.
+1. Mavenize project
 
 
 ## Utilisation
