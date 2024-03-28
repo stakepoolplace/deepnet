@@ -54,7 +54,7 @@ public class NetworkService {
         
         int objectId = System.identityHashCode(object);
         if (seenObjects.contains(objectId)) {
-            return "\"[Circular Reference]\"";
+            return "\"obj[" + objectId + "]\"";
         }
 
         Class<?> objClass = object.getClass();
@@ -78,7 +78,7 @@ public class NetworkService {
             sb.append("{\n");
             Field[] fields = objClass.getDeclaredFields();
             for (Field field : fields) {
-                if (!Modifier.isStatic(field.getModifiers()) && !field.isSynthetic() && !estUnAttributFonctionnel(field)) {
+                if (!Modifier.isStatic(field.getModifiers()) && !field.isSynthetic() && !estUnAttributFonctionnel(field) && estVisible(objClass, field)) {
                     if (!isFirstField) {
                         sb.append(",\n");
                     } else {
@@ -103,7 +103,23 @@ public class NetworkService {
 
 
 
-    private static boolean estUnAttributFonctionnel(Field field) {
+    private static boolean estVisible(Class<?> objClass, Field field) {
+    	
+    	
+		if("RN.nodes.Node".equals(objClass.getName()) && "area".equals(field.getName()))
+			return false;
+		
+		if("RN.links.Link".equals(objClass.getName()) && ("targetNode".equals(field.getName()) || "sourceNode".equals(field.getName())))
+			return false;
+
+			
+		
+		return true;
+	}
+
+
+
+	private static boolean estUnAttributFonctionnel(Field field) {
     	
     	if(field.getName().equals("function")) {
     		return true;

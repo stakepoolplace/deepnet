@@ -17,6 +17,7 @@ public class Link extends NetworkElement {
 
 	public static final long SIMPLE_DELAY = 1;
 	public static final long REGULAR_DELAY = 0;
+	private static Random random = new Random();
 
 	private int inputLinkId = 0;
 	private int outputLinkId = 0;
@@ -25,7 +26,6 @@ public class Link extends NetworkElement {
 	private INode targetNode;
 	private INode sourceNode;
 	private double previousDeltaWeight;
-	private static Random random = new Random();
 	private boolean filterActive = false;
 	private ESamples filter;
 	private boolean modifiable = true;

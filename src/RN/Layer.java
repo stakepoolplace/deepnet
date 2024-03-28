@@ -31,8 +31,6 @@ public class Layer extends NetworkElement implements Serializable, ILayer{
 	
 	private double layerError = 0.0D;
 	
-
-	
 	
 	public Layer() {
 		this.sublayers = new ArrayList<ILayer>();

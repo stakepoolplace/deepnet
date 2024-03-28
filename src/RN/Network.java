@@ -163,43 +163,53 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 			if (layer.isFirstLayer())
 				continue;
 			
-			if(impl == ENetworkImplementation.LINKED){
-				
-				List<INode> layersNodes = layer.getLayerNodes();
-				for (INode node : layersNodes) {
-					
-					for (Link link : node.getInputs()){
-						if(link.isWeightModifiable())
-							link.initWeight(min, max);
+//			if(impl == ENetworkImplementation.LINKED){
+//				
+//				List<INode> layersNodes = layer.getLayerNodes();
+//				for (INode node : layersNodes) {
+//					
+//					for (Link link : node.getInputs()){
+//						if(link.isWeightModifiable())
+//							link.initWeight(min, max);
+//					}
+//					
+//					// initialisation du biais
+//					biasWeight = getContext().getNodeBiasWeights()[layer.getLayerId()];
+//					if(node.getBiasInput() != null && biasWeight != null){
+//						
+//						if(biasWeight != 1D){
+//							node.getBiasInput().setWeight(getContext().getNodeBiasWeights()[layer.getLayerId()]);
+//							node.getBiasInput().setPreviousDeltaWeight(0.0);
+//						}else{
+//							node.getBiasInput().initWeight(min, max);
+//						}
+//						
+//					}
+//					
+//					
+//				}
+//				
+//				
+//			}else{
+//				
+//				for(IArea area : layer.getAreas()){
+//					if(area.getLinkage().isWeightModifiable()){
+//						for(INode node : area.getNodes()){
+//							node.setBiasWeightValue(StatUtils.initValue(min, max));
+//							node.setBiasPreviousDeltaWeight(0.0);
+//						}
+//					}
+//					
+//				}
+//				
+//			}
+			
+			for(IArea area : layer.getAreas()){
+				if(area.getLinkage().isWeightModifiable()){
+					for(INode node : area.getNodes()){
+						node.setBiasWeightValue(StatUtils.initValue(min, max));
+						node.setBiasPreviousDeltaWeight(0.0);
 					}
-					
-					// initialisation du biais
-					biasWeight = getContext().getNodeBiasWeights()[layer.getLayerId()];
-					if(node.getBiasInput() != null && biasWeight != null){
-						
-						if(biasWeight != 1D){
-							node.getBiasInput().setWeight(getContext().getNodeBiasWeights()[layer.getLayerId()]);
-							node.getBiasInput().setPreviousDeltaWeight(0.0);
-						}else{
-							node.getBiasInput().initWeight(min, max);
-						}
-						
-					}
-					
-					
-				}
-				
-				
-			}else{
-				
-				for(IArea area : layer.getAreas()){
-					if(area.getLinkage().isWeightModifiable()){
-						for(INode node : area.getNodes()){
-							node.setBiasWeightValue(StatUtils.initValue(min, max));
-							node.setBiasPreviousDeltaWeight(0.0);
-						}
-					}
-					
 				}
 				
 			}

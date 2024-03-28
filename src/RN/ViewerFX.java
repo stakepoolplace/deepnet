@@ -548,6 +548,7 @@ public class ViewerFX extends Application {
 				                // Enable the Run and Print Network buttons here
 				                run.setDisable(false);
 				                print.setDisable(false);
+				                rand.setDisable(false);
 				                printDeserializedNet.setDisable(false);
 								tabPane.getSelectionModel().select(tabConsole);
 								consoleTextArea.setText("Modèle chargé avec succès.");
