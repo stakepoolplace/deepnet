@@ -20,6 +20,7 @@ import RN.strategy.EStrategy;
 import RN.strategy.Strategy;
 import RN.strategy.StrategyFactory;
 import javafx.scene.chart.LineChart;
+import javafx.scene.control.TextArea;
 
 /**
  * @author Eric Marchand
@@ -61,7 +62,7 @@ public class BackPropagationTrainer implements ITrainer {
 	
 	@Override
 	public void launchTrain() throws Exception {
-		launchTrain(true);
+		launchTrain(true, null);
 	}
 	
 	/*
@@ -70,7 +71,7 @@ public class BackPropagationTrainer implements ITrainer {
 	 * @see RN.ITester#lauchTrain(java.lang.Long, java.lang.Long)
 	 */
 	@Override
-	public void launchTrain(boolean verbose) throws Exception {
+	public void launchTrain(boolean verbose, TextArea console) throws Exception {
 
 		int samplesNb = DataSeries.getInstance().getInputDataSet().size();
 		breakTraining = false;
@@ -102,8 +103,12 @@ public class BackPropagationTrainer implements ITrainer {
 //					strategy.apply();
 //				
 				long stop = System.currentTimeMillis();
-				if (verbose)
-					System.out.println("Stage #" + trainCycleAbsolute + "    Error: " + absoluteError + "    Error mean: " + (sigmaAbsoluteError / (trainCycle + 1)) + "    Duration: "+ (stop-start)/1000 + " second(s)");
+				if (verbose) {
+					if(console != null)
+						console.appendText("Stage #" + trainCycleAbsolute + "    Error: " + absoluteError + "    Error mean: " + (sigmaAbsoluteError / (trainCycle + 1)) + "    Duration: "+ (stop-start)/1000 + " second(s)"+ "\n");
+					else
+						System.out.println("Stage #" + trainCycleAbsolute + "    Error: " + absoluteError + "    Error mean: " + (sigmaAbsoluteError / (trainCycle + 1)) + "    Duration: "+ (stop-start)/1000 + " second(s)");
+				}
 				
 				trainCycleAbsolute++;
 				trainCycle++;

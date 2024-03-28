@@ -20,6 +20,7 @@ import RN.strategy.EStrategy;
 import RN.strategy.Strategy;
 import RN.strategy.StrategyFactory;
 import javafx.scene.chart.LineChart;
+import javafx.scene.control.TextArea;
 
 /**
  * @author Eric Marchand
@@ -60,7 +61,7 @@ public class LSTMBackwardPassTraining implements ITrainer {
 
 	@Override
 	public void launchTrain() throws Exception {
-		launchTrain(true);
+		launchTrain(true, null);
 	}
 	
 	/*
@@ -69,7 +70,7 @@ public class LSTMBackwardPassTraining implements ITrainer {
 	 * @see RN.ITester#lauchTrain(java.lang.Long, java.lang.Long)
 	 */
 	@Override
-	public void launchTrain(boolean verbose) throws Exception {
+	public void launchTrain(boolean verbose, TextArea console) throws Exception {
 
 		int samplesNb = DataSeries.getInstance().getInputDataSet().size();
 		breakTraining = false;
@@ -96,8 +97,15 @@ public class LSTMBackwardPassTraining implements ITrainer {
 //				if(ViewerFX.growingHiddens.isSelected() && (trainCycle % 20 == 0) && sigmaAbsoluteError > 0.0D && ((sigmaAbsoluteError / (trainCycle + 1)) <= absoluteError * 1.1D))
 //					strategy.apply();
 //				
-				if (verbose && (trainCycle % 100 == 0))
-					System.out.println("Stage #" + trainCycleAbsolute + " Error:" + absoluteError + "  Error mean:" + (sigmaAbsoluteError / (trainCycle + 1)));
+				
+				if (verbose && (trainCycle % 100 == 0)) {
+					if(console != null)
+						console.appendText("Stage #" + trainCycleAbsolute + " Error:" + absoluteError + "  Error mean:" + (sigmaAbsoluteError / (trainCycle + 1)) + "\n");
+					else
+						System.out.println("Stage #" + trainCycleAbsolute + " Error:" + absoluteError + "  Error mean:" + (sigmaAbsoluteError / (trainCycle + 1)));
+				}
+				
+				
 				
 				trainCycleAbsolute++;
 				trainCycle++;

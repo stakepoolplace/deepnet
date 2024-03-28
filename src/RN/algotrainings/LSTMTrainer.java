@@ -4,11 +4,6 @@ import java.io.IOException;
 import java.util.List;
 import java.util.ListIterator;
 
-import javafx.collections.FXCollections;
-import javafx.scene.chart.LineChart;
-import javafx.scene.chart.ScatterChart;
-import javafx.scene.chart.XYChart;
-import javafx.scene.chart.XYChart.Data;
 import RN.DataSeries;
 import RN.TestLSTMNetwork;
 import RN.ViewerFX;
@@ -17,6 +12,12 @@ import RN.dataset.OutputData;
 import dmonner.xlbp.Network;
 import dmonner.xlbp.compound.InputCompound;
 import dmonner.xlbp.compound.XEntropyTargetCompound;
+import javafx.collections.FXCollections;
+import javafx.scene.chart.LineChart;
+import javafx.scene.chart.ScatterChart;
+import javafx.scene.chart.XYChart;
+import javafx.scene.chart.XYChart.Data;
+import javafx.scene.control.TextArea;
 
 /**
  * @author Eric Marchand
@@ -49,12 +50,12 @@ public class LSTMTrainer implements ITrainer {
 	
 	@Override
 	public void launchTrain() throws IOException {
-		launchTrain(true);
+		launchTrain(true, null);
 	}
 	
 
 	@Override
-	public void launchTrain(boolean verbose) throws IOException {
+	public void launchTrain(boolean verbose, TextArea console) throws IOException {
 
 		DataSeries dataSeries = DataSeries.getInstance();
 		InputCompound in = TestLSTMNetwork.getInstance().getIn();
@@ -125,8 +126,12 @@ public class LSTMTrainer implements ITrainer {
 				
 			}
 			
-			if(verbose && trainCycleAbsolute % 100 == 0)
-				System.out.println("Stage #" + trainCycleAbsolute + " Error:" + absoluteError);
+			if (verbose && trainCycleAbsolute % 100 == 0) {
+				if(console != null)
+					console.appendText("Stage #" + trainCycleAbsolute + " Error:" + absoluteError + "\n");
+				else
+					System.out.println("Stage #" + trainCycleAbsolute + " Error:" + absoluteError);
+			}
 			
 			series.getData().add(new ScatterChart.Data<Number, Number>(trainCycle++, absoluteError));
 			trainCycleAbsolute++;

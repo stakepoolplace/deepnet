@@ -80,6 +80,10 @@ public class ViewerFX extends Application {
 	final Button print = new Button("Print network");
 	final Button printDeserializedNet = new Button("Print deserialized network");
 	
+	static TabPane tabPane = null;
+	static Tab tabConsole = null;
+	static Tab tabTraining = null;
+	static Tab tabScaling = null;
 	
 	public final static int nbCycles = 500;
 
@@ -134,7 +138,7 @@ public class ViewerFX extends Application {
 	    scalingPane = createScaling(); // Initialiser le scalingPane
 	    createConsoleTab(); // Initialiser le consoleTextArea
 
-	    TabPane tabPane = createTabPane(); // Cette méthode va maintenant configurer correctement les onglets
+	    tabPane = createTabPane(); // Cette méthode va maintenant configurer correctement les onglets
 
 	    Pane commandsPane = createCommands();
 
@@ -165,6 +169,12 @@ public class ViewerFX extends Application {
 	private static void createConsoleTab() {
 	    consoleTextArea = new TextArea(); // Initialiser l'area de texte de la console
 	    consoleTextArea.setEditable(false); // Rendre non éditable
+	    consoleTextArea.textProperty().addListener((observable, oldValue, newValue) -> {
+			Platform.runLater(() -> {
+		    	consoleTextArea.setScrollTop(Double.MAX_VALUE); // Défiler automatiquement vers le bas
+			});
+	    });
+
 	    
 	}
 
@@ -172,13 +182,13 @@ public class ViewerFX extends Application {
 		
 	    TabPane tabPane = new TabPane();
 
-	    Tab tabTraining = new Tab("Training", lineChart); // Ajouter le lineChart directement à l'onglet
+	    tabTraining = new Tab("Training", lineChart); // Ajouter le lineChart directement à l'onglet
 	    tabTraining.setClosable(false);
 
-	    Tab tabScaling = new Tab("Scale network", scalingPane); // Ajouter le scalingPane directement à l'onglet
+	    tabScaling = new Tab("Scale network", scalingPane); // Ajouter le scalingPane directement à l'onglet
 	    tabScaling.setClosable(false);
 
-	    Tab tabConsole = new Tab("Console", consoleTextArea); // Ajouter le consoleTextArea directement à l'onglet
+	    tabConsole = new Tab("Console", consoleTextArea); // Ajouter le consoleTextArea directement à l'onglet
 	    tabConsole.setClosable(false);
 
 	    tabPane.getTabs().addAll(tabTraining, tabScaling, tabConsole); // Ajouter tous les onglets au TabPane
@@ -275,8 +285,10 @@ public class ViewerFX extends Application {
 									+ " examples");
 						}
 
-
-						System.out.println(DataSeries.getInstance().getString());
+						Platform.runLater(() -> {
+							tabPane.getSelectionModel().select(tabConsole);
+						});
+						consoleTextArea.setText(DataSeries.getInstance().getString()+ "\n");
 
 						scalingPane = createScaling();
 
@@ -296,8 +308,12 @@ public class ViewerFX extends Application {
 						// Weights are randomized here because first propagation create weights in the
 						// 'unlinked' mode
 						tester.initWeights(tester.getInitWeightRange(0), tester.getInitWeightRange(1));
-						System.out.println("weigts randomized [ " + tester.getInitWeightRange(0) + ", "
-								+ tester.getInitWeightRange(1) + "] !");
+						consoleTextArea.appendText("weigts randomized [ " + tester.getInitWeightRange(0) + ", "
+								+ tester.getInitWeightRange(1) + "] !" + "\n");
+						consoleTextArea.appendText("modèle chargé avec succès. "+ "\n");
+						Platform.runLater(() -> {
+					    	consoleTextArea.setScrollTop(Double.MAX_VALUE); // Défiler automatiquement vers le bas
+						});
 
 					}
 
@@ -340,7 +356,8 @@ public class ViewerFX extends Application {
 			public void handle(ActionEvent e) {
 
 				try {
-									
+					
+					tabPane.getSelectionModel().select(tabTraining);
 					
 					trainer.getErrorLevelLines().clear();
 
@@ -362,7 +379,7 @@ public class ViewerFX extends Application {
 
 		            series.setName("Train " + (lineChart.getData().size() + 1));
 
-					trainer.launchTrain(showLogs.isSelected());
+					trainer.launchTrain(showLogs.isSelected(), consoleTextArea);
 
 					timeline1.setCycleCount(trainer.getErrorLevelLines().size());
 					animation.play();
@@ -401,7 +418,8 @@ public class ViewerFX extends Application {
 										series.getData().add(errorItr.next());
 								}
 							} catch (ConcurrentModificationException cme) {
-								System.out.println("Concurrent modif KeyFrame :  nextIndex :" + nextIndex);
+								tabPane.getSelectionModel().select(tabConsole);
+								consoleTextArea.setText("Concurrent modif KeyFrame :  nextIndex :" + nextIndex);
 							}
 						}
 					}
@@ -459,10 +477,11 @@ public class ViewerFX extends Application {
 
 					trainer.setLearningRate(Double.valueOf(learningRateField.getText()));
 					trainer.setAlphaDeltaWeight(Double.valueOf(momentumField.getText()));
-					System.out.println("learningRate set to " + learningRateField.getText());
-					System.out.println("momentum set to " + momentumField.getText());
+					tabPane.getSelectionModel().select(tabConsole);
+					consoleTextArea.setText("learningRate set to " + learningRateField.getText());
+					consoleTextArea.appendText("momentum set to " + momentumField.getText());
 				} else {
-					System.out.println("nothing happened !");
+					consoleTextArea.setText("nothing happened !");
 				}
 			}
 		});
@@ -493,8 +512,10 @@ public class ViewerFX extends Application {
 
 		        // Appeler saveNetwork pour sauvegarder le réseau
 		        saveNetwork(reseauNeurone, cheminFichier);
+		        
+				tabPane.getSelectionModel().select(tabConsole);
+				consoleTextArea.setText("Réseau sauvegardé sous : " + cheminFichier);
 
-		        System.out.println("Réseau sauvegardé sous : " + cheminFichier);
 		    }
 		});
 		
@@ -527,10 +548,14 @@ public class ViewerFX extends Application {
 				                // Enable the Run and Print Network buttons here
 				                run.setDisable(false);
 				                print.setDisable(false);
+				                printDeserializedNet.setDisable(false);
+								tabPane.getSelectionModel().select(tabConsole);
+								consoleTextArea.setText("Modèle chargé avec succès.");
 			                } else {
 			                    // Gérer le cas où tester n'est pas initialisé
 			                    // Peut-être initialiser tester ici ou loguer une erreur
-			                    System.out.println("Tester n'est pas initialisé.");
+								tabPane.getSelectionModel().select(tabConsole);
+								consoleTextArea.setText("Le Testeur n'est pas initialisé.");
 			                }
 
 			            }
@@ -556,7 +581,8 @@ public class ViewerFX extends Application {
 			@Override
 			public void handle(ActionEvent e) {
 				tester.initWeights(tester.getInitWeightRange(0), tester.getInitWeightRange(1));
-				System.out.println("weigts randomized [ " + tester.getInitWeightRange(0) + ", "
+				tabPane.getSelectionModel().select(tabConsole);
+				consoleTextArea.setText("weigts randomized [ " + tester.getInitWeightRange(0) + ", "
 						+ tester.getInitWeightRange(1) + "] !");
 			}
 		});
@@ -575,8 +601,8 @@ public class ViewerFX extends Application {
 			@Override
 			public void handle(ActionEvent e) {
 				String trace = tester.getNetwork().getString();
-				System.out.println(trace);
-	            consoleTextArea.setText(trace); // Mettre à jour l'area de texte de la console avec les informations
+				tabPane.getSelectionModel().select(tabConsole);
+				consoleTextArea.setText(trace); // Mettre à jour l'area de texte de la console avec les informations
 
 			}
 		});
@@ -587,6 +613,7 @@ public class ViewerFX extends Application {
 				Object object = tester.getNetwork();
 	            Set<Integer> seenObjects = new HashSet<>();
 	            try {
+					tabPane.getSelectionModel().select(tabConsole);
 					consoleTextArea.setText(NetworkService.printObjectDetails(object, 0, seenObjects));
 				} catch (IllegalAccessException e1) {
 					e1.printStackTrace();
@@ -638,7 +665,6 @@ public class ViewerFX extends Application {
 						if (old_val == null || new_val == null)
 							return;
 	
-						System.out.println(old_val.intValue() + " " + new_val.intValue());
 	
 						if (new_val.intValue() == 0)
 							return;

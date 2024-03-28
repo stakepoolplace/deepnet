@@ -3,9 +3,10 @@ package RN.algotrainings;
 import java.util.List;
 import java.util.ListIterator;
 
-import javafx.scene.chart.LineChart;
 import RN.dataset.InputData;
 import RN.dataset.OutputData;
+import javafx.scene.chart.LineChart;
+import javafx.scene.control.TextArea;
 
 
 /**
@@ -22,7 +23,7 @@ public interface ITrainer {
 
 	void launchTrain() throws Exception;
 	
-	void launchTrain(boolean verbose) throws Exception;
+	void launchTrain(boolean verbose, TextArea console) throws Exception;
 
 	public abstract double getDelay();
 	
