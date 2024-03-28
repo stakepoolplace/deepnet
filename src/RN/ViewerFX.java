@@ -539,6 +539,8 @@ public class ViewerFX extends Application {
 
 			            if (network != null) {
 			            	
+			            	lineChart.setTitle(network.getName());
+			            	
 			                if (tester != null) {
 			                    tester.setNetwork(network); // Suppose que tester a une méthode setNetwork pour configurer le réseau
 				                // Update your application's state with the loaded network if necessary
@@ -550,8 +552,7 @@ public class ViewerFX extends Application {
 				                print.setDisable(false);
 				                rand.setDisable(false);
 				                printDeserializedNet.setDisable(false);
-								tabPane.getSelectionModel().select(tabConsole);
-								consoleTextArea.setText("Modèle chargé avec succès.");
+								consoleTextArea.setText("Modèle \"" + network.getName() + "\" chargé avec succès.");
 			                } else {
 			                    // Gérer le cas où tester n'est pas initialisé
 			                    // Peut-être initialiser tester ici ou loguer une erreur

@@ -495,7 +495,8 @@ public class NetworkContext {
 		
 		network.setTimeSeriesOffset(1);
 		network.setRecurrentNodesLinked(false);
-		network.setName(network.getName() + network.geneticCodec());
+//		network.setName(network.getName() + network.geneticCodec());
+		network.setName(network.getName() + " network: " + network.getLayers().size() + " layers");
 		
 		return network;
 	}

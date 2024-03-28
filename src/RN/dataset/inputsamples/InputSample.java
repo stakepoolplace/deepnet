@@ -2,8 +2,10 @@ package RN.dataset.inputsamples;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
@@ -40,6 +42,8 @@ public class InputSample extends NetworkElement{
 	private ESamples sample;
 	private int fileSheetIdx;
 	public static double[] Ikeda;
+	private static SimpleDateFormat f = new SimpleDateFormat("dd-MM-yyyy");
+
 
 	public InputSample() {
 		// this.name = name;
@@ -1445,7 +1449,7 @@ public class InputSample extends NetworkElement{
 		tester.setTrainingVectorNumber(sheet.getLastRowNum() - rowDataIdx + 1);
 
 		// tester.createNetwork("NN-" + sheetName + "-" + f.format(new Date()));
-		tester.createXLSNetwork("NN-" + sheet.getSheetName() + "-", getContext());
+		tester.createXLSNetwork(f.format(new Date()) + " " + sheet.getSheetName(), getContext());
 		tester.getNetwork().finalizeConnections();
 
 	}
