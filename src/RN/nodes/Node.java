@@ -454,13 +454,14 @@ public class Node extends NetworkElement implements INode {
 			result += ITester.NEWLINE + "                            " + link.getString();
 		}
 		
-		if(network.getImpl() == null || network.getImpl() == ENetworkImplementation.LINKED){
-			result += ITester.NEWLINE + "                    BIAS : " + ITester.NEWLINE + "                            "
-									+ (biasInput != null ? biasInput.getString() : "aucun");
-		}else{
+		if(biasInput != null) {
+		result += ITester.NEWLINE + "                    BIAS : " + ITester.NEWLINE + "                            "
+				+ (biasInput != null ? biasInput.getString() : "aucun");
+		} else if(biasWeight != null) {
 			result += ITester.NEWLINE + "                    BIAS : " + ITester.NEWLINE + "                            "
 					+ (biasWeight != null && biasWeight.getWeight() != 0D ? biasWeight : "aucun");
 		}
+		
 		// result += "\n                  ACTIVATION FX : " + this.function +
 		// "\n                  OUTPUT :\n                      " + this.output;
 		result += ITester.NEWLINE + "                   ERROR : " + ITester.NEWLINE + "                            " + this.error;

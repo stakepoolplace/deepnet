@@ -5,8 +5,10 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
+import java.util.HashSet;
 import java.util.List;
 import java.util.ListIterator;
+import java.util.Set;
 
 import RN.algoactivations.ActivationFx;
 import RN.algoactivations.EActivation;
@@ -37,6 +39,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.Slider;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
+import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
@@ -75,6 +78,8 @@ public class ViewerFX extends Application {
 	final Button rand = new Button("Randomize network");
 	final Button clear = new Button("Clear");
 	final Button print = new Button("Print network");
+	final Button printDeserializedNet = new Button("Print deserialized network");
+	
 	
 	public final static int nbCycles = 500;
 
@@ -96,6 +101,7 @@ public class ViewerFX extends Application {
 
 	public static Pane scalingPane = new Pane();
 	public static Pane netPane = null;
+	private static TextArea consoleTextArea; // Référence globale pour l'area de texte de la console
 
 	public static boolean showLinearSeparation = false;
 
@@ -115,77 +121,69 @@ public class ViewerFX extends Application {
 
 	@Override
 	public void start(Stage stage) {
+		
+	    stage.setTitle("Error rate");
 
-		stage.setTitle("Error rate");
+	    Group group = new Group();
+	    StackPane root = new StackPane(group);
+	    Scene scene = new Scene(root);
+	    stage.setScene(scene);
 
-		Group group = new Group();
-		StackPane root = new StackPane(group);
-		Scene scene = new Scene(root);
-		stage.setScene(scene);
+	    createLineChart(); // Initialiser le lineChart
+	    netPane = createNetPane();
+	    scalingPane = createScaling(); // Initialiser le scalingPane
+	    createConsoleTab(); // Initialiser le consoleTextArea
 
-		createLineChart();
-		netPane = createNetPane();
+	    TabPane tabPane = createTabPane(); // Cette méthode va maintenant configurer correctement les onglets
 
-		TabPane tabPane = createTabPane();
+	    Pane commandsPane = createCommands();
 
-		final StackPane stack = new StackPane();
-		stack.getChildren().addAll(netPane, scalingPane, lineChart);
+	    VBox vbox = new VBox(tabPane, commandsPane); // Utiliser tabPane directement sans le stack non nécessaire
 
-		Pane commandsPane = createCommands();
+	    root.getChildren().add(vbox);
 
-		VBox vbox = new VBox();
-		vbox.getChildren().addAll(tabPane, stack, commandsPane);
+	    // Configuration initiale des boutons
+	    configureInitialButtonState();
 
-		root.getChildren().add(vbox);
+	    stage.show();
 
-		train.setDisable(true); // Désactiver le bouton au démarrage
-		trainStop.setDisable(true);
-		run.setDisable(true);
-		runTest.setDisable(true);
-		save.setDisable(true);
-		rand.setDisable(true);
-		clear.setDisable(true);
-		print.setDisable(true);
+	}
+	
+	private void configureInitialButtonState() {
+	    train.setDisable(true);
+	    trainStop.setDisable(true);
+	    run.setDisable(true);
+	    runTest.setDisable(true);
+	    save.setDisable(true);
+	    rand.setDisable(true);
+	    clear.setDisable(true);
+	    print.setDisable(true);
+	    printDeserializedNet.setDisable(true);
+	}
 
-		stage.show();
-
+	
+	private static void createConsoleTab() {
+	    consoleTextArea = new TextArea(); // Initialiser l'area de texte de la console
+	    consoleTextArea.setEditable(false); // Rendre non éditable
+	    
 	}
 
 	private TabPane createTabPane() {
+		
+	    TabPane tabPane = new TabPane();
 
-		Tab tabError = new Tab("Training");
-		tabError.setClosable(false);
-		tabError.selectedProperty().addListener(new ChangeListener<Boolean>() {
+	    Tab tabTraining = new Tab("Training", lineChart); // Ajouter le lineChart directement à l'onglet
+	    tabTraining.setClosable(false);
 
-			@Override
-			public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) {
-				if (!oldValue && newValue) {
-					lineChart.toFront();
-				}
+	    Tab tabScaling = new Tab("Scale network", scalingPane); // Ajouter le scalingPane directement à l'onglet
+	    tabScaling.setClosable(false);
 
-			}
+	    Tab tabConsole = new Tab("Console", consoleTextArea); // Ajouter le consoleTextArea directement à l'onglet
+	    tabConsole.setClosable(false);
 
-		});
+	    tabPane.getTabs().addAll(tabTraining, tabScaling, tabConsole); // Ajouter tous les onglets au TabPane
 
-		Tab tabScaling = new Tab("Scale network");
-		tabScaling.setClosable(false);
-		tabScaling.selectedProperty().addListener(new ChangeListener<Boolean>() {
-
-			@Override
-			public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) {
-				if (!oldValue && newValue) {
-					scalingPane.toFront();
-				}
-
-			}
-
-		});
-
-		TabPane tabPane = new TabPane(tabError, tabScaling);
-		tabPane.setManaged(true);
-		tabPane.toFront();
-
-		return tabPane;
+	    return tabPane;
 	}
 
 	private void createLineChart() {
@@ -238,6 +236,7 @@ public class ViewerFX extends Application {
 					rand.setDisable(selectedSample == ESamples.NONE);
 					clear.setDisable(selectedSample == ESamples.NONE);
 					print.setDisable(selectedSample == ESamples.NONE);
+					printDeserializedNet.setDisable(selectedSample == ESamples.NONE);
 					
 		            lastTrainingCycle = 0; // Réinitialisez la dernière valeur du cycle d'entraînement
 		            origTrainingCycle = 0;
@@ -319,7 +318,7 @@ public class ViewerFX extends Application {
 				learningRateField, new Label("Momentum"), momentumField, submit, showLogs);
 
 		hbox2.setSpacing(10);
-		hbox2.getChildren().addAll(comboSamples, load);
+		hbox2.getChildren().addAll(comboSamples, load, printDeserializedNet);
 
 		hbox1.setPadding(new Insets(5, 20, 2, 20));
 		hbox2.setPadding(new Insets(2, 20, 5, 20));
@@ -523,7 +522,7 @@ public class ViewerFX extends Application {
 			                    tester.setNetwork(network); // Suppose que tester a une méthode setNetwork pour configurer le réseau
 				                // Update your application's state with the loaded network if necessary
 				                // For example, set the loaded network as the current network in your application context
-					            Network.network = network;
+					            //Network.network = network;
 				                // Assuming you have the network object loaded successfully
 				                // Enable the Run and Print Network buttons here
 				                run.setDisable(false);
@@ -575,7 +574,24 @@ public class ViewerFX extends Application {
 		print.setOnAction(new EventHandler<ActionEvent>() {
 			@Override
 			public void handle(ActionEvent e) {
-				System.out.println(tester.getNetwork().getString());
+				String trace = tester.getNetwork().getString();
+				System.out.println(trace);
+	            consoleTextArea.setText(trace); // Mettre à jour l'area de texte de la console avec les informations
+
+			}
+		});
+		
+		printDeserializedNet.setOnAction(new EventHandler<ActionEvent>() {
+			@Override
+			public void handle(ActionEvent e) {
+				Object object = tester.getNetwork();
+	            Set<Integer> seenObjects = new HashSet<>();
+	            try {
+					consoleTextArea.setText(NetworkService.printObjectDetails(object, 0, seenObjects));
+				} catch (IllegalAccessException e1) {
+					e1.printStackTrace();
+				}
+
 			}
 		});
 
@@ -598,57 +614,62 @@ public class ViewerFX extends Application {
 
 		Slider scaleNode = null;
 		Label label = null;
-		for (int idxLayerHidden = 1; idxLayerHidden <= network.getLayers().size() - 2; idxLayerHidden++) {
-			int nodecount = network.getLayer(idxLayerHidden).getNodeCount();
-			scaleNode = new Slider(0D, nodecount * 10D + 1D, nodecount);
-			double majTick = 100D;
-			if(nodecount <= 10) majTick = 10; else if(nodecount > 10 && nodecount < 100) majTick = 100; else if(nodecount > 100 && nodecount < 1000) majTick = 1000; else majTick = 10000;
-			label = new Label("Hidden layer #" + idxLayerHidden + " nodes: " + nodecount);
-
-			scaleNode.setMinorTickCount(10);
-			scaleNode.setMajorTickUnit(majTick);
-			scaleNode.setSnapToTicks(false);
-			scaleNode.setShowTickLabels(true);
-			scaleNode.setShowTickMarks(true);
-			scaleNode.setPrefWidth(scalingPane.getWidth() - 50D);
-
-			final int currentIdxLayer = idxLayerHidden;
-			scaleNode.valueProperty().addListener(new ChangeListener<Number>() {
-				public void changed(ObservableValue<? extends Number> ov, Number old_val, Number new_val) {
-
-					if (old_val == null || new_val == null)
-						return;
-
-					System.out.println(old_val.intValue() + " " + new_val.intValue());
-
-					if (new_val.intValue() == 0)
-						return;
-
-					if (old_val.intValue() < new_val.intValue()) {
-
-						for (int idx = 1; idx <= new_val.intValue() - old_val.intValue(); idx++) {
-							INode node = network.getLayer(currentIdxLayer).getLayerNodes()
-									.get(network.getLayer(currentIdxLayer).getNodeCount() - 1);
-							INode nodeCopy = node.deepCopy();
-							nodeCopy.randomizeWeights(tester.getInitWeightRange(0), tester.getInitWeightRange(1));
-							node.getArea().addNode(nodeCopy);
+		
+		if(network != null) {
+			
+			for (int idxLayerHidden = 1; idxLayerHidden <= network.getLayers().size() - 2; idxLayerHidden++) {
+				int nodecount = network.getLayer(idxLayerHidden).getNodeCount();
+				scaleNode = new Slider(0D, nodecount * 10D + 1D, nodecount);
+				double majTick = 100D;
+				if(nodecount <= 10) majTick = 10; else if(nodecount > 10 && nodecount < 100) majTick = 100; else if(nodecount > 100 && nodecount < 1000) majTick = 1000; else majTick = 10000;
+				label = new Label("Hidden layer #" + idxLayerHidden + " nodes: " + nodecount);
+	
+				scaleNode.setMinorTickCount(10);
+				scaleNode.setMajorTickUnit(majTick);
+				scaleNode.setSnapToTicks(false);
+				scaleNode.setShowTickLabels(true);
+				scaleNode.setShowTickMarks(true);
+				scaleNode.setPrefWidth(scalingPane.getWidth() - 50D);
+	
+				final int currentIdxLayer = idxLayerHidden;
+				scaleNode.valueProperty().addListener(new ChangeListener<Number>() {
+					public void changed(ObservableValue<? extends Number> ov, Number old_val, Number new_val) {
+	
+						if (old_val == null || new_val == null)
+							return;
+	
+						System.out.println(old_val.intValue() + " " + new_val.intValue());
+	
+						if (new_val.intValue() == 0)
+							return;
+	
+						if (old_val.intValue() < new_val.intValue()) {
+	
+							for (int idx = 1; idx <= new_val.intValue() - old_val.intValue(); idx++) {
+								INode node = network.getLayer(currentIdxLayer).getLayerNodes()
+										.get(network.getLayer(currentIdxLayer).getNodeCount() - 1);
+								INode nodeCopy = node.deepCopy();
+								nodeCopy.randomizeWeights(tester.getInitWeightRange(0), tester.getInitWeightRange(1));
+								node.getArea().addNode(nodeCopy);
+							}
+	
+						} else if (old_val.intValue() > new_val.intValue()) {
+	
+							for (int idx = 1; idx <= old_val.intValue() - new_val.intValue(); idx++) {
+								INode node = network.getLayer(currentIdxLayer).getLayerNodes()
+										.get(network.getLayer(currentIdxLayer).getNodeCount() - 1);
+								node.disconnect();
+								((IArea) node.getArea()).removeNode(node);
+							}
+	
 						}
-
-					} else if (old_val.intValue() > new_val.intValue()) {
-
-						for (int idx = 1; idx <= old_val.intValue() - new_val.intValue(); idx++) {
-							INode node = network.getLayer(currentIdxLayer).getLayerNodes()
-									.get(network.getLayer(currentIdxLayer).getNodeCount() - 1);
-							node.disconnect();
-							((IArea) node.getArea()).removeNode(node);
-						}
-
+	
 					}
-
-				}
-			});
-			vbox.setPadding(new Insets(15,15,15,15));
-			vbox.getChildren().addAll(label, scaleNode);
+				});
+				vbox.setPadding(new Insets(15,15,15,15));
+				vbox.getChildren().addAll(label, scaleNode);
+			}
+		
 		}
 
 		scalingPane.getChildren().add(vbox);

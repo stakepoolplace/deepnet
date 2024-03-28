@@ -6,6 +6,10 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.lang.reflect.Array;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.Set;
 
 import org.apache.log4j.Logger;
 
@@ -27,16 +31,6 @@ public class NetworkService {
         }
     }
 
-	public static void saveNetwork(Long idAdapter, Long idSource) {
-
-//		DBConnection con = TestNetwork.getNetconnection();
-//		Network network = TestNetwork.getNetwork(idAdapter, idSource);
-//		if(network == null)
-//			network = TestNetwork.addNewNetwork(idAdapter, idSource);
-//		insertNodes(con, network);
-
-	}
-
 
 	
     public static Network loadNetwork(String filename) throws Exception {
@@ -49,7 +43,92 @@ public class NetworkService {
         } catch (ClassNotFoundException e) {
             throw new Exception("Class not found", e);
         }
-    }	
+    }
+    
+    public static String printObjectDetails(Object object, int level, Set<Integer> seenObjects) throws IllegalAccessException {
+        StringBuilder sb = new StringBuilder();
+        
+        if (object == null) {
+            return "null";
+        }
+        
+        int objectId = System.identityHashCode(object);
+        if (seenObjects.contains(objectId)) {
+            return "\"[Circular Reference]\"";
+        }
+
+        Class<?> objClass = object.getClass();
+        seenObjects.add(objectId);
+        String indent = repeat(" ", level * 2);
+
+        if (objClass.isArray()) {
+            sb.append("[\n");
+            int length = Array.getLength(object);
+            for (int i = 0; i < length; i++) {
+                sb.append(indent).append(printObjectDetails(Array.get(object, i), level + 1, seenObjects));
+                if (i < length - 1) sb.append(",\n");
+            }
+            sb.append("\n").append(indent).append("]");
+        } else if (objClass.isPrimitive() || isWrapperType(objClass)) {
+            sb.append(object.toString());
+        } else if (objClass.equals(String.class)) {
+            sb.append("\"").append(object).append("\"");
+        } else {
+            boolean isFirstField = true;
+            sb.append("{\n");
+            Field[] fields = objClass.getDeclaredFields();
+            for (Field field : fields) {
+                if (!Modifier.isStatic(field.getModifiers()) && !field.isSynthetic() && !estUnAttributFonctionnel(field)) {
+                    if (!isFirstField) {
+                        sb.append(",\n");
+                    } else {
+                        isFirstField = false;
+                    }
+                    field.setAccessible(true);
+                    sb.append(indent).append("  \"").append(field.getName()).append("\": ")
+                      .append(printObjectDetails(field.get(object), level + 1, seenObjects));
+                }
+            }
+            if (!isFirstField) {
+                sb.append("\n");
+            }
+            sb.append(indent).append("}");
+        }
+        if (level == 0) {
+            sb.append("\n"); // Ajouter une nouvelle ligne à la fin pour le niveau racine
+        }
+        
+        return sb.toString();
+    }
+
+
+
+    private static boolean estUnAttributFonctionnel(Field field) {
+    	
+    	if(field.getName().equals("function")) {
+    		return true;
+    	}
+        // Exemple simple : vérifier si le type du champ est une interface fonctionnelle du package java.util.function
+        return java.util.function.Function.class.isAssignableFrom(field.getType());
+        // Ajoutez d'autres conditions selon les types spécifiques que vous souhaitez ignorer
+    }
+
+    private static boolean isWrapperType(Class<?> clazz) {
+        return clazz.equals(Boolean.class) || clazz.equals(Integer.class) ||
+               clazz.equals(Character.class) || clazz.equals(Byte.class) ||
+               clazz.equals(Short.class) || clazz.equals(Double.class) ||
+               clazz.equals(Long.class) || clazz.equals(Float.class);
+    }
+    
+    public static String repeat(String str, int count) {
+        StringBuilder sb = new StringBuilder();
+        
+        for (int i = 0; i < count; i++) {
+            sb.append(str);
+        }
+        
+        return sb.toString();
+    }
 	
 
 //	private static void insertNodes(final DBConnection connection, Network network){
