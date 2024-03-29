@@ -42,6 +42,8 @@ import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.StackPane;
@@ -80,6 +82,8 @@ public class ViewerFX extends Application {
 	final Button clear = new Button("Clear");
 	final Button print = new Button("Print network");
 	final Button printDeserializedNet = new Button("Print deserialized network");
+	final Button copyConsoleButton = new Button("Copy Console");
+
 	
 	static TabPane tabPane = null;
 	static Tab tabConsole = null;
@@ -335,7 +339,7 @@ public class ViewerFX extends Application {
 				learningRateField, new Label("Momentum"), momentumField, submit, showLogs);
 
 		hbox2.setSpacing(10);
-		hbox2.getChildren().addAll(comboSamples, load, printDeserializedNet);
+		hbox2.getChildren().addAll(comboSamples, load, printDeserializedNet, copyConsoleButton);
 
 		hbox1.setPadding(new Insets(5, 20, 2, 20));
 		hbox2.setPadding(new Insets(2, 20, 5, 20));
@@ -640,6 +644,17 @@ public class ViewerFX extends Application {
 
 			}
 		});
+		
+		copyConsoleButton.setOnAction(new EventHandler<ActionEvent>() {
+		    @Override
+		    public void handle(ActionEvent event) {
+		        final Clipboard clipboard = Clipboard.getSystemClipboard();
+		        final ClipboardContent content = new ClipboardContent();
+		        content.putString(consoleTextArea.getText()); // Assurez-vous que consoleTextArea est accessible ici
+		        clipboard.setContent(content);
+		    }
+		});
+
 
 		return commandPane;
 
