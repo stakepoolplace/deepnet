@@ -15,6 +15,7 @@ import RN.algoactivations.EActivation;
 import RN.algotrainings.ITrainer;
 import RN.dataset.inputsamples.ESamples;
 import RN.dataset.inputsamples.InputSample;
+import RN.links.Link;
 import RN.nodes.INode;
 import javafx.animation.KeyFrame;
 import javafx.animation.SequentialTransition;
@@ -542,10 +543,15 @@ public class ViewerFX extends Application {
 			            	lineChart.setTitle(network.getName());
 			            	
 			                if (tester != null) {
-			                    tester.setNetwork(network); // Suppose que tester a une méthode setNetwork pour configurer le réseau
+			                	
 				                // Update your application's state with the loaded network if necessary
 				                // For example, set the loaded network as the current network in your application context
-					            //Network.network = network;
+					            Network.network = network;
+					            
+			                	initFireTimeT(network);
+			                	
+			                    tester.setNetwork(network); // Suppose que tester a une méthode setNetwork pour configurer le réseau
+
 				                // Assuming you have the network object loaded successfully
 				                // Enable the Run and Print Network buttons here
 				                run.setDisable(false);
@@ -573,6 +579,17 @@ public class ViewerFX extends Application {
 		        
 		        
 		    }
+
+			private void initFireTimeT(Network network) {
+					network.getContext().setClock(-1);
+				    for (Link link : network.getAllLinks()) {
+				    	if(link != null)
+				    		link.initFireTimes();
+				    	//				        double currentFireTimeT = link.getFireTimeT();
+//				        double delta = link.getDelay(); // Ou une méthode statique/variable globale, selon votre implémentation
+//				        link.setFireTimeT(currentFireTimeT - delta);
+				    }
+			}
 		});
 		
 

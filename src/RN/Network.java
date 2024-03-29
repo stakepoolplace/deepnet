@@ -3,10 +3,12 @@ package RN;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
+import java.util.Set;
 
 import RN.dataset.InputData;
 import RN.dataset.OutputData;
@@ -367,6 +369,16 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 			allNodes.addAll(layer.getLayerNodes());
 		}
 		return allNodes;
+	}
+	
+	public Set<Link> getAllLinks() {
+		Set<Link> allLinks = new HashSet<Link>();
+		for (INode node : getAllNodes()) {
+			allLinks.addAll(node.getInputs());
+			allLinks.addAll(node.getOutputs());
+			allLinks.add(node.getBiasInput());
+		}
+		return allLinks;
 	}
 	
 	public List<IArea> getAllAreas() {

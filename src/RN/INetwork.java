@@ -2,9 +2,11 @@ package RN;
 
 import java.util.List;
 import java.util.ListIterator;
+import java.util.Set;
 
 import RN.dataset.InputData;
 import RN.dataset.OutputData;
+import RN.links.Link;
 import RN.nodes.INode;
 
 /**
@@ -29,6 +31,8 @@ public interface INetwork {
 	OutputData propagation(boolean playAgain) throws Exception;
 
 	List<INode> getAllNodes();
+	
+	Set<Link> getAllLinks();
 
 	void addLayer(ILayer layer);
 

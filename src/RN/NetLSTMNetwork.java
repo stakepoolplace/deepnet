@@ -2,9 +2,11 @@ package RN;
 
 import java.util.List;
 import java.util.ListIterator;
+import java.util.Set;
 
 import RN.dataset.InputData;
 import RN.dataset.OutputData;
+import RN.links.Link;
 import RN.nodes.INode;
 import dmonner.xlbp.Component;
 import dmonner.xlbp.Network;
@@ -654,6 +656,12 @@ public class NetLSTMNetwork extends Network implements INetwork {
 
 	@Override
 	public INode getNode(Identification id) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public Set<Link> getAllLinks() {
 		// TODO Auto-generated method stub
 		return null;
 	}
