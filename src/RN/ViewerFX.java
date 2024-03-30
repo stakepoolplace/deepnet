@@ -106,7 +106,7 @@ public class ViewerFX extends Application {
 	private static Timeline timeline1 = new Timeline();
 
 	public static ObservableList<InputSample> excelSheets = FXCollections
-			.observableArrayList(new InputSample("Please select a dataset", ESamples.NONE));
+			.observableArrayList(new InputSample("Please select a model+dataset", ESamples.NONE));
 
 	public static Rectangle clip = null;
 
