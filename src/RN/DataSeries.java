@@ -67,6 +67,7 @@ public class DataSeries {
 
 	public void setINPUTS(List<List> iNPUTS) {
 		INPUTS = iNPUTS;
+		inputDataSet = new InputDataList<InputData>(INPUTS, IDEALS);
 	}
 
 	public List<List> getIDEALS() {
@@ -75,6 +76,7 @@ public class DataSeries {
 
 	public void setIDEALS(List<List> iDEALS) {
 		IDEALS = iDEALS;
+		inputDataSet = new InputDataList<InputData>(INPUTS, IDEALS);
 	}
 	
 

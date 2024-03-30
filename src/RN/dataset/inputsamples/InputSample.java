@@ -1,6 +1,9 @@
 package RN.dataset.inputsamples;
 
+import java.io.BufferedReader;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayDeque;
@@ -1025,6 +1028,64 @@ public class InputSample extends NetworkElement{
 
 		return sheetsName;
 	}
+	
+	public static void setCSVFileDataset(String filePath) throws FileNotFoundException, IOException {
+		
+		DataSeries.getInstance().clearSeries();
+        String csvSeparator = ";";
+
+		
+        try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
+            String line = br.readLine(); // Lecture de la première ligne contenant les en-têtes
+
+            if (line == null) return; // Fichier vide, on sort
+
+            String[] headers = line.split(csvSeparator);
+
+            List<Integer> inputIndexes = new ArrayList<>();
+            List<Integer> idealIndexes = new ArrayList<>();
+
+            // Identifier les index des colonnes INPUT et EXPECTED
+            for (int i = 0; i < headers.length; i++) {
+                if (headers[i].trim().equalsIgnoreCase("INPUT")) {
+                    inputIndexes.add(i);
+                } else if (headers[i].trim().equalsIgnoreCase("EXPECTED")) {
+                    idealIndexes.add(i);
+                }
+            }
+            
+
+            List<List> inputs = new ArrayList<>();
+            List<List> ideals = new ArrayList<>();
+
+            // Lecture du reste du fichier
+            while ((line = br.readLine()) != null) {
+				String[] values = line.split(csvSeparator);
+                List<Double> input = new ArrayList<>();
+                List<Double> ideal = new ArrayList<>();
+
+                // Ajout des valeurs aux listes inputs et ideals en fonction des index identifiés
+                for (Integer index : inputIndexes) {
+                    if (index < values.length) { // Vérification pour éviter les IndexOutOfBoundsException
+                        input.add(Double.valueOf(values[index].trim()));
+                    }
+                }
+                for (Integer index : idealIndexes) {
+                    if (index < values.length) { // De même ici
+                        ideal.add(Double.valueOf(values[index].trim()));
+                    }
+                }
+
+                inputs.add(input);
+                ideals.add(ideal);
+            }
+            
+            // À ce stade, 'inputs' et 'ideals' contiennent les données désirées
+			DataSeries.getInstance().setINPUTS(inputs);
+			DataSeries.getInstance().setIDEALS(ideals);
+        }
+    }
+		
 
 	public static void setFileSample(ITester tester, String filePath, Integer sheetIndex) throws Exception {
 

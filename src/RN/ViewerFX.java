@@ -1,6 +1,7 @@
 package RN;
 
 import java.io.File;
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -76,12 +77,13 @@ public class ViewerFX extends Application {
 	final Button trainStop = new Button("Stop train");
 	final Button run = new Button("Run");
 	final Button runTest = new Button("Run test");
-	final Button save = new Button("Save network");
-	final Button load = new Button("Load network");
-	final Button rand = new Button("Randomize network");
+	final Button save = new Button("Save model");
+	final Button loadModel = new Button("Load model");
+	final Button loadDataset = new Button("Load dataset");
+	final Button rand = new Button("Randomize weights");
 	final Button clear = new Button("Clear");
-	final Button print = new Button("Print network");
-	final Button printDeserializedNet = new Button("Print deserialized network");
+	final Button printPretty = new Button("Print model");
+	final Button printDeserialized = new Button("Print deserialized model");
 	final Button copyConsoleButton = new Button("Copy Console");
 
 	
@@ -166,8 +168,9 @@ public class ViewerFX extends Application {
 	    save.setDisable(true);
 	    rand.setDisable(true);
 	    clear.setDisable(true);
-	    print.setDisable(true);
-	    printDeserializedNet.setDisable(true);
+	    printPretty.setDisable(true);
+	    printDeserialized.setDisable(true);
+	    loadDataset.setDisable(true);
 	}
 
 	
@@ -250,8 +253,8 @@ public class ViewerFX extends Application {
 					save.setDisable(selectedSample == ESamples.NONE);
 					rand.setDisable(selectedSample == ESamples.NONE);
 					clear.setDisable(selectedSample == ESamples.NONE);
-					print.setDisable(selectedSample == ESamples.NONE);
-					printDeserializedNet.setDisable(selectedSample == ESamples.NONE);
+					printPretty.setDisable(selectedSample == ESamples.NONE);
+					printDeserialized.setDisable(selectedSample == ESamples.NONE);
 					
 		            lastTrainingCycle = 0; // Réinitialisez la dernière valeur du cycle d'entraînement
 		            origTrainingCycle = 0;
@@ -335,11 +338,11 @@ public class ViewerFX extends Application {
 		showLogs.setSelected(true);
 
 		hbox1.setSpacing(10);
-		hbox1.getChildren().addAll(train, trainStop, run, runTest, rand, clear, print, save, new Label("Learning rate"),
+		hbox1.getChildren().addAll(train, trainStop, run, runTest, rand, clear, printPretty, save, new Label("Learning rate"),
 				learningRateField, new Label("Momentum"), momentumField, submit, showLogs);
 
 		hbox2.setSpacing(10);
-		hbox2.getChildren().addAll(comboSamples, load, printDeserializedNet, copyConsoleButton);
+		hbox2.getChildren().addAll(comboSamples, loadModel, loadDataset, printDeserialized, copyConsoleButton);
 
 		hbox1.setPadding(new Insets(5, 20, 2, 20));
 		hbox2.setPadding(new Insets(2, 20, 5, 20));
@@ -525,10 +528,12 @@ public class ViewerFX extends Application {
 		});
 		
 		
-		load.setOnAction(new EventHandler<ActionEvent>() {
+		loadModel.setOnAction(new EventHandler<ActionEvent>() {
 		    @Override
 		    public void handle(ActionEvent event) {
 		        FileChooser fileChooser = new FileChooser();
+		        File initialDirectory = new File("./models"); // Remplacez ceci par le chemin de votre dossier
+		        fileChooser.setInitialDirectory(initialDirectory);
 		        // Définir le filtre d'extension pour ne montrer que les fichiers .ser
 		        FileChooser.ExtensionFilter extFilter = new FileChooser.ExtensionFilter("SER files (*.ser)", "*.ser");
 		        fileChooser.getExtensionFilters().add(extFilter);
@@ -556,12 +561,14 @@ public class ViewerFX extends Application {
 			                	
 			                    tester.setNetwork(network); // Suppose que tester a une méthode setNetwork pour configurer le réseau
 
+								scalingPane = createScaling();
+
 				                // Assuming you have the network object loaded successfully
 				                // Enable the Run and Print Network buttons here
-				                run.setDisable(false);
-				                print.setDisable(false);
+			                    loadDataset.setDisable(false);
+				                printPretty.setDisable(false);
 				                rand.setDisable(false);
-				                printDeserializedNet.setDisable(false);
+				                printDeserialized.setDisable(false);
 								consoleTextArea.setText("Modèle \"" + network.getName() + "\" chargé avec succès.");
 			                } else {
 			                    // Gérer le cas où tester n'est pas initialisé
@@ -575,12 +582,12 @@ public class ViewerFX extends Application {
 			        } catch (Exception e) {
 			            e.printStackTrace();
 			            // You might want to keep the buttons disabled if loading fails
+	                    loadDataset.setDisable(true);
 			            run.setDisable(true);
-			            print.setDisable(true);
+			            printPretty.setDisable(true);
 			        }
 		        
 		        }
-		        
 		        
 		    }
 
@@ -596,6 +603,40 @@ public class ViewerFX extends Application {
 			}
 		});
 		
+		loadDataset.setOnAction(new EventHandler<ActionEvent>() {
+		    @Override
+		    public void handle(ActionEvent event) {
+		    	
+		        FileChooser fileChooser = new FileChooser();
+		        File initialDirectory = new File("./data"); // Remplacez ceci par le chemin de votre dossier
+		        fileChooser.setInitialDirectory(initialDirectory);
+		        // Définir le filtre d'extension pour ne montrer que les fichiers .ser
+		        FileChooser.ExtensionFilter extFilter = new FileChooser.ExtensionFilter("CSV files (*.csv)", "*.csv");
+		        fileChooser.getExtensionFilters().add(extFilter);
+
+		        // Ouvrir la boîte de dialogue de sélection de fichier
+		        File file = fileChooser.showOpenDialog(null);
+
+		        if (file != null) {		    	
+		    	
+		        	try {
+						InputSample.setCSVFileDataset(file.getPath());
+						trainer.setInputDataSetIterator(DataSeries.getInstance().getInputDataSet().listIterator(0));
+					    train.setDisable(false);
+					    trainStop.setDisable(false);
+					    run.setDisable(false);
+					    runTest.setDisable(false);
+					    clear.setDisable(false);
+					    save.setDisable(false);
+						consoleTextArea.setText("Dataset \"" + file.getPath() + "\" chargé avec succès.");
+					} catch (IOException e) {
+						consoleTextArea.setText(e.getMessage());
+						e.printStackTrace();
+					}
+		        }
+		    }
+		
+		});
 
 
 
@@ -620,7 +661,7 @@ public class ViewerFX extends Application {
 			}
 		});
 
-		print.setOnAction(new EventHandler<ActionEvent>() {
+		printPretty.setOnAction(new EventHandler<ActionEvent>() {
 			@Override
 			public void handle(ActionEvent e) {
 				String trace = tester.getNetwork().getString();
@@ -630,7 +671,7 @@ public class ViewerFX extends Application {
 			}
 		});
 		
-		printDeserializedNet.setOnAction(new EventHandler<ActionEvent>() {
+		printDeserialized.setOnAction(new EventHandler<ActionEvent>() {
 			@Override
 			public void handle(ActionEvent e) {
 				Object object = tester.getNetwork();
@@ -687,7 +728,7 @@ public class ViewerFX extends Application {
 	
 				scaleNode.setMinorTickCount(10);
 				scaleNode.setMajorTickUnit(majTick);
-				scaleNode.setSnapToTicks(false);
+				scaleNode.setSnapToTicks(true);
 				scaleNode.setShowTickLabels(true);
 				scaleNode.setShowTickMarks(true);
 				scaleNode.setPrefWidth(scalingPane.getWidth() - 50D);
