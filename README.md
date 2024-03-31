@@ -44,7 +44,33 @@ There are two main ways to train a neural network using Deeper Net:
 
 #### Using the API programmatically
 
-See package /RN/tests
+```
+// Initialisation du réseau
+Network network = Network.getInstance().setName("SimpleFFNetwork");
+
+// Configuration des couches
+int inputSize = 2; // Taille de l'entrée
+int hiddenSize = 2; // Nombre de neurones dans la couche cachée
+int outputSize = 1; // Taille de la sortie
+network.addLayer(new Layer("InputLayer", inputSize));
+network.addLayer(new Layer("HiddenLayer1", hiddenSize));
+network.addLayer(new Layer("OutputLayer", outputSize));
+
+// Création des connexions entre les couches
+// Note: Implémentez la logique de connexion dans vos classes Layer/Node
+network.getFirstLayer().getArea(0).configureLinkage(ELinkage.ONE_TO_ONE, null, false).configureNode(false,
+    EActivation.IDENTITY, ENodeType.REGULAR).createNodes(inputSize);
+
+network.getLayer(1).getArea(0).configureLinkage(ELinkage.MANY_TO_MANY, null, true).configureNode(true,
+    EActivation.SYGMOID_0_1, ENodeType.REGULAR).createNodes(hiddenSize);
+
+network.getLastLayer().getArea(0).configureLinkage(ELinkage.MANY_TO_MANY, null, true)
+    .configureNode(true, EActivation.SYGMOID_0_1, ENodeType.REGULAR).createNodes(outputSize);			
+
+network.finalizeConnections();
+```
+
+See example /RN/tests/SimpleFeedforwardNetwork.java
 
 #### Using an Excel Sheet
 
