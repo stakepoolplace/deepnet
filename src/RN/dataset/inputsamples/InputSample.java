@@ -1,6 +1,7 @@
 package RN.dataset.inputsamples;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
@@ -1034,8 +1035,12 @@ public class InputSample extends NetworkElement{
 		DataSeries.getInstance().clearSeries();
         String csvSeparator = ";";
 
+		System.out.println("Reading dataset file : " + filePath);
 		
+		
+		//new File(filePath).getAbsolutePath()
         try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
+        	
             String line = br.readLine(); // Lecture de la première ligne contenant les en-têtes
 
             if (line == null) return; // Fichier vide, on sort
@@ -1083,6 +1088,7 @@ public class InputSample extends NetworkElement{
             // À ce stade, 'inputs' et 'ideals' contiennent les données désirées
 			DataSeries.getInstance().setINPUTS(inputs);
 			DataSeries.getInstance().setIDEALS(ideals);
+
         }
     }
 		

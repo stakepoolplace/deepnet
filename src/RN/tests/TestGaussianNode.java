@@ -75,7 +75,7 @@ public class TestGaussianNode {
 		
 		net.finalizeConnections();
 		
-		System.out.println(gaussNode.getString());
+		//System.out.println(gaussNode.getString());
 		
 		double margeCarre = 30D;
 		for(int idx = 0; idx < nbPixels; idx++){

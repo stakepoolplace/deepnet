@@ -617,9 +617,9 @@ public class NetLSTMNetwork extends Network implements INetwork {
 	}
 
 	@Override
-	public void setName(String name) {
+	public INetwork setName(String name) {
 		// TODO Auto-generated method stub
-		
+		return null;
 	}
 
 	@Override

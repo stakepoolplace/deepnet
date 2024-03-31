@@ -16,12 +16,14 @@ import javafx.scene.control.TextArea;
 public interface ITrainer {
 
 	void train() throws Exception;
-
+	
 	double getErrorRate();
 
 	public abstract void nextTrainInputValues();
 
 	void launchTrain() throws Exception;
+	
+	void launchTrain(int nbTrainingCycles) throws Exception;
 	
 	void launchTrain(boolean verbose, TextArea console) throws Exception;
 
@@ -36,6 +38,8 @@ public interface ITrainer {
 	public abstract double getAlphaDeltaWeight();
 
 	public abstract void setAlphaDeltaWeight(double alphaDeltaWeight);
+
+	public abstract void setMomentum(double alphaDeltaWeight);
 
 	void feedForward() throws Exception;
 

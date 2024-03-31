@@ -19,6 +19,8 @@ public class Layer extends NetworkElement implements Serializable, ILayer{
 
 	protected int layerId;
 	
+	private String name;
+	
 	private EActivation function;
 	
 	List<ILayer> sublayers;
@@ -52,6 +54,13 @@ public class Layer extends NetworkElement implements Serializable, ILayer{
 	
 	
 	
+	public Layer(String name, int inputSize) {
+		this.sublayers = new ArrayList<ILayer>();
+		this.areas = new ArrayList<IArea>();
+		this.name = name;
+		addArea(new Area(inputSize));
+	}
+
 	/* (non-Javadoc)
 	 * @see RN.ILayer#isLayerReccurent()
 	 */

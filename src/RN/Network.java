@@ -49,6 +49,11 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 		layers = new ArrayList<ILayer>();
 	}
 	
+	private Network(String name) {
+		this.layers = new ArrayList<ILayer>();
+		this.name = name;
+	}
+	
 	private Network(ENetworkImplementation impl) {
 		layers = new ArrayList<ILayer>();
 		
@@ -59,6 +64,7 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 	public static Network getInstance(){
 		return getInstance(null);
 	}
+
 	
 	public static Network getInstance(ENetworkImplementation impl){
 		if(network == null){
@@ -72,7 +78,7 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 		return network;
 	}
 
-	
+
 
 	public void addLayer(ILayer layer) {
 		layer.setLayerId(layers.size());
@@ -714,8 +720,9 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 		return name;
 	}
 
-	public void setName(String name) {
+	public Network setName(String name) {
 		this.name = name;
+		return this;
 	}
 
 	public void setRecurrentLayerId(Integer recurrentLayerId) {

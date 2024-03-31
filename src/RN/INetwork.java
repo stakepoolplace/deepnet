@@ -60,7 +60,7 @@ public interface INetwork {
 	
 	String getName();
 
-	void setName(String name);
+	INetwork setName(String name);
 	
 	void appendName(String name);
 

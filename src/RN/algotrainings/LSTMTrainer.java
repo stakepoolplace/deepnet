@@ -264,6 +264,14 @@ public class LSTMTrainer implements ITrainer {
 		
 	}
 
+	@Override
+	public void launchTrain(int nbTrainingCycles) throws Exception {
+		// TODO Auto-generated method stub
+		
+	}
 
+	public void setMomentum(double alphaDeltaWeight) {
+		
+	}
 
 }

@@ -65,6 +65,12 @@ public class BackPropagationTrainer implements ITrainer {
 		launchTrain(true, null);
 	}
 	
+	@Override
+	public void launchTrain(int nbTrainingCycles) throws Exception {
+		setMaxTrainingCycles(nbTrainingCycles);
+		launchTrain(true, null);
+	}
+	
 	/*
 	 * (non-Javadoc)
 	 * 
@@ -449,6 +455,10 @@ public class BackPropagationTrainer implements ITrainer {
 	public void setAlphaDeltaWeight(double alphaDeltaWeight) {
 		this.alphaDeltaWeight = alphaDeltaWeight;
 	}
+	
+	public void setMomentum(double alphaDeltaWeight) {
+		this.alphaDeltaWeight = alphaDeltaWeight;
+	}
 
 	@Override
 	public double getDelay() {
@@ -519,6 +529,8 @@ public class BackPropagationTrainer implements ITrainer {
 	public void setMaxTrainingCycles(int maxTrainingCycles) {
 		BackPropagationTrainer.maxTrainingCycles = maxTrainingCycles;
 	}
+
+
 
 
 	

@@ -64,6 +64,13 @@ public class LSTMBackwardPassTraining implements ITrainer {
 		launchTrain(true, null);
 	}
 	
+	@Override
+	public void launchTrain(int nbTrainingCycles) throws Exception {
+		setMaxTrainingCycles(nbTrainingCycles);
+		launchTrain(true, null);
+		
+	}
+	
 	/*
 	 * (non-Javadoc)
 	 * 
@@ -560,6 +567,10 @@ public class LSTMBackwardPassTraining implements ITrainer {
 
 	public void setMaxTrainingCycles(int maxTrainingCycles) {
 		LSTMBackwardPassTraining.maxTrainingCycles = maxTrainingCycles;
+	}
+
+	public void setMomentum(double alphaDeltaWeight) {
+		this.alphaDeltaWeight = alphaDeltaWeight;
 	}
 
 
