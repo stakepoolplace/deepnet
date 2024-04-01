@@ -1,6 +1,6 @@
 # DeeperNet: A Deep Learning Educational Framework
 
-Welcome to DeeperNet developed by Eric Marchand, an educational deep learning framework designed to facilitate understanding and experimenting with neural networks (only CPU processing, no GPU/CUDA support). Deeper Net combines the power of Java 8 and JavaFX to offer a hands-on learning experience through interactive training interfaces and visual feedback.
+Welcome to DeeperNet developed by Eric Marchand, an educational deep learning framework designed to facilitate understanding and experimenting with neural networks (only CPU processing, no GPU/CUDA support). Deeper Net combines the power of Java 17 and JavaFX to offer a hands-on learning experience through interactive training interfaces and visual feedback.
 
 ![GUI Preview](resources/gui.png)
 
@@ -22,7 +22,7 @@ Welcome to DeeperNet developed by Eric Marchand, an educational deep learning fr
 
 ### Prerequisites
 
-- Java 8 or higher
+- Java 17 or higher
 - An IDE that supports Java, such as IntelliJ IDEA, Eclipse, or NetBeans
 - Basic understanding of neural networks and deep learning concepts
 
@@ -80,12 +80,7 @@ See example /RN/tests/SimpleFeedforwardNetwork.java
 4. The JavaFX interface will open, allowing you to start and visualize the training process.
 
 #### Next steps 
-1. Mavenize project
-
-
-## Utilisation
-XLBP by Derek Monner, http://www.cs.umd.edu/~dmonner
-I tried to integrate LSTM networks with this implementation. Status: TODO
+1. Integration of Transformers
 
 
 ## Contributing
