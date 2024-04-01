@@ -2,19 +2,19 @@
 
 Welcome to DeeperNet developed by Eric Marchand, an educational deep learning framework designed to facilitate understanding and experimenting with neural networks (only CPU processing, no GPU/CUDA support). Deeper Net combines the power of Java 17 and JavaFX to offer a hands-on learning experience through interactive training interfaces and visual feedback.
 
-![GUI Preview](resources/gui.png)
+![GUI Preview](src/main/resources/gui.png)
 
 ## Features
 
 - **Interactive Training Interface:** Built with JavaFX, Deeper Net provides a user-friendly platform for training neural networks, allowing users to visually track their experiment results in real-time.
 - **Easy scale:** The deeper net allows easy scaling of hidden layers, offering a more testable development experience.
-![Scaling Preview](resources/easy-scale.png)
+![Scaling Preview](src/main/resources/easy-scale.png)
 - **Excel Integration:** Deeper Net supports the initiation and configuration of neural networks directly from Excel sheets (`/RN/Samples.xls` or `.numbers`), making it easy to manipulate network parameters and input data.
-![XLS Preview](resources/xls.png)
+![XLS Preview](src/main/resources/xls.png)
 - **Layer Visualizer** If your neurons are of type PixelNode in a layer you can easily view the layer as an image.
-![Layer Preview](resources/layer-visualizer.png)
+![Layer Preview](src/main/resources/layer-visualizer.png)
 - **Implement your own visualizers** Take a look at this implementation of the SIFT vision algorithm.
-![Easy integration Preview](resources/vision-sift.png)
+![Easy integration Preview](src/main/resources/vision-sift.png)
 - **TestNetwork.java:** A dedicated launcher that reads network configurations from an Excel sheet and initiates the graphical interface `ViewerFX.java` for visualization.
 - **Powerful deep learning PDFs** /resources/ML-Notes.pdf and gradients-histogrammes.pdf.
 
