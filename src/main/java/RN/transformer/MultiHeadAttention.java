@@ -1,5 +1,8 @@
 package RN.transformer;
 
+import java.util.Arrays;
+import java.util.List;
+
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.ops.transforms.Transforms;
@@ -39,6 +42,11 @@ public class MultiHeadAttention {
 
         // Projection de la sortie de l'attention multi-têtes
         return attentionOutput.mmul(Wo);
+    }
+    
+    public List<INDArray> getParameters() {
+        // Retourner les matrices de poids comme une liste d'INDArray
+        return Arrays.asList(Wq, Wk, Wv, Wo);
     }
 
 	public int getdModel() {
@@ -88,4 +96,6 @@ public class MultiHeadAttention {
 	public void setWo(INDArray wo) {
 		Wo = wo;
 	}
+
+
 }

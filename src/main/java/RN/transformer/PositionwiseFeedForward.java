@@ -1,5 +1,8 @@
 package RN.transformer;
 
+import java.util.Arrays;
+import java.util.List;
+
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.ops.transforms.Transforms;
@@ -14,5 +17,10 @@ public class PositionwiseFeedForward {
 
     public INDArray forward(INDArray x) {
         return Transforms.relu(x.mmul(W1)).mmul(W2);
+    }
+
+    public List<INDArray> getParameters() {
+        // Retourner les matrices de poids comme une liste d'INDArray
+        return Arrays.asList(W1, W2);
     }
 }

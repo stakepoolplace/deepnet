@@ -1,9 +1,11 @@
 package RN.transformer;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.factory.Nd4j;
 
 /**
  * numLayers: Comme pour l'encodeur.
@@ -120,7 +122,34 @@ public class Decoder {
         return contextVector;
     }
 
-    
+	 // Ajout à la classe Decoder
+	
+	 // Méthode pour obtenir tous les paramètres du décodeur
+	 public List<INDArray> getParameters() {
+		 
+	        List<INDArray> params = new ArrayList<>();
+	        
+	        // Collecter les paramètres de chaque couche du décodeur
+	        for (DecoderLayer layer : layers) {
+	            params.addAll(layer.getParameters());
+	        }
+
+	        // Collecter les paramètres de la normalisation de couche finale
+	        params.addAll(layerNorm.getParameters());
+
+	        // Ajouter ici la collecte des paramètres d'autres composants, si nécessaire
+	        
+	        return params;
+	 }
+	
+	 // Méthode pour calculer les gradients basés sur la perte
+	 public INDArray calculateGradients(double loss) {
+	     // Dans un cas réel, cette méthode impliquerait le calcul du gradient de la perte par rapport à chaque paramètre
+	     // Pour cet exemple, simuler un gradient comme un INDArray de mêmes dimensions que les paramètres
+	     INDArray gradients = Nd4j.rand(1, 100); // Assumer les mêmes dimensions hypothétiques que les paramètres
+	     return gradients;
+	 }
+
     
 
     static class DecoderLayer {
@@ -146,7 +175,25 @@ public class Decoder {
             this.dropout3 = new Dropout(dropoutRate);
         }
 
-        public INDArray forward(INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray paddingMask) {
+        public List<INDArray> getParameters() {
+            List<INDArray> layerParams = new ArrayList<>();
+            
+            // Collecter les paramètres des mécanismes d'attention et du réseau feedforward
+            layerParams.addAll(selfAttention.getParameters());
+            layerParams.addAll(encoderDecoderAttention.getParameters());
+            layerParams.addAll(feedForward.getParameters());
+
+            // Collecter les paramètres des normalisations de couches
+            layerParams.addAll(layerNorm1.getParameters());
+            layerParams.addAll(layerNorm2.getParameters());
+            layerParams.addAll(layerNorm3.getParameters());
+
+            // Collecter les paramètres d'autres composants si nécessaire
+            
+            return layerParams;
+        }
+
+		public INDArray forward(INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray paddingMask) {
             INDArray attn1 = selfAttention.forward(x, x, x, lookAheadMask);
             attn1 = dropout1.apply(attn1);
             x = layerNorm1.forward(x.add(attn1));

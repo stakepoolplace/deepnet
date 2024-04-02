@@ -14,6 +14,8 @@ public class TransformerModel {
     private Decoder decoder;
     private CustomAdamOptimizer optimizer;
     private Tokenizer tokenizer;
+    private double dropoutRate = 0.1; // Exemple de taux de dropout fixe
+
 
     public TransformerModel() throws IOException {
     	
@@ -31,7 +33,7 @@ public class TransformerModel {
         
         
         this.encoder = new Encoder(numLayers, dModel, numHeads, dff, vocabSize, pretrainedEmbeddings, this.tokenizer);
-        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, vocabSize);
+        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate, vocabSize);
         this.optimizer = new CustomAdamOptimizer(0.001, 1000); // Initialisation hypothétique
     }
     
@@ -60,7 +62,7 @@ public class TransformerModel {
         return embeddings;
     }    
 
-    public void train(DataGenerator dataGenerator) {
+    public void train(DataGenerator dataGenerator) throws IOException {
 
         for (int epoch = 0; epoch < 10; epoch++) {
         	int batchNum = 0;
@@ -77,9 +79,23 @@ public class TransformerModel {
 	            // Supposons que 'encode' et 'decode' retournent une liste de logits par token
 	            List<List<Float>> encoded = encoder.encode(batch.getData());
 	            List<List<Float>> decodedLogits = decoder.decode(encoded);
+	           	            
 	            
+	            
+                // Calculez la perte à l'aide d'une méthode hypothétique calculateLoss
 	            float loss = calculateLoss(decodedLogits, targetTokenIds);
-	            optimizer.updateModel(encoder, decoder, loss, batchNum, epoch);
+
+                // Supposons que vous ayez des méthodes pour calculer les gradients par rapport à la perte
+                INDArray encoderGradients = encoder.calculateGradients(loss);
+                INDArray decoderGradients = decoder.calculateGradients(loss);
+
+                // Mise à jour des paramètres de l'encodeur et du décodeur via l'optimiseur
+                optimizer.update(encoder.getParameters(), encoderGradients);
+                optimizer.update(decoder.getParameters(), decoderGradients);	            
+	            
+	            
+	            
+	            
 	            
 	            batchNum++;
             }

@@ -91,6 +91,30 @@ public class Encoder {
         
         return layerNorm.forward(x);
     }
+    
+    
+    public List<INDArray> getParameters() {
+        List<INDArray> params = new ArrayList<>();
+        // Collecter les poids et biais de multiHeadAttention et positionwiseFeedForward
+        for (EncoderLayer layer : layers) {
+            params.addAll(layer.getParameters());
+        }
+
+        // Inclure les paramètres de la normalisation de couche finale
+        if(layerNorm != null) {
+            params.addAll(layerNorm.getParameters());
+        }
+        
+        return params;
+    }
+
+    // Méthode pour calculer les gradients basés sur la perte
+    public INDArray calculateGradients(double loss) {
+        // Dans un cas réel, cette méthode impliquerait le calcul du gradient de la perte par rapport à chaque paramètre
+        // Pour cet exemple, simuler un gradient comme un INDArray de mêmes dimensions que les paramètres
+        INDArray gradients = Nd4j.rand(1, 100); // Assumer les mêmes dimensions hypothétiques que les paramètres
+        return gradients;
+    }
 
     static class EncoderLayer {
         MultiHeadAttention selfAttention;
@@ -108,6 +132,18 @@ public class Encoder {
             this.dropout1 = new Dropout(dropoutRate);
             this.dropout2 = new Dropout(dropoutRate);
         }
+        
+        public List<INDArray> getParameters() {
+            List<INDArray> layerParams = new ArrayList<>();
+            
+            // Collecter les paramètres des composants de la couche d'encodeur
+            layerParams.addAll(selfAttention.getParameters());
+            layerParams.addAll(feedForward.getParameters());
+            layerParams.addAll(layerNorm1.getParameters());
+            layerParams.addAll(layerNorm2.getParameters());
+
+            return layerParams;
+        }
 
         public INDArray forward(INDArray x) {
             INDArray attnOutput = selfAttention.forward(x, x, x, null); // Assume no need for mask here
@@ -119,4 +155,7 @@ public class Encoder {
             return layerNorm2.forward(x.add(ffOutput)); // Add & norm again
         }
     }
+    
+    
+    
 }
