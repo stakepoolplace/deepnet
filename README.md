@@ -79,6 +79,12 @@ See example /RN/tests/SimpleFeedforwardNetwork.java
 3. Run `TestNetwork.java` from your IDE, which will read the Excel sheet and launch `ViewerFX.java` with the specified network configuration.
 4. The JavaFX interface will open, allowing you to start and visualize the training process.
 
+#### Documentation
+
+
+[Documentation via DeeperNet Advisor on chatGPT](https://chat.openai.com/g/g-zAzeIv8Ha-deepernet-advisor)
+
+
 #### Next steps 
 1. Integration of Transformers
 
