@@ -34,9 +34,9 @@ Welcome to DeeperNet developed by Eric Marchand, an educational deep learning fr
 git clone https://github.com/stakepoolplace/deepnet.git
 ```
 
-2. **Open the project in your Java IDE** and make sure it's configured to use Java 8.
+2. **Open the project in your Java IDE** and make sure it's configured to use Java 17.
 
-3. **Navigate to the `/RN` directory** to find the sample Excel sheets for network configuration.
+3. **Navigate to the `/src/main/resources` directory** to find the sample Excel sheets for network configuration.
 
 ### Training a Neural Network
 
@@ -70,11 +70,11 @@ network.getLastLayer().getArea(0).configureLinkage(ELinkage.MANY_TO_MANY, null, 
 network.finalizeConnections();
 ```
 
-See example /RN/tests/SimpleFeedforwardNetwork.java
+See example src/test/RN/SimpleFeedforwardNetwork.java
 
 #### Using an Excel Sheet
 
-1. Open the sample Excel sheet in `/RN/Sample.xls` or `.numbers` and configure your network parameters and input data.
+1. Open the sample Excel sheet in `src/main/resources/Sample.xls` or `.numbers` and configure your network parameters and input data.
 2. Save your changes and close the Excel sheet.
 3. Run `TestNetwork.java` from your IDE, which will read the Excel sheet and launch `ViewerFX.java` with the specified network configuration.
 4. The JavaFX interface will open, allowing you to start and visualize the training process.
