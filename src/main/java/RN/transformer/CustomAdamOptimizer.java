@@ -71,4 +71,12 @@ public class CustomAdamOptimizer {
     public int getEpoch() {
         return this.epoch;
     }
+
+	public double getLearningRate() {
+		return learningRate;
+	}
+
+	public void setLearningRate(double learningRate) {
+		this.learningRate = learningRate;
+	}
 }
