@@ -36,9 +36,9 @@ public class Encoder {
         }
     }
 
-    public List<List<Float>> encode(List<String> words) {
+    public List<List<Float>> encode(String text) {
         // Tokenization du texte
-        List<String> tokens = tokenizer.tokenize(words);
+        List<String> tokens = tokenizer.tokenize(text);
         // Conversion des tokens en IDs
         List<Integer> tokenIds = tokenizer.tokensToIds(tokens);
 
@@ -49,6 +49,19 @@ public class Encoder {
         // Conversion des embeddings encodés en logits
         return convertToLogits(encoded);
     }
+    
+    public INDArray encode(List<Integer> tokenIds) {
+        // Utiliser la matrice d'embeddings pré-entraînée pour récupérer les embeddings correspondants aux IDs de tokens
+        INDArray inputEmbeddings = lookupEmbeddings(tokenIds);
+
+        // Appliquer les transformations de l'encodeur sur les embeddings
+        INDArray encoded = forward(inputEmbeddings);
+
+        return encoded;
+    }
+
+    
+   
 
     private INDArray lookupEmbeddings(List<Integer> tokenIds) {
         // Utiliser la matrice d'embeddings pré-entraînée pour récupérer les embeddings correspondants aux IDs de tokens

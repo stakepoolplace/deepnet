@@ -1,5 +1,8 @@
 package RN.transformer;
 
+import java.util.Arrays;
+import java.util.List;
+
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 
@@ -14,5 +17,15 @@ public class LinearProjection {
     public INDArray project(INDArray input) {
         // Projection linéaire en multipliant l'entrée par les poids
         return input.mmul(weights);
+    }
+
+    // Méthode pour obtenir les paramètres (poids) de la projection
+    public List<INDArray> getParameters() {
+        return Arrays.asList(weights);
+    }
+
+    // Méthode pour définir (mettre à jour) les paramètres (poids) de la projection
+    public void setParameters(INDArray newWeights) {
+        this.weights = newWeights;
     }
 }

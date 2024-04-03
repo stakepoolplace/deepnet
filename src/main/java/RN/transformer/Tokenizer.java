@@ -40,17 +40,19 @@ public class Tokenizer {
         }
     }
 
-    public List<String> tokenize(List<String> words) {
-    	
-        // Simple tokenization basée sur l'espace
-        //String[] tokens = text.split("\\s+");
-    	
+    public List<String> tokenize(String text) {
+        // Cette regex simple sépare les mots et la ponctuation, ce qui est une amélioration par rapport à la séparation par espace.
+        // Pour des règles plus complexes, envisagez d'utiliser une librairie de tokenisation spécialisée.
+        String[] tokens = text.split("\\s+|(?=\\p{Punct})|(?<=\\p{Punct})");
         List<String> tokenList = new ArrayList<>();
-        for (String token : words) {
-            tokenList.add(token.toLowerCase()); // Convertir en minuscule pour la simplicité
+        for (String token : tokens) {
+            if (!token.trim().isEmpty()) { // Ignorer les chaînes vides
+                tokenList.add(token.toLowerCase()); // Convertir en minuscule pour la simplicité
+            }
         }
         return tokenList;
     }
+
 
     public List<Integer> tokensToIds(List<String> tokens) {
         List<Integer> ids = new ArrayList<>();
@@ -60,11 +62,21 @@ public class Tokenizer {
         return ids;
     }
 
+    
     public String idsToTokens(List<Integer> ids) {
         StringBuilder text = new StringBuilder();
         for (int id : ids) {
-            text.append(idToTokenMap.getOrDefault(id, "[UNK]")).append(" ");
+            String token = idToTokenMap.getOrDefault(id, "[UNK]");
+            if (text.length() > 0) text.append(" ");
+            text.append(token);
         }
         return text.toString().trim();
     }
+
+
+    private boolean isPunctuation(String token) {
+        // Une vérification simple de la ponctuation basée sur regex; ajustez selon vos besoins
+        return token.matches("\\p{Punct}");
+    }
+
 }

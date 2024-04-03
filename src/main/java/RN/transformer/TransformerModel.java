@@ -3,6 +3,7 @@ package RN.transformer;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.nd4j.linalg.api.ndarray.INDArray;
@@ -72,12 +73,19 @@ public class TransformerModel {
             	Batch batch = dataGenerator.nextBatch();
                 
                 // Tokenization du texte cible
-                List<String> targetTokens = tokenizer.tokenize(batch.getTarget());
+            	String batchTarget = String.join("", batch.getTarget());
+                List<String> targetTokens = tokenizer.tokenize(batchTarget);
                 // Conversion des tokens cibles en IDs
                 List<Integer> targetTokenIds = tokenizer.tokensToIds(targetTokens);
+                
+                // Tokenization du text source
+            	String batchData = String.join("", batch.getData());
+                List<String> dataTokens = tokenizer.tokenize(batchData);
+                // Conversion des tokens sources en IDs
+                List<Integer> dataTokenIds = tokenizer.tokensToIds(dataTokens);
 
 	            // Supposons que 'encode' et 'decode' retournent une liste de logits par token
-	            List<List<Float>> encoded = encoder.encode(batch.getData());
+            	INDArray encoded = encoder.encode(dataTokenIds);
 	            List<List<Float>> decodedLogits = decoder.decode(encoded);
 	           	            
 	            
@@ -113,12 +121,40 @@ public class TransformerModel {
             throw new IllegalStateException("Le modèle doit être entraîné avant l'inférence.");
         }
 
-        List<List<Float>> encodedPrompt = encoder.encode(prompt);
-        List<Float> decodedOutput = decoder.decode(encodedPrompt).get(0); // Simplification
+        // Tokenisation et conversion du prompt en IDs
+        List<String> promptTokens = tokenizer.tokenize(prompt);
+        List<Integer> promptTokenIds = tokenizer.tokensToIds(promptTokens);
 
-        String response = tokenizer.idsToTokens(decodedOutput);
+        // Encodage
+        INDArray encodedPrompt = encoder.encode(promptTokenIds); // Supposons que la méthode encode retourne un INDArray
+
+        // Décodeur : Préparation des arguments nécessaires
+        // Supposons que encoderOutput est le même que encodedPrompt pour l'inférence simple
+        // Les masques lookAheadMask et paddingMask sont initialisés à null pour l'exemple
+        INDArray lookAheadMask = null;
+        INDArray paddingMask = null;
+        INDArray logits = decoder.forward(encodedPrompt, encodedPrompt, lookAheadMask, paddingMask);
+
+        // Conversion des logits en IDs de tokens
+        INDArray predictedTokenIds = Nd4j.argMax(logits, 2);
+
+        // Conversion de INDArray en List<Integer>
+        long[] shape = predictedTokenIds.shape();
+        List<Integer> tokenIdsList = new ArrayList<>();
+        for(int i = 0; i < shape[0]; i++) { 
+            tokenIdsList.add(predictedTokenIds.getInt(i));
+        }
+
+        // Conversion des IDs de tokens prédits en texte
+        String response = tokenizer.idsToTokens(tokenIdsList);
+
         return response;
     }
+
+
+
+
+
 
     public boolean isTrained() {
         return isTrained;

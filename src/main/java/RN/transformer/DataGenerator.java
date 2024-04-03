@@ -9,16 +9,20 @@ import java.util.List;
 public class DataGenerator {
     private BufferedReader dataReader;
     private BufferedReader targetReader;
+    private Tokenizer tokenizer;
     private int batchSize;
-	private String dataFilePath;
+    private int maxTokensPerBatch;
 	private String targetFilePath;
+	private String dataFilePath;
 
-    public DataGenerator(String dataFilePath, String targetFilePath, int batchSize) throws IOException {
-    	this.dataFilePath = dataFilePath;
-    	this.targetFilePath = targetFilePath;
+    public DataGenerator(String dataFilePath, String targetFilePath, Tokenizer tokenizer, int batchSize, int maxTokensPerBatch) throws IOException {
         this.dataReader = new BufferedReader(new FileReader(dataFilePath));
         this.targetReader = new BufferedReader(new FileReader(targetFilePath));
+        this.targetFilePath = targetFilePath;
+        this.dataFilePath = dataFilePath;
+        this.tokenizer = tokenizer;
         this.batchSize = batchSize;
+        this.maxTokensPerBatch = maxTokensPerBatch;
     }
 
     public boolean hasNextBatch() throws IOException {
@@ -28,10 +32,30 @@ public class DataGenerator {
     public Batch nextBatch() throws IOException {
         List<String> dataBatch = new ArrayList<>();
         List<String> targetBatch = new ArrayList<>();
+        StringBuilder dataBuffer = new StringBuilder();
+        StringBuilder targetBuffer = new StringBuilder();
 
-        for (int i = 0; i < batchSize && hasNextBatch(); i++) {
-            dataBatch.add(dataReader.readLine());
-            targetBatch.add(targetReader.readLine());
+        while (dataBatch.size() < batchSize && hasNextBatch()) {
+            int dataChar;
+            while ((dataChar = dataReader.read()) != -1) {
+                dataBuffer.append((char) dataChar);
+                if (dataBuffer.length() >= maxTokensPerBatch) break;
+            }
+
+            int targetChar;
+            while ((targetChar = targetReader.read()) != -1) {
+                targetBuffer.append((char) targetChar);
+                if (targetBuffer.length() >= maxTokensPerBatch) break;
+            }
+
+            if (dataBuffer.length() > 0 && targetBuffer.length() > 0) {
+                List<String> dataTokens = tokenizer.tokenize(dataBuffer.toString());
+                List<String> targetTokens = tokenizer.tokenize(targetBuffer.toString());
+                dataBatch.add(String.join(" ", dataTokens));
+                targetBatch.add(String.join(" ", targetTokens));
+                dataBuffer = new StringBuilder(); // Réinitialiser les buffers pour le prochain segment
+                targetBuffer = new StringBuilder();
+            }
         }
 
         return new Batch(dataBatch, targetBatch);
@@ -41,9 +65,9 @@ public class DataGenerator {
         dataReader.close();
         targetReader.close();
     }
-    
+
     public void init() throws IOException {
-        dataReader = new BufferedReader(new FileReader(dataFilePath));
-        targetReader = new BufferedReader(new FileReader(targetFilePath));
+        this.dataReader = new BufferedReader(new FileReader(dataFilePath));
+        this.targetReader = new BufferedReader(new FileReader(targetFilePath));
     }    
 }

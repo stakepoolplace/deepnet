@@ -18,139 +18,101 @@ import org.nd4j.linalg.factory.Nd4j;
 public class Decoder {
     private List<DecoderLayer> layers;
     private LayerNorm layerNorm;
-	private int numLayers;
-	private int dModel;
-	private int numHeads;
-	private double dropoutRate;
-    private LinearProjection linearProjection; // Ajout de la projection linéaire
+    private int numLayers;
+    private int dModel;
+    private int numHeads;
+    private double dropoutRate;
+    private LinearProjection linearProjection; // Projection linéaire vers la taille du vocabulaire
 
-
-    public Decoder(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, int outputSize) {
-    	this.numLayers = numLayers;
-    	this.dModel = dModel;
-    	this.numHeads = numHeads;
-    	this.dropoutRate = dropoutRate;
+    public Decoder(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, int vocabSize) {
+        this.numLayers = numLayers;
+        this.dModel = dModel;
+        this.numHeads = numHeads;
+        this.dropoutRate = dropoutRate;
         this.layers = new ArrayList<>();
         this.layerNorm = new LayerNorm(dModel);
-        this.linearProjection = new LinearProjection(dModel, outputSize); // Initialisation de la projection linéaire
+        this.linearProjection = new LinearProjection(dModel, vocabSize); // Initialiser avec la taille du vocabulaire
 
         for (int i = 0; i < numLayers; i++) {
             this.layers.add(new DecoderLayer(dModel, numHeads, dff, dropoutRate));
         }
     }
-
-    public INDArray forward(INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray paddingMask) {
-        for (DecoderLayer layer : layers) {
-            x = layer.forward(x, encoderOutput, lookAheadMask, paddingMask);
-        }
-        x = linearProjection.project(x); // Projection linéaire sur la sortie du décodeur
-
-        return layerNorm.forward(x);
-    }
     
-    
-    public List<List<Float>> decode(List<List<Float>> encodedInput) {
+    public List<List<Float>> decode(INDArray encodedData) {
+        // Implémentation de la logique de décodage ici
+        // Cela peut inclure le décodage de l'INDArray 'encodedData' en logits
+        // et la conversion de ces logits en une liste de listes de flottants
+        
+        // Exemple simplifié :
         List<List<Float>> decodedLogits = new ArrayList<>();
 
-        // Pour chaque exemple encodé
-        for (List<Float> encodedExample : encodedInput) {
-            List<Float> exampleLogits = new ArrayList<>();
+        // Boucle sur chaque vecteur encodé
+        for (int i = 0; i < encodedData.rows(); i++) {
+            INDArray encodedVector = encodedData.getRow(i);
 
-            // Initialiser le token de départ avec un token spécial de début de séquence
-            List<Float> startToken = getStartToken();
+            // Décodez le vecteur encodé en logits
+            List<Float> logits = decodeVector(encodedVector);
 
-            // Ajouter le token de départ aux logits de l'exemple
-            exampleLogits.addAll(startToken);
-
-            // Pour chaque token encodé dans l'exemple
-            for (Float encodedToken : encodedExample) {
-                // Appliquer l'attention sur le dernier token généré et les embeddings encodés
-                List<Float> attentionWeights = calculateAttentionWeights(exampleLogits, encodedInput);
-
-                // Calculer le contexte pondéré en utilisant les poids d'attention
-                List<Float> contextVector = calculateContextVector(attentionWeights, encodedInput);
-
-                // Ajouter les logits du prochain token aux logits de l'exemple
-                exampleLogits.addAll(contextVector);
-            }
-
-            // Ajouter les logits de l'exemple à la liste des logits décodés
-            decodedLogits.add(exampleLogits);
+            // Ajoutez les logits décodés à la liste résultante
+            decodedLogits.add(logits);
         }
 
         return decodedLogits;
     }
 
-
-    // Méthodes auxiliaires pour le décodage
-
-    private List<Float> getStartToken() {
-        // Pour l'exemple, retourner un vecteur d'embeddings pour un token spécial de début de séquence
-        List<Float> startToken = new ArrayList<>();
-        for (int i = 0; i < dModel; i++) {
-            startToken.add(0.0f); // Valeurs arbitraires pour l'exemple
+    // Méthode interne pour décoder un vecteur encodé en logits
+    private List<Float> decodeVector(INDArray encodedVector) {
+        // Implémentez la logique de décodage du vecteur encodé en logits ici
+        // Cela peut impliquer l'utilisation d'un modèle de décodage spécifique
+        // et le traitement de l'INDArray 'encodedVector' pour obtenir les logits
+        
+        // Exemple simplifié :
+        List<Float> logits = new ArrayList<>();
+        
+        // Supposons que nous ayons une logique de décodage simple pour l'exemple
+        for (int i = 0; i < encodedVector.columns(); i++) {
+            // Par exemple, nous ajoutons simplement les valeurs du vecteur encodé comme logits
+            logits.add(encodedVector.getFloat(i));
         }
-        return startToken;
-    }
 
-    private List<Float> calculateAttentionWeights(List<Float> previousLogits, List<List<Float>> encodedInput) {
-        // Implémenter la logique pour calculer les poids d'attention en utilisant l'attention softmax
-        // Pour cet exemple, nous supposerons que les poids d'attention sont simplement calculés comme une distribution softmax des logits du dernier token généré
-        List<Float> attentionWeights = new ArrayList<>();
-        float sumExpLogits = 0.0f;
-        for (Float logit : previousLogits) {
-            sumExpLogits += Math.exp(logit.floatValue());
-        }
-        for (Float logit : previousLogits) {
-            attentionWeights.add((float) Math.exp(logit.floatValue()) / sumExpLogits);
-        }
-        return attentionWeights;
+        return logits;
     }
 
 
-    private List<Float> calculateContextVector(List<Float> attentionWeights, List<List<Float>> encodedInput) {
-        // Pour cet exemple, le contexte pondéré est simplement la somme pondérée des embeddings encodés, où les poids d'attention servent de coefficients de pondération
-        List<Float> contextVector = new ArrayList<>();
-        int numDimensions = encodedInput.get(0).size(); // Supposons que tous les tokens ont la même dimension
-        for (int i = 0; i < numDimensions; i++) {
-            float sumWeightedEmbeddings = 0.0f;
-            for (int j = 0; j < encodedInput.size(); j++) {
-                sumWeightedEmbeddings += encodedInput.get(j).get(i) * attentionWeights.get(j);
-            }
-            contextVector.add(sumWeightedEmbeddings);
+    public INDArray forward(INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray paddingMask) {
+        for (DecoderLayer layer : layers) {
+            x = layer.forward(x, encoderOutput, lookAheadMask, paddingMask);
         }
-        return contextVector;
+        x = layerNorm.forward(x);
+        x = linearProjection.project(x); // Applique une projection linéaire à la sortie du décodeur
+        return x;
     }
 
-	 // Ajout à la classe Decoder
-	
-	 // Méthode pour obtenir tous les paramètres du décodeur
-	 public List<INDArray> getParameters() {
-		 
-	        List<INDArray> params = new ArrayList<>();
-	        
-	        // Collecter les paramètres de chaque couche du décodeur
-	        for (DecoderLayer layer : layers) {
-	            params.addAll(layer.getParameters());
-	        }
+    // Méthode pour obtenir tous les paramètres du décodeur
+    public List<INDArray> getParameters() {
+        List<INDArray> params = new ArrayList<>();
 
-	        // Collecter les paramètres de la normalisation de couche finale
-	        params.addAll(layerNorm.getParameters());
+        // Collecter les paramètres de chaque couche du décodeur
+        for (DecoderLayer layer : layers) {
+            params.addAll(layer.getParameters());
+        }
 
-	        // Ajouter ici la collecte des paramètres d'autres composants, si nécessaire
-	        
-	        return params;
-	 }
-	
-	 // Méthode pour calculer les gradients basés sur la perte
-	 public INDArray calculateGradients(double loss) {
-	     // Dans un cas réel, cette méthode impliquerait le calcul du gradient de la perte par rapport à chaque paramètre
-	     // Pour cet exemple, simuler un gradient comme un INDArray de mêmes dimensions que les paramètres
-	     INDArray gradients = Nd4j.rand(1, 100); // Assumer les mêmes dimensions hypothétiques que les paramètres
-	     return gradients;
-	 }
+        // Collecter les paramètres de la normalisation de couche finale
+        params.addAll(layerNorm.getParameters());
 
-    
+        // Collecter les paramètres de la projection linéaire
+        params.addAll(linearProjection.getParameters());
+
+        return params;
+    }
+
+    // Méthode pour calculer les gradients basés sur la perte
+    public INDArray calculateGradients(double loss) {
+        // La logique réelle de calcul des gradients serait beaucoup plus complexe
+        // et dépendrait des détails spécifiques de votre implémentation et de votre bibliothèque d'autograd.
+        INDArray gradients = Nd4j.rand(1, 100); // Assumer des dimensions hypothétiques pour l'exemple
+        return gradients;
+    }
 
     static class DecoderLayer {
         MultiHeadAttention selfAttention;
@@ -177,23 +139,18 @@ public class Decoder {
 
         public List<INDArray> getParameters() {
             List<INDArray> layerParams = new ArrayList<>();
-            
-            // Collecter les paramètres des mécanismes d'attention et du réseau feedforward
+
             layerParams.addAll(selfAttention.getParameters());
             layerParams.addAll(encoderDecoderAttention.getParameters());
             layerParams.addAll(feedForward.getParameters());
-
-            // Collecter les paramètres des normalisations de couches
             layerParams.addAll(layerNorm1.getParameters());
             layerParams.addAll(layerNorm2.getParameters());
             layerParams.addAll(layerNorm3.getParameters());
 
-            // Collecter les paramètres d'autres composants si nécessaire
-            
             return layerParams;
         }
 
-		public INDArray forward(INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray paddingMask) {
+        public INDArray forward(INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray paddingMask) {
             INDArray attn1 = selfAttention.forward(x, x, x, lookAheadMask);
             attn1 = dropout1.apply(attn1);
             x = layerNorm1.forward(x.add(attn1));
