@@ -3,7 +3,6 @@ package RN.transformer;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 
 import org.deeplearning4j.models.embeddings.loader.WordVectorSerializer;
@@ -29,7 +28,7 @@ public class TransformerModel {
     
     static {
         try {
-            wordVectors = WordVectorSerializer.loadStaticModel(new File("pretrained-embeddings/frwiki_20180420_300d.pkl.bz2"));
+            wordVectors = WordVectorSerializer.loadStaticModel(new File("pretrained-embeddings/frwiki_20180420_300d.pkl"));
             vocabSize = wordVectors.vocab().numWords(); // Taille du vocabulaire Word2Vec
          // Calculer le vecteur moyen (à faire une seule fois, idéalement dans le constructeur ou une méthode d'initialisation)
             INDArray allVectors = Nd4j.create(vocabSize, dModel);

@@ -151,6 +151,20 @@ public class Decoder {
             this.dropout2 = new Dropout(dropoutRate);
             this.dropout3 = new Dropout(dropoutRate);
         }
+        
+        public INDArray forward(INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray paddingMask) {
+            INDArray attn1 = selfAttention.forward(x, x, x, lookAheadMask);
+            attn1 = dropout1.apply(attn1);
+            x = layerNorm1.forward(x.add(attn1));
+
+            INDArray attn2 = encoderDecoderAttention.forward(x, encoderOutput, encoderOutput, paddingMask);
+            attn2 = dropout2.apply(attn2);
+            x = layerNorm2.forward(x.add(attn2));
+
+            INDArray ffOutput = feedForward.forward(x);
+            ffOutput = dropout3.apply(ffOutput);
+            return layerNorm3.forward(x.add(ffOutput));
+        }
 
         public List<INDArray> getParameters() {
             List<INDArray> layerParams = new ArrayList<>();
@@ -174,18 +188,6 @@ public class Decoder {
                    layerNorm3.getNumberOfParameters();
         }
 
-        public INDArray forward(INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray paddingMask) {
-            INDArray attn1 = selfAttention.forward(x, x, x, lookAheadMask);
-            attn1 = dropout1.apply(attn1);
-            x = layerNorm1.forward(x.add(attn1));
 
-            INDArray attn2 = encoderDecoderAttention.forward(x, encoderOutput, encoderOutput, paddingMask);
-            attn2 = dropout2.apply(attn2);
-            x = layerNorm2.forward(x.add(attn2));
-
-            INDArray ffOutput = feedForward.forward(x);
-            ffOutput = dropout3.apply(ffOutput);
-            return layerNorm3.forward(x.add(ffOutput));
-        }
     }
 }

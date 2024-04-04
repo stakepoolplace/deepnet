@@ -47,5 +47,8 @@ public class TransformerModelTest {
         String response = model.infer("Some input text");
         assertNotNull("L'inférence devrait retourner une réponse non-null", response);
         // Ici, vous pouvez ajouter d'autres assertions pour vérifier la plausibilité de la réponse.
+        response = model.infer("This is a dummy sentence");
+        assertNotNull("L'inférence devrait retourner une réponse non-null", response);
+
     }
 }
