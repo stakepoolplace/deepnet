@@ -1,45 +1,48 @@
 package RN.transformer;
 
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
+
 public class Tokenizer {
-    private Map<String, Integer> tokenToIdMap;
-    private Map<Integer, String> idToTokenMap;
+    private Map<String, Integer> tokenToIdMap = new HashMap<>();
+    private Map<Integer, String> idToTokenMap = new HashMap<>();
+    private WordVectors wordVectors;
     private int unkTokenId; // Identifiant pour les tokens inconnus
 
-    public Tokenizer() {
-        this.tokenToIdMap = new HashMap<>();
-        this.idToTokenMap = new HashMap<>();
-        this.unkTokenId = -1; // Initialiser avec une valeur pour les tokens inconnus
-        initializeVocabulary();
+    public Tokenizer(WordVectors wordVectors) throws IOException {
+    	
+        this.wordVectors = wordVectors;
+
+        // Synchroniser le vocabulaire avec Word2Vec
+        synchronizeVocabularyWithWord2Vec();
     }
 
-    private void initializeVocabulary() {
-        // Initialiser votre vocabulaire ici
-        // Exemple: ajouter un token inconnu
-        addTokenToVocabulary("[UNK]");
-        unkTokenId = tokenToIdMap.get("[UNK]");
-
-        // Ajouter d'autres tokens au vocabulaire
-        addTokenToVocabulary("ceci");
-        addTokenToVocabulary("est");
-        addTokenToVocabulary("un");
-        addTokenToVocabulary("exemple");
-        // Continuer pour le reste du vocabulaire
-    }
-
-    private void addTokenToVocabulary(String token) {
-        if (!tokenToIdMap.containsKey(token)) {
-            int newId = tokenToIdMap.size();
-            tokenToIdMap.put(token, newId);
-            idToTokenMap.put(newId, token);
+    private void synchronizeVocabularyWithWord2Vec() {
+        int index = 0;
+        List<String> workds = (List<String>) wordVectors.vocab().words();
+        for (String word : workds) {
+            tokenToIdMap.put(word, index);
+            idToTokenMap.put(index, word);
+            index++;
         }
+
+        // Gérer le token inconnu
+        String unkToken = "[UNK]";
+        unkTokenId = index; // Attribuer l'identifiant suivant au token inconnu
+        tokenToIdMap.put(unkToken, unkTokenId);
+        idToTokenMap.put(unkTokenId, unkToken);
     }
 
+    public String getToken(int tokenId) {
+        return idToTokenMap.getOrDefault(tokenId, "[UNK]");
+    }
+    
     public List<String> tokenize(String text) {
         // Cette regex simple sépare les mots et la ponctuation, ce qui est une amélioration par rapport à la séparation par espace.
         // Pour des règles plus complexes, envisagez d'utiliser une librairie de tokenisation spécialisée.

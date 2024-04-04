@@ -13,24 +13,39 @@
 	</properties>
 
 	<dependencies>
-		<!-- https://mvnrepository.com/artifact/org.nd4j/nd4j-api -->
-		<dependency>
-		    <groupId>org.nd4j</groupId>
-		    <artifactId>nd4j-api</artifactId>
-		    <version>1.0.0-M2.1</version>
-		</dependency>
-		<!-- for CPU backend-->
-		<dependency>
-		    <groupId>org.nd4j</groupId>
-		    <artifactId>nd4j-native-platform</artifactId>
-		    <version>1.0.0-M2.1</version>
-		</dependency>
 		<!-- for GPU backend-->
-<!--		<dependency>-->
-<!--		    <groupId>org.nd4j</groupId>-->
-<!--		    <artifactId>nd4j-cuda-11.2-platform</artifactId>-->
-<!--		    <version>1.0.0-M1.1</version>-->
-<!--		</dependency>-->
+		<!--		<dependency>-->
+		<!--		    <groupId>org.nd4j</groupId>-->
+		<!--		    <artifactId>nd4j-cuda-11.2-platform</artifactId>-->
+		<!--		    <version>1.0.0-M1.1</version>-->
+		<!--		</dependency>-->
+		<!-- Deeplearning4j core -->
+		<dependency>
+			<groupId>org.deeplearning4j</groupId>
+			<artifactId>deeplearning4j-core</artifactId>
+			<version>1.0.0-M2.1</version>
+		</dependency>
+
+		<!-- ND4J backend. Vous devez choisir un backend. Ici, c'est pour CPUs. -->
+		<dependency>
+			<groupId>org.nd4j</groupId>
+			<artifactId>nd4j-native-platform</artifactId>
+			<version>1.0.0-M2.1</version>
+		</dependency>
+
+		<!-- DataVec pour le prétraitement des données -->
+		<dependency>
+			<groupId>org.datavec</groupId>
+			<artifactId>datavec-api</artifactId>
+			<version>1.0.0-M2.1</version>
+		</dependency>
+
+		<!-- Deeplearning4j NLP pour Word2Vec et autres modèles de langage -->
+		<dependency>
+			<groupId>org.deeplearning4j</groupId>
+			<artifactId>deeplearning4j-nlp</artifactId>
+			<version>1.0.0-M2.1</version>
+		</dependency>
 		<!-- https://mvnrepository.com/artifact/log4j/log4j -->
 		<dependency>
 			<groupId>log4j</groupId>
@@ -39,15 +54,15 @@
 		</dependency>
 		<!-- SLF4J API -->
 		<dependency>
-		    <groupId>org.slf4j</groupId>
-		    <artifactId>slf4j-api</artifactId>
-		    <version>1.7.36</version>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-api</artifactId>
+			<version>1.7.36</version>
 		</dependency>
 		<!-- Logback Classic Implementation -->
 		<dependency>
-		    <groupId>ch.qos.logback</groupId>
-		    <artifactId>logback-classic</artifactId>
-		    <version>1.2.11</version>
+			<groupId>ch.qos.logback</groupId>
+			<artifactId>logback-classic</artifactId>
+			<version>1.2.11</version>
 		</dependency>
 		<!-- https://mvnrepository.com/artifact/org.apache.poi/poi -->
 		<dependency>
@@ -75,7 +90,6 @@
 		</dependency>
 
 
-
 		<!-- Dépendance pour JUnit -->
 		<dependency>
 			<groupId>junit</groupId>
@@ -84,12 +98,11 @@
 			<scope>test</scope>
 		</dependency>
 		<dependency>
-		    <groupId>org.mockito</groupId>
-		    <artifactId>mockito-core</artifactId>
-		    <version>4.5.1</version>
-		    <scope>test</scope>
+			<groupId>org.mockito</groupId>
+			<artifactId>mockito-core</artifactId>
+			<version>4.5.1</version>
+			<scope>test</scope>
 		</dependency>
-
 
 
 	</dependencies>

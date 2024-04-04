@@ -26,4 +26,9 @@ public class LayerNorm {
         // Retourner une liste contenant les paramètres gamma et beta
         return Arrays.asList(gamma, beta);
     }
+    
+    public long getNumberOfParameters() {
+        // Puisque gamma et beta ont chacun une taille de dModel, le total est simplement 2 * dModel
+        return gamma.length() + beta.length();
+    }
 }

@@ -23,4 +23,8 @@ public class PositionwiseFeedForward {
         // Retourner les matrices de poids comme une liste d'INDArray
         return Arrays.asList(W1, W2);
     }
+    
+    public long getNumberOfParameters() {
+    	return W1.length() + W2.length();
+    }
 }

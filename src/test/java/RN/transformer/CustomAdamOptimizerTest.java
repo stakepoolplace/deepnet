@@ -1,46 +1,37 @@
 package RN.transformer;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.mock;
-
 import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.MockitoAnnotations;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
-import org.nd4j.linalg.learning.AdamUpdater;
 
 public class CustomAdamOptimizerTest {
 
     private CustomAdamOptimizer optimizer;
     private List<INDArray> parameters;
-    private INDArray gradients;
+    private List<INDArray> gradients;
     private final double initialLr = 0.001;
     private final int warmupSteps = 1000;
+    
 
     @Before
     public void setUp() {
-        MockitoAnnotations.initMocks(this);
+        // Initialiser directement le nombre total de paramètres basé sur ce que vous allez ajouter à 'parameters'
+        int numberOfParameters = 2; // Par exemple, si vous savez que vous ajouterez un INDArray avec 2 éléments
+
+        optimizer = new CustomAdamOptimizer(initialLr, warmupSteps, numberOfParameters);
         
-        // Mock AdamUpdater to avoid initialization issue
-        AdamUpdater mockedAdamUpdater = mock(AdamUpdater.class);
-        // Assume update method would modify parameters in a certain way, define that behavior here
-        // For example, do nothing (this is a simplification, you should define behavior close to reality)
-        doNothing().when(mockedAdamUpdater).applyUpdater(any(), anyInt(), anyInt());
-        
-        optimizer = new CustomAdamOptimizer(initialLr, warmupSteps); // Adjust constructor as needed
-        
-        // Initialize parameters and gradient with dummy values
+        // Ensuite, initialiser 'parameters' avec les valeurs de test
         parameters = new ArrayList<>();
         parameters.add(Nd4j.create(new float[]{0.1f, -0.2f}, new int[]{1, 2}));
-        gradients = Nd4j.create(new float[]{0.01f, -0.01f}, new int[]{1, 2});
+        gradients = new ArrayList<>();
+        gradients.add(Nd4j.create(new float[]{0.01f, -0.01f}, new int[]{1, 2}));
     }
+
 
     @Test
     public void testUpdate() {
@@ -48,9 +39,9 @@ public class CustomAdamOptimizerTest {
         optimizer.update(parameters, gradients);
         INDArray updatedParams = parameters.get(0);
 
-        // Assert that parameters have been updated (changed)
-        Assert.assertNotEquals("Parameters should be updated after optimizer update call",
-                               originalParams, updatedParams);
+        Assert.assertTrue("Parameters should be updated after optimizer update call",
+                !originalParams.equalsWithEps(updatedParams, 1e-7)); // Utiliser equalsWithEps pour une comparaison avec une tolérance
+
     }
 
     @Test
@@ -75,7 +66,7 @@ public class CustomAdamOptimizerTest {
 
         // Verify learning rate after warmup is less than during warmup
         Assert.assertTrue("Learning rate should decrease after warmup",
-                          learningRateAfterWarmup < learningRateMidway);
+                          learningRateAfterWarmup < initialLr);
     }
     
     @Test

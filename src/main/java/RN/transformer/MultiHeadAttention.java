@@ -48,6 +48,10 @@ public class MultiHeadAttention {
         // Retourner les matrices de poids comme une liste d'INDArray
         return Arrays.asList(Wq, Wk, Wv, Wo);
     }
+    
+    public long getNumberOfParameters() {
+    	return Wq.length() + Wk.length() + Wv.length() + Wo.length();
+    }
 
 	public int getdModel() {
 		return dModel;

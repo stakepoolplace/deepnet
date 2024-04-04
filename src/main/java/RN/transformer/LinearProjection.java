@@ -28,4 +28,8 @@ public class LinearProjection {
     public void setParameters(INDArray newWeights) {
         this.weights = newWeights;
     }
+
+	public long getNumberOfParameters() {
+		return weights.length();
+	}
 }

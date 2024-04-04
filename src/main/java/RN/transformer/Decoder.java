@@ -113,6 +113,21 @@ public class Decoder {
         INDArray gradients = Nd4j.rand(1, 100); // Assumer des dimensions hypothétiques pour l'exemple
         return gradients;
     }
+    
+    public int getNumberOfParameters() {
+        int numParams = 0;
+
+        // Parcourir toutes les couches de décodeur pour compter leurs paramètres
+        for (DecoderLayer layer : layers) {
+            numParams += layer.getNumberOfParameters();
+        }
+
+        // Ajouter les paramètres de la normalisation de couche et de la projection linéaire
+        numParams += layerNorm.getNumberOfParameters();
+        numParams += linearProjection.getNumberOfParameters();
+
+        return numParams;
+    }
 
     static class DecoderLayer {
         MultiHeadAttention selfAttention;
@@ -148,6 +163,15 @@ public class Decoder {
             layerParams.addAll(layerNorm3.getParameters());
 
             return layerParams;
+        }
+        
+        public long getNumberOfParameters() {
+            return selfAttention.getNumberOfParameters() +
+                   encoderDecoderAttention.getNumberOfParameters() +
+                   feedForward.getNumberOfParameters() +
+                   layerNorm1.getNumberOfParameters() +
+                   layerNorm2.getNumberOfParameters() +
+                   layerNorm3.getNumberOfParameters();
         }
 
         public INDArray forward(INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray paddingMask) {

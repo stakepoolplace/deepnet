@@ -120,6 +120,20 @@ public class Encoder {
         
         return params;
     }
+    
+    public int getNumberOfParameters() {
+        int numParams = 0;
+
+        // Parcourir toutes les couches d'encodeur pour compter leurs paramètres
+        for (EncoderLayer layer : layers) {
+            numParams += layer.getNumberOfParameters();
+        }
+
+        // Ajouter les paramètres de la normalisation de couche et des embeddings positionnels
+        numParams += layerNorm.getNumberOfParameters();
+
+        return numParams;
+    }
 
     // Méthode pour calculer les gradients basés sur la perte
     public INDArray calculateGradients(double loss) {
@@ -157,6 +171,15 @@ public class Encoder {
 
             return layerParams;
         }
+        
+
+        public long getNumberOfParameters() {
+            return selfAttention.getNumberOfParameters() +
+                   feedForward.getNumberOfParameters() +
+                   layerNorm1.getNumberOfParameters() +
+                   layerNorm2.getNumberOfParameters();
+        }
+
 
         public INDArray forward(INDArray x) {
             INDArray attnOutput = selfAttention.forward(x, x, x, null); // Assume no need for mask here
