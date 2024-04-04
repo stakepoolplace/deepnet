@@ -25,10 +25,9 @@ public class TransformerModel {
     private static int numHeads = 8;
     private static int dff = 2048;
 
-    
     static {
         try {
-            wordVectors = WordVectorSerializer.loadStaticModel(new File("pretrained-embeddings/frwiki_20180420_300d.pkl"));
+            wordVectors = WordVectorSerializer.loadStaticModel(new File("pretrained-embeddings/GoogleNews-vectors-negative300.bin.gz"));
             vocabSize = wordVectors.vocab().numWords(); // Taille du vocabulaire Word2Vec
          // Calculer le vecteur moyen (à faire une seule fois, idéalement dans le constructeur ou une méthode d'initialisation)
             INDArray allVectors = Nd4j.create(vocabSize, dModel);

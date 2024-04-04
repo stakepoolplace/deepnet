@@ -1,7 +1,6 @@
 package RN.transformer;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 
 import org.nd4j.linalg.api.ndarray.INDArray;

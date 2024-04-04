@@ -94,6 +94,7 @@ public class Encoder {
     }
 
     private INDArray forward(INDArray x) {
+    	
         // Appliquer les embeddings positionnels
         INDArray posEncoding = positionalEncoding.getPositionalEncoding(x.shape()[0]);
         x = x.add(posEncoding);
