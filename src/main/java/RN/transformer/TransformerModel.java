@@ -198,12 +198,17 @@ public class TransformerModel {
         float loss = 0.0f;
         int N = targetTokenIds.size();
 
+        // Assumons que decodedLogits contient une seule INDArray pour l'ensemble de la séquence
+        INDArray logits = decodedLogits.get(0); // Obtenez les logits pour l'ensemble de la séquence
+
         for (int i = 0; i < N; i++) {
-            INDArray logitsForPosition = decodedLogits.get(i); // Logits pour la position i, [vocabSize]
             int targetId = targetTokenIds.get(i); // L'ID attendu à la position i
 
-            // Utiliser Transforms pour le softmax
-            INDArray softmaxLogits = Transforms.softmax(logitsForPosition);
+            // Extraire les logits pour la position i et toutes les classes (vocabulaire)
+            INDArray logitsForPosition = logits.getRow(i); // Assume une forme [vocabSize] pour chaque position
+            
+            // Utiliser Transforms pour le softmax sur les logits pour la position i
+            INDArray softmaxLogits = Transforms.softmax(logitsForPosition, false); 
             
             // Calculer le log softmax spécifiquement pour l'indice de la cible
             float logSoftmaxForTarget = (float) Math.log(softmaxLogits.getDouble(targetId));
@@ -212,9 +217,9 @@ public class TransformerModel {
             loss += -logSoftmaxForTarget;
         }
 
-        // Retourner la moyenne de la perte sur la longueur de la séquence
-        return loss / N;
+        return loss / N; // Moyenne de la perte sur la longueur de la séquence
     }
+
 
 
 }

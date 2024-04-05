@@ -20,18 +20,21 @@
 		<!--		    <version>1.0.0-M1.1</version>-->
 		<!--		</dependency>-->
 		<!-- Deeplearning4j core -->
-		<dependency>
-			<groupId>org.deeplearning4j</groupId>
-			<artifactId>deeplearning4j-core</artifactId>
-			<version>1.0.0-M2.1</version>
-		</dependency>
-
+		
+		
 		<!-- ND4J backend. Vous devez choisir un backend. Ici, c'est pour CPUs. -->
 		<dependency>
 			<groupId>org.nd4j</groupId>
 			<artifactId>nd4j-native-platform</artifactId>
 			<version>1.0.0-M2.1</version>
 		</dependency>
+		<dependency>
+			<groupId>org.deeplearning4j</groupId>
+			<artifactId>deeplearning4j-core</artifactId>
+			<version>1.0.0-M2.1</version>
+		</dependency>
+
+
 
 		<!-- DataVec pour le prétraitement des données -->
 		<dependency>
