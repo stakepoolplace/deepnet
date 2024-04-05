@@ -9,6 +9,7 @@ import org.deeplearning4j.models.embeddings.loader.WordVectorSerializer;
 import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.ops.transforms.Transforms;
 
 public class TransformerModel {
     private boolean isTrained = false;
@@ -27,7 +28,7 @@ public class TransformerModel {
 
     static {
         try {
-            wordVectors = WordVectorSerializer.loadStaticModel(new File("pretrained-embeddings/GoogleNews-vectors-negative300.bin.gz"));
+            wordVectors = WordVectorSerializer.loadStaticModel(new File("pretrained-embeddings/model.bin"));
             vocabSize = wordVectors.vocab().numWords(); // Taille du vocabulaire Word2Vec
          // Calculer le vecteur moyen (à faire une seule fois, idéalement dans le constructeur ou une méthode d'initialisation)
             INDArray allVectors = Nd4j.create(vocabSize, dModel);
@@ -84,51 +85,42 @@ public class TransformerModel {
     }
 
     public void train(DataGenerator dataGenerator) throws IOException {
-
         for (int epoch = 0; epoch < 10; epoch++) {
-        	int batchNum = 0;
-        	
-        	optimizer.setEpoch(epoch);
-        	
+            int batchNum = 0;
+            
+            optimizer.setEpoch(epoch);
+            
             // Itération sur les batches générés par le générateur de données
             while (dataGenerator.hasNextBatch()) {
+                Batch batch = dataGenerator.nextBatch();
                 
-            	Batch batch = dataGenerator.nextBatch();
+                // Tokenization du texte cible et conversion en IDs
+                List<Integer> targetTokenIds = tokenizer.tokensToIds(tokenizer.tokenize(String.join("", batch.getTarget())));
                 
-                // Tokenization du texte cible
-            	String batchTarget = String.join("", batch.getTarget());
-                List<String> targetTokens = tokenizer.tokenize(batchTarget);
-                // Conversion des tokens cibles en IDs
-                List<Integer> targetTokenIds = tokenizer.tokensToIds(targetTokens);
-                
-                // Tokenization du text source
-            	String batchData = String.join("", batch.getData());
-                List<String> dataTokens = tokenizer.tokenize(batchData);
-                // Conversion des tokens sources en IDs
-                List<Integer> dataTokenIds = tokenizer.tokensToIds(dataTokens);
+                // Tokenization du texte source et conversion en IDs
+                List<Integer> dataTokenIds = tokenizer.tokensToIds(tokenizer.tokenize(String.join("", batch.getData())));
 
-	            // Supposons que 'encode' et 'decode' retournent une liste de logits par token
-            	INDArray encoded = encoder.encode(dataTokenIds);
-	            List<List<Float>> decodedLogits = decoder.decode(encoded);
-	           	            
-                // Calculez la perte à l'aide d'une méthode hypothétique calculateLoss
-	            float loss = calculateLoss(decodedLogits, targetTokenIds);
+                // Encodage et décodage pour obtenir les logits
+                INDArray encoded = encoder.encode(dataTokenIds);
+                List<INDArray> decodedLogits = decoder.decode(encoded); // Assumer que decode retourne désormais List<INDArray>
+                            
+                // Calcul de la perte
+                float loss = calculateCrossEntropyLoss(decodedLogits, targetTokenIds);
 
-
-                // Mise à jour des paramètres de l'encodeur et du décodeur via l'optimiseur
+                // Mise à jour des paramètres via l'optimiseur
                 List<INDArray> combinedParameters = getCombinedParameters();
-                List<INDArray> combinedGradients = getCombinedGradients(loss); // Supposer cette méthode combine les gradients de l'encoder et du decoder
+                List<INDArray> combinedGradients = getCombinedGradients(loss);
                 optimizer.update(combinedParameters, combinedGradients);
-	            
-	            
-	            batchNum++;
+                
+                batchNum++;
             }
             
-            dataGenerator.init();
+            dataGenerator.init(); // Réinitialiser le générateur de données si nécessaire
         }
 
         isTrained = true;
     }
+
     
     private List<INDArray> getCombinedParameters() {
         List<INDArray> combinedParameters = new ArrayList<>();
@@ -202,24 +194,27 @@ public class TransformerModel {
         return isTrained;
     }
 
-    private float calculateLoss(List<List<Float>> decodedLogits, List<Integer> targetTokenIds) {
-    	
+    private float calculateCrossEntropyLoss(List<INDArray> decodedLogits, List<Integer> targetTokenIds) {
         float loss = 0.0f;
         int N = targetTokenIds.size();
 
         for (int i = 0; i < N; i++) {
-            int targetId = targetTokenIds.get(i);
-            List<Float> logitsForToken = decodedLogits.get(i);
+            INDArray logitsForPosition = decodedLogits.get(i); // Logits pour la position i, [vocabSize]
+            int targetId = targetTokenIds.get(i); // L'ID attendu à la position i
+
+            // Utiliser Transforms pour le softmax
+            INDArray softmaxLogits = Transforms.softmax(logitsForPosition);
             
-            float sumExpLogits = 0.0f;
-            for (Float logit : logitsForToken) {
-                sumExpLogits += Math.exp(logit);
-            }
+            // Calculer le log softmax spécifiquement pour l'indice de la cible
+            float logSoftmaxForTarget = (float) Math.log(softmaxLogits.getDouble(targetId));
             
-            float logSoftmaxForTarget = (float)Math.log(Math.exp(logitsForToken.get(targetId)) / sumExpLogits);
+            // Accumuler la perte négative log softmax pour la cible
             loss += -logSoftmaxForTarget;
         }
-        
+
+        // Retourner la moyenne de la perte sur la longueur de la séquence
         return loss / N;
     }
+
+
 }

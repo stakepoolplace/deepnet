@@ -27,7 +27,7 @@ public class TransformerModelTest {
     @Test
     public void testTrainingChangesModelToTrained() throws Exception {
         // Utilisation de DummyDataGenerator pour simuler l'entraînement
-        DataGenerator dummyDataGenerator = new DummyDataGenerator("path/to/dummy/data", "path/to/dummy/target", model.tokenizer, 32, 512);
+        DataGenerator dummyDataGenerator = new DummyDataGenerator("src/test/resources/dummy-data.txt", "src/test/resources/dummy-data-target.txt", model.tokenizer, 32, 512);
         model.train(dummyDataGenerator);
         assertTrue("Le modèle devrait être marqué comme entraîné après l'entraînement", model.isTrained());
     }
@@ -41,7 +41,7 @@ public class TransformerModelTest {
     @Test
     public void testInferenceAfterTraining() throws Exception {
         // Simuler l'entraînement
-        DataGenerator dummyDataGenerator = new DummyDataGenerator("path/to/dummy/data", "path/to/dummy/target", model.tokenizer, 32, 512);
+        DataGenerator dummyDataGenerator = new DummyDataGenerator("src/test/resources/dummy-data.txt", "src/test/resources/dummy-data-target.txt", model.tokenizer, 32, 512);
         model.train(dummyDataGenerator);
         
         String response = model.infer("Some input text");

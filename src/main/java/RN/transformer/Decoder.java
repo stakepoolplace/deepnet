@@ -37,44 +37,15 @@ public class Decoder {
         }
     }
     
-    public List<List<Float>> decode(INDArray encodedData) {
-        // Implémentation de la logique de décodage ici
-        // Cela peut inclure le décodage de l'INDArray 'encodedData' en logits
-        // et la conversion de ces logits en une liste de listes de flottants
-        
-        // Exemple simplifié :
-        List<List<Float>> decodedLogits = new ArrayList<>();
+    public List<INDArray> decode(INDArray encodedData) {
+        // Applique une projection linéaire à l'ensemble du batch d'encodages pour obtenir les logits
+        INDArray logits = linearProjection.project(encodedData);
 
-        // Boucle sur chaque vecteur encodé
-        for (int i = 0; i < encodedData.rows(); i++) {
-            INDArray encodedVector = encodedData.getRow(i);
-
-            // Décodez le vecteur encodé en logits
-            List<Float> logits = decodeVector(encodedVector);
-
-            // Ajoutez les logits décodés à la liste résultante
-            decodedLogits.add(logits);
-        }
+        // Emballez les logits dans une liste pour maintenir la cohérence avec l'interface attendue
+        List<INDArray> decodedLogits = new ArrayList<>();
+        decodedLogits.add(logits); // Ajoutez directement les logits comme un seul élément de la liste
 
         return decodedLogits;
-    }
-
-    // Méthode interne pour décoder un vecteur encodé en logits
-    private List<Float> decodeVector(INDArray encodedVector) {
-        // Implémentez la logique de décodage du vecteur encodé en logits ici
-        // Cela peut impliquer l'utilisation d'un modèle de décodage spécifique
-        // et le traitement de l'INDArray 'encodedVector' pour obtenir les logits
-        
-        // Exemple simplifié :
-        List<Float> logits = new ArrayList<>();
-        
-        // Supposons que nous ayons une logique de décodage simple pour l'exemple
-        for (int i = 0; i < encodedVector.columns(); i++) {
-            // Par exemple, nous ajoutons simplement les valeurs du vecteur encodé comme logits
-            logits.add(encodedVector.getFloat(i));
-        }
-
-        return logits;
     }
 
 

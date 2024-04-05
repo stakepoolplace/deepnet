@@ -9,7 +9,7 @@ import java.util.List;
 public class DataGenerator {
     private BufferedReader dataReader;
     private BufferedReader targetReader;
-    private Tokenizer tokenizer;
+    protected Tokenizer tokenizer;
     private int batchSize;
     private int maxTokensPerBatch;
 	private String targetFilePath;

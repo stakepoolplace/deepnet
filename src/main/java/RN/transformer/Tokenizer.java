@@ -3,6 +3,7 @@ package RN.transformer;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,15 +18,13 @@ public class Tokenizer {
 
     public Tokenizer(WordVectors wordVectors) throws IOException {
     	
-        this.wordVectors = wordVectors;
-
         // Synchroniser le vocabulaire avec Word2Vec
-        synchronizeVocabularyWithWord2Vec();
+        synchronizeVocabularyWithWord2Vec(wordVectors);
     }
 
-    private void synchronizeVocabularyWithWord2Vec() {
+    private void synchronizeVocabularyWithWord2Vec(WordVectors wordVectors) {
         int index = 0;
-        List<String> workds = (List<String>) wordVectors.vocab().words();
+        Collection<String> workds = wordVectors.vocab().words();
         for (String word : workds) {
             tokenToIdMap.put(word, index);
             idToTokenMap.put(index, word);
