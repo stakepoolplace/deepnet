@@ -1,5 +1,7 @@
 package RN.algoactivations;
 
+import RN.nodes.Node;
+
 /**
  * @author Eric Marchand
  *
@@ -7,7 +9,7 @@ package RN.algoactivations;
 public enum EActivation {
 
 	
-	COS, SIN, IDENTITY, HEAVISIDE, SYGMOID_0_1, SYGMOID_1_1, TANH, LINEAR, SYGMOID_0_1_INVERSE, SYGMOID_0_1_NEGATIVE, NEGATIVE, RLU, LEAKY_RELU;
+	COS, SIN, IDENTITY, EXP, SOFTMAX, HEAVISIDE, SYGMOID_0_1, SYGMOID_1_1, TANH, LINEAR, SYGMOID_0_1_INVERSE, SYGMOID_0_1_NEGATIVE, NEGATIVE, RLU, LEAKY_RELU;
 	
 	public static EActivation getEnum(String function){
 	
@@ -23,6 +25,8 @@ public enum EActivation {
 		return EActivation.TANH;
 	else if (function.equalsIgnoreCase(EActivation.IDENTITY.name()))
 		return EActivation.IDENTITY;
+	else if (function.equalsIgnoreCase(EActivation.EXP.name()))
+		return EActivation.EXP;
 	else if (function.equalsIgnoreCase(EActivation.SIN.name()))
 		return EActivation.SIN;
 	else if (function.equalsIgnoreCase(EActivation.COS.name()))
@@ -37,13 +41,14 @@ public enum EActivation {
 		return EActivation.RLU;
 	else if (function.equalsIgnoreCase(EActivation.LEAKY_RELU.name()))
 		return EActivation.LEAKY_RELU;		
-		
+	else if (function.equalsIgnoreCase(EActivation.SOFTMAX.name()))
+		return EActivation.SOFTMAX;		
 		
 		return null;
 	
 	}
 
-	public static IActivation getPerformer(EActivation function) {
+	public static IActivation getPerformer(EActivation function, Node node) {
 		
 		IActivation performer = null;
 		
@@ -59,6 +64,8 @@ public enum EActivation {
 			performer = new TanHPerformer();
 		else if (function == EActivation.IDENTITY)
 			performer = new IdentityPerformer();
+		else if (function == EActivation.EXP)
+			performer = new ExponentialPerformer();
 		else if (function == EActivation.SIN)
 			performer = new SinusPerformer();
 		else if (function == EActivation.COS)
@@ -72,7 +79,9 @@ public enum EActivation {
 		else if (function == EActivation.RLU)
 			performer = new ReLUPerformer();
 		else if (function == EActivation.LEAKY_RELU)
-			performer = new LeakyReLUPerformer();		
+			performer = new LeakyReLUPerformer();	
+		else if (function == EActivation.SOFTMAX)
+			performer = new SoftMaxPerformer(node);
 		
 		
 		return performer;

@@ -20,8 +20,8 @@
 		<!--		    <version>1.0.0-M1.1</version>-->
 		<!--		</dependency>-->
 		<!-- Deeplearning4j core -->
-		
-		
+
+
 		<!-- ND4J backend. Vous devez choisir un backend. Ici, c'est pour CPUs. -->
 		<dependency>
 			<groupId>org.nd4j</groupId>
@@ -33,7 +33,6 @@
 			<artifactId>deeplearning4j-core</artifactId>
 			<version>1.0.0-M2.1</version>
 		</dependency>
-
 
 
 		<!-- DataVec pour le prétraitement des données -->
@@ -121,6 +120,21 @@
 					<target>${maven.compiler.target}</target>
 				</configuration>
 			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<version>2.22.2</version> <!-- Utilise une version qui supporte
+				JUnit 5 si nécessaire -->
+				<configuration>
+					<includes>
+						<include>**/Test*.java</include>
+						<include>**/*Test.java</include>
+						<include>**/*Tests.java</include>
+						<include>**/*TestCase.java</include>
+					</includes>
+				</configuration>
+			</plugin>
+
 		</plugins>
 	</build>
 </project>

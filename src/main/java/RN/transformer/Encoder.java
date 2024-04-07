@@ -1,10 +1,13 @@
 package RN.transformer;
 
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
-import java.util.ArrayList;
-import java.util.List;
 
 
 /**
@@ -36,7 +39,7 @@ public class Encoder {
         }
     }
 
-    public List<List<Float>> encode(String text) {
+    public List<List<Float>> encode(boolean isTraining, String text) {
         // Tokenization du texte
         List<String> tokens = tokenizer.tokenize(text);
         // Conversion des tokens en IDs
@@ -44,18 +47,18 @@ public class Encoder {
 
         // Encodage des IDs de tokens à travers les couches de l'encodeur
         INDArray inputEmbeddings = lookupEmbeddings(tokenIds);
-        INDArray encoded = forward(inputEmbeddings);
+        INDArray encoded = forward(isTraining, inputEmbeddings);
         
         // Conversion des embeddings encodés en logits
         return convertToLogits(encoded);
     }
     
-    public INDArray encode(List<Integer> tokenIds) {
+    public INDArray encode(boolean isTraining, List<Integer> tokenIds) {
         // Utiliser la matrice d'embeddings pré-entraînée pour récupérer les embeddings correspondants aux IDs de tokens
         INDArray inputEmbeddings = lookupEmbeddings(tokenIds);
 
         // Appliquer les transformations de l'encodeur sur les embeddings
-        INDArray encoded = forward(inputEmbeddings);
+        INDArray encoded = forward(isTraining, inputEmbeddings);
 
         return encoded;
     }
@@ -93,17 +96,48 @@ public class Encoder {
         return logits;
     }
 
-    private INDArray forward(INDArray x) {
+    private INDArray forward(boolean isTraining, INDArray x) {
     	
         // Appliquer les embeddings positionnels
         INDArray posEncoding = positionalEncoding.getPositionalEncoding(x.shape()[0]);
         x = x.add(posEncoding);
 
         for (EncoderLayer layer : layers) {
-            x = layer.forward(x);
+            x = layer.forward(isTraining, x);
         }
         
         return layerNorm.forward(x);
+    }
+    
+
+   
+    public void backward(Map<String, INDArray> gradients) {
+        // Exemple: Supposons que 'gradK' et 'gradV' sont les gradients pour les entrées K et V du MultiHeadAttention
+        INDArray gradK = gradients.get("gradK");
+        INDArray gradV = gradients.get("gradV");
+
+        // Initialisation d'une map pour stocker les gradients à propager à travers chaque couche
+        Map<String, INDArray> layerGradients = new HashMap<>();
+        layerGradients.put("gradK", gradK);
+        layerGradients.put("gradV", gradV);
+        
+        // Commence avec le gradient à la sortie de l'Encoder
+        // et le propage à travers ses composants dans l'ordre inverse du forward
+        for (int i = layers.size() - 1; i >= 0; i--) {
+        	layers.get(i).backward(layerGradients);
+        }
+        layerNorm.backward(gradOutput);
+        
+    }
+
+
+    
+    // Méthode pour calculer les gradients basés sur la perte
+    public INDArray calculateGradients(double loss) {
+        // Dans un cas réel, cette méthode impliquerait le calcul du gradient de la perte par rapport à chaque paramètre
+        // Pour cet exemple, simuler un gradient comme un INDArray de mêmes dimensions que les paramètres
+        INDArray gradients = Nd4j.rand(1, 100); // Assumer les mêmes dimensions hypothétiques que les paramètres
+        return gradients;
     }
     
     
@@ -122,6 +156,23 @@ public class Encoder {
         return params;
     }
     
+    public List<INDArray> getGradients() {
+        List<INDArray> grads = new ArrayList<>();
+        // Collecter les poids et biais de multiHeadAttention et positionwiseFeedForward
+        for (EncoderLayer layer : layers) {
+        	grads.addAll(layer.getGradients());
+        }
+
+        // Inclure les gradients de la normalisation de couche finale
+        if(layerNorm != null) {
+        	grads.addAll(layerNorm.getGradients());
+        }
+        
+        return grads;
+    }
+    
+
+    
     public int getNumberOfParameters() {
         int numParams = 0;
 
@@ -135,16 +186,26 @@ public class Encoder {
 
         return numParams;
     }
+    
+    
+    public int getNumberOfGradients() {
+        int numGrads = 0;
 
-    // Méthode pour calculer les gradients basés sur la perte
-    public INDArray calculateGradients(double loss) {
-        // Dans un cas réel, cette méthode impliquerait le calcul du gradient de la perte par rapport à chaque paramètre
-        // Pour cet exemple, simuler un gradient comme un INDArray de mêmes dimensions que les paramètres
-        INDArray gradients = Nd4j.rand(1, 100); // Assumer les mêmes dimensions hypothétiques que les paramètres
-        return gradients;
+        // Parcourir toutes les couches d'encodeur pour compter leurs gradients
+        for (EncoderLayer layer : layers) {
+        	numGrads += layer.getNumberOfGradients();
+        }
+
+        // Ajouter les gradients de la normalisation de couche et des embeddings positionnels
+        numGrads += layerNorm.getNumberOfGradients();
+
+        return numGrads;
     }
 
+
+
     static class EncoderLayer {
+    	
         MultiHeadAttention selfAttention;
         PositionwiseFeedForward feedForward;
         LayerNorm layerNorm1;
@@ -153,12 +214,45 @@ public class Encoder {
         Dropout dropout2;
 
         public EncoderLayer(int dModel, int numHeads, int dff, double dropoutRate) {
+        	
             this.selfAttention = new MultiHeadAttention(dModel, numHeads);
             this.feedForward = new PositionwiseFeedForward(dModel, dff);
             this.layerNorm1 = new LayerNorm(dModel);
             this.layerNorm2 = new LayerNorm(dModel);
             this.dropout1 = new Dropout(dropoutRate);
             this.dropout2 = new Dropout(dropoutRate);
+        }
+        
+        public INDArray forward(boolean isTraining, INDArray x) {
+        	
+            INDArray attnOutput = selfAttention.forward(x, x, x, null); // Assume no need for mask here
+            attnOutput = dropout1.apply(isTraining, attnOutput);
+            x = layerNorm1.forward(x.add(attnOutput)); // Add & norm
+
+            INDArray ffOutput = feedForward.forward(x);
+            ffOutput = dropout2.apply(isTraining, ffOutput);
+            return layerNorm2.forward(x.add(ffOutput)); // Add & norm again
+        }
+        
+        public INDArray backward(INDArray gradOutput) {
+            // Backward à travers LayerNorm2
+            Map<String, INDArray> gradLayerNorm2 = layerNorm2.backward(gradOutput);
+            INDArray gradToFeedForward = gradLayerNorm2.get("input");
+            
+            // Backward à travers PositionwiseFeedForward
+            Map<String, INDArray> gradFeedForward = feedForward.backward(gradToFeedForward);
+            INDArray gradToLayerNorm1 = gradFeedForward.get("input");
+            
+            // Backward à travers LayerNorm1
+            Map<String, INDArray> gradLayerNorm1 = layerNorm1.backward(gradToLayerNorm1);
+            INDArray gradToSelfAttention = gradLayerNorm1.get("input");
+            
+            // Backward à travers SelfAttention
+            Map<String, INDArray> gradSelfAttention = selfAttention.backward(gradToSelfAttention);
+            // Supposant que l'attention retourne aussi une map, on récupère le gradient pertinent
+            INDArray gradToPreviousLayer = gradSelfAttention.get("inputQ"); // Ceci est une simplification
+            
+            return gradToPreviousLayer;
         }
         
         public List<INDArray> getParameters() {
@@ -173,6 +267,18 @@ public class Encoder {
             return layerParams;
         }
         
+        public List<INDArray> getGradients() {
+            List<INDArray> layerGrads = new ArrayList<>();
+            
+            // Collecter les paramètres des composants de la couche d'encodeur
+            layerGrads.addAll(selfAttention.getGradients());
+            layerGrads.addAll(feedForward.getGradients());
+            layerGrads.addAll(layerNorm1.getGradients());
+            layerGrads.addAll(layerNorm2.getGradients());
+
+            return layerGrads;
+        }
+        
 
         public long getNumberOfParameters() {
             return selfAttention.getNumberOfParameters() +
@@ -180,17 +286,18 @@ public class Encoder {
                    layerNorm1.getNumberOfParameters() +
                    layerNorm2.getNumberOfParameters();
         }
+        
+        
 
-
-        public INDArray forward(INDArray x) {
-            INDArray attnOutput = selfAttention.forward(x, x, x, null); // Assume no need for mask here
-            attnOutput = dropout1.apply(attnOutput);
-            x = layerNorm1.forward(x.add(attnOutput)); // Add & norm
-
-            INDArray ffOutput = feedForward.forward(x);
-            ffOutput = dropout2.apply(ffOutput);
-            return layerNorm2.forward(x.add(ffOutput)); // Add & norm again
+        public long getNumberOfGradients() {
+            return selfAttention.getNumberOfGradients() +
+                   feedForward.getNumberOfGradients() +
+                   layerNorm1.getNumberOfGradients() +
+                   layerNorm2.getNumberOfGradients();
         }
+
+
+
     }
     
     

@@ -25,7 +25,7 @@ import RN.utils.StatUtils;
  * @author Eric Marchand
  * 
  */
-public class Network extends NetworkElement implements Serializable, INetwork{
+public class Network extends NetworkElement implements Serializable, INetwork {
 
 	private List<ILayer> layers = null;
 
@@ -38,46 +38,42 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 	private Integer timeSeriesOffset = null;
 
 	private Boolean recurrentNodesLinked = Boolean.FALSE;
-	
+
 	private double absoluteError = 0.0D;
 
 	private ENetworkImplementation impl = ENetworkImplementation.LINKED;
-	
-	
+
 	private Network() {
 		layers = new ArrayList<ILayer>();
 	}
-	
+
 	private Network(String name) {
 		this.layers = new ArrayList<ILayer>();
 		this.name = name;
 	}
-	
+
 	private Network(ENetworkImplementation impl) {
 		layers = new ArrayList<ILayer>();
-		
-		if(impl != null)
-			this.impl  = impl;
+
+		if (impl != null)
+			this.impl = impl;
 	}
-	
-	public static Network getInstance(){
+
+	public static Network getInstance() {
 		return getInstance(null);
 	}
 
-	
-	public static Network getInstance(ENetworkImplementation impl){
-		if(network == null){
+	public static Network getInstance(ENetworkImplementation impl) {
+		if (network == null) {
 			network = new Network(impl);
 		}
 		return network;
 	}
-	
-	public static Network newInstance(ENetworkImplementation impl){
+
+	public static Network newInstance(ENetworkImplementation impl) {
 		network = new Network(impl);
 		return network;
 	}
-
-
 
 	public void addLayer(ILayer layer) {
 		layer.setLayerId(layers.size());
@@ -85,9 +81,9 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 		layer.setNetwork(this);
 		layer.initGraphics();
 	}
-	
+
 	public void addLayer(ILayer... layers) {
-		for(ILayer lay: layers)
+		for (ILayer lay : layers)
 			addLayer(lay);
 	}
 
@@ -111,17 +107,17 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 		if (network.getImpl() == ENetworkImplementation.LINKED) {
 
 			System.out.println("Begin finalize network connections...");
-			
+
 			for (ILayer layer : layers) {
 
 				// Create recurrent nodes in input layer if needed
 				layer.finalizeConnections();
-				
+
 				// finalize connections between areas themselves
 				finalizeAreasConnections(layer);
-				
+
 			}
-			
+
 			System.out.println("End finalize network connections.");
 
 		} else {
@@ -129,7 +125,6 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 			System.out.println(
 					"Network created without any link object, method finalizeConnections() is useless in this case.");
 		}
-
 
 		// Every nodes are linked, let's init links for future firings
 		// Set<Link> uniqLinks = new LinkedHashSet<Link>();
@@ -162,14 +157,13 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 	 * 
 	 */
 	public void init(double min, double max) {
-		
+
 		System.out.println("Randomisation des poids modifiables.");
-		Double biasWeight = null;
 		for (ILayer layer : layers) {
-			
+
 			if (layer.isFirstLayer())
 				continue;
-			
+
 //			if(impl == ENetworkImplementation.LINKED){
 //				
 //				List<INode> layersNodes = layer.getLayerNodes();
@@ -210,69 +204,83 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 //				}
 //				
 //			}
-			
-			for(IArea area : layer.getAreas()){
-				if(area.getLinkage().isWeightModifiable()){
-					for(INode node : area.getNodes()){
+
+			for (IArea area : layer.getAreas()) {
+				if (area.getLinkage().isWeightModifiable()) {
+					for (INode node : area.getNodes()) {
+						for (Link link : node.getInputs()) {
+							if (link.isWeightModifiable())
+								link.initWeight(min, max);
+						}
 						node.setBiasWeightValue(StatUtils.initValue(min, max));
 						node.setBiasPreviousDeltaWeight(0.0);
 					}
 				}
+
+			}
+
+			if (impl == ENetworkImplementation.UNLINKED) {
+
+				for (Map<Identification, Link> entry : Linkage.getLinks().values()) {
+					for (Link link : entry.values()) {
+						if (link.isWeightModifiable()) {
+							link.initWeight(min, max);
+						}
+					}
+				}
+				
+				for(IArea area : layer.getAreas()){
+					
+					if(area.getLinkage().isWeightModifiable()){
+						for(INode node : area.getNodes()){
+							node.setBiasWeightValue(StatUtils.initValue(min, max));
+							node.setBiasPreviousDeltaWeight(0.0);
+						}
+					}
+				
+				}				
+				
 				
 			}
 
 		}
-		
-		if(impl == ENetworkImplementation.UNLINKED){
-			
-			for(Map<Identification, Link> entry : Linkage.getLinks().values()){
-				for(Link link : entry.values()){
-					if(link.isWeightModifiable()){
-						link.initWeight(min, max);
-					}
-				}
-			}
-		}
-		
 
 	}
-	
+
 	public void init(double value) {
 
-		
 		for (ILayer layer : layers) {
 			if (layer.isFirstLayer())
 				continue;
 
 			List<INode> layersNodes = layer.getLayerNodes();
 			for (INode node : layersNodes) {
-				
+
 				for (Link link : node.getInputs())
-					if(link.isWeightModifiable())
+					if (link.isWeightModifiable())
 						link.initWeight(value);
-				
+
 				node.getBiasInput().initWeight(value);
 			}
 
 		}
 
 	}
-	
+
 	public void initBiasWeights(double value) {
 
-		
 		for (ILayer layer : layers) {
-			
+
 //			if (layer.isFirstLayer())
 //				continue;
 
 			List<INode> layersNodes = layer.getLayerNodes();
 			for (INode node : layersNodes) {
-				
+
 //				for (Link link : node.getInputs())
 //					if(link.isWeightModifiable())
 //						link.initWeight(value);
-				if(getImpl() == null || getImpl() == ENetworkImplementation.LINKED)
+				if (getImpl() == null || getImpl() == ENetworkImplementation.LINKED)
 					node.getBiasInput().initWeight(value);
 				else
 					node.setBiasWeightValue(value);
@@ -283,6 +291,7 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 	}
 
 	public void show() {
+		System.out.println(getString());
 	}
 
 	/**
@@ -295,7 +304,7 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 		}
 		return allNodes;
 	}
-	
+
 	public Set<Link> getAllLinks() {
 		Set<Link> allLinks = new HashSet<Link>();
 		for (INode node : getAllNodes()) {
@@ -305,7 +314,7 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 		}
 		return allLinks;
 	}
-	
+
 	public List<IArea> getAllAreas() {
 		List<IArea> allAreas = new ArrayList<IArea>();
 		for (ILayer layer : layers) {
@@ -313,7 +322,7 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 		}
 		return allAreas;
 	}
-	
+
 	public List<INode> getNodesByType(ENodeType type) {
 		List<INode> nodes = new ArrayList<INode>();
 		for (ILayer layer : layers) {
@@ -321,11 +330,11 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 		}
 		return nodes;
 	}
-	
+
 	/**
 	 * 
 	 */
-	public void disconnectAll(){
+	public void disconnectAll() {
 		for (ILayer layer : layers) {
 			List<INode> layersNodes = layer.getLayerNodes();
 			for (INode node : layersNodes) {
@@ -341,7 +350,7 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 	 * @throws Exception
 	 */
 	public OutputData compute(ListIterator<InputData> dataIter) throws Exception {
-		
+
 		int nextIndex = dataIter.nextIndex();
 		InputData entries = dataIter.next();
 		Iterator<Double> inputIter = entries.getInput().iterator();
@@ -380,16 +389,14 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 					node.setEntry(0.0D);
 				}
 
-			}else{
+			} else {
 				inputValue = entries.getInput().get(node.getNodeId());
 				node.setEntry(inputValue);
 			}
-			
+
 			n++;
 
 		}
-
-
 
 		return propagation(false);
 	}
@@ -404,93 +411,98 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 
 		// start of propagation
 		getContext().incrementClock();
-		
+
 		// one pass forward
 		List<ILayer> layers = getLayers();
 		Double[] outputValues = null;
 		for (ILayer layer : layers) {
 
-			 outputValues = layer.propagate(playAgain);
+			outputValues = layer.propagate(playAgain);
 
 			// on conserve les sorties pour un eventuel traitement par batch
 			if (outputValues != null && layer.isLastLayer()) {
 //				outputDataList.addData(outputValues);
 				outputData = new OutputData(outputValues);
 			}
-			
+
 		}
-		
+
 		return outputData;
 
 	}
-	
-	/* (non-Javadoc)
+
+	/*
+	 * (non-Javadoc)
+	 * 
 	 * @see RN.INetwork#newLearningCycle()
 	 */
 	@Override
 	public void newLearningCycle(int cycleCount) {
-		
+
 		// Initialisation des parametres des noeuds
-		for(INode node : getAllNodes())
+		for (INode node : getAllNodes())
 			node.newLearningCycle(cycleCount);
-		
+
 	}
 
 	public String getString() {
 		String result = "";
 		result += ITester.NEWLINE + "Clock : " + getContext().getClock();
 		for (ILayer layer : layers) {
-			
+
 			result = layerToString(result, layer);
-			
+
 		}
 		return result;
 	}
 
 	private String layerToString(String result, ILayer layer) {
-		
+
 		List<IArea> areas = layer.getAreas();
 		int jump = 0;
-		
+
 		result += ITester.NEWLINE + layer.toString();
-		
+
 		for (IArea area : areas) {
-			
+
 			result += ITester.NEWLINE + area.toString();
-			
+
 			List<INode> nodes = area.getNodes();
-			
+
 			INode node = null;
-			if(nodes.size() > 50){
-				result += ITester.NEWLINE + ITester.NEWLINE + "        ----------------> Too much nodes to print ("+ nodes.size() + "), we will print the first and last 10th nodes..." + ITester.NEWLINE + ITester.NEWLINE;
+			if (nodes.size() > 50) {
+				result += ITester.NEWLINE + ITester.NEWLINE + "        ----------------> Too much nodes to print ("
+						+ nodes.size() + "), we will print the first and last 10th nodes..." + ITester.NEWLINE
+						+ ITester.NEWLINE;
 				jump = 10;
 			}
-			for (int id=0; id < nodes.size(); id++) {
-				
-				if(jump > 0 && id > jump && id < nodes.size() - jump)
+			for (int id = 0; id < nodes.size(); id++) {
+
+				if (jump > 0 && id > jump && id < nodes.size() - jump)
 					continue;
-				else if(jump > 0 && id == jump)
-					result += ITester.NEWLINE + "\n\n\n---------------- Jumping to the last 10th nodes... ----------------\n\n\n";
-				
+				else if (jump > 0 && id == jump)
+					result += ITester.NEWLINE
+							+ "\n\n\n---------------- Jumping to the last 10th nodes... ----------------\n\n\n";
+
 				node = nodes.get(id);
 				result += ITester.NEWLINE + node.getString();
 			}
 		}
 		return result;
 	}
-	
-	public INode getNode(Identification id){
+
+	public INode getNode(Identification id) {
 		return layers.get(id.getLayerId()).getArea(id.getAreaId()).getNode(id.getNodeId());
 	}
-	
-	public INode getNode(int layerId, int areaId, int nodeId){
-		
+
+	public INode getNode(int layerId, int areaId, int nodeId) {
+
 		INode node = layers.get(layerId).getArea(areaId).getNode(nodeId);
 
 		return node;
 	}
-	
-	public IPixelNode getNode(int layerId, int areaId, int x, int y) throws Exception{
+
+	public IPixelNode getNode(int layerId, int areaId, int x, int y) throws Exception {
 		IAreaSquare area = (IAreaSquare) layers.get(layerId).getArea(areaId);
 		IPixelNode node = area.getNodeXY(x, y);
 
@@ -539,7 +551,7 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 	public Boolean isRecurrentNodesLinked() {
 		return recurrentNodesLinked;
 	}
-	
+
 	@Override
 	public double getAbsoluteError() {
 		return absoluteError;
@@ -553,35 +565,35 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 	@Override
 	public INetwork deepCopy(int generationCount) {
 		String name = "";
-		if(getName().startsWith("G")){
-			name = "G" + generationCount + getName().substring(getName().indexOf(Genetic.GENE_SEPARATOR)) ;
-		}else{
+		if (getName().startsWith("G")) {
+			name = "G" + generationCount + getName().substring(getName().indexOf(Genetic.GENE_SEPARATOR));
+		} else {
 			name = "G" + generationCount + Genetic.GENE_SEPARATOR + getName();
 		}
 		Network copy_network = Network.getInstance();
 		copy_network.setName(name);
 		List<ILayer> copy_layers = new ArrayList<ILayer>(layers);
 		Collections.copy(copy_layers, layers);
-		
+
 		OutputDataList copy_outputDataList = new OutputDataList();
 		copy_network.setLayers(copy_layers);
 		copy_network.setOutputDataList(copy_outputDataList);
 		copy_network.setRecurrentNodesLinked(new Boolean(recurrentNodesLinked));
 		copy_network.setTimeSeriesOffset(new Integer(timeSeriesOffset));
-		
+
 		int idx = 0;
-		for(ILayer layer : layers){
+		for (ILayer layer : layers) {
 			layer.setNetwork(copy_network);
 			copy_layers.set(idx++, layer.deepCopy());
 		}
-		
+
 		return copy_network;
 	}
-	
+
 	public String geneticCodec() {
 
 		String geneticCode = "";
-		
+
 		geneticCode += "I(" + this.getFirstLayer().getNodeCountMinusRecurrentOnes() + ")";
 		geneticCode += Genetic.CODE_SEPARATOR;
 
@@ -593,26 +605,26 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 		geneticCode += Genetic.CODE_SEPARATOR;
 		if (this.getLayers().size() - 2 > 2)
 			geneticCode += "H1(" + this.getLayer(3).getNodeCount() + ")";
-		geneticCode += Genetic.CODE_SEPARATOR;		
+		geneticCode += Genetic.CODE_SEPARATOR;
 		geneticCode += "O(" + this.getLastLayer().getNodeCount() + ")";
 		geneticCode += Genetic.CODE_SEPARATOR;
 		if (this.getLastLayer().isLayerReccurent())
-			geneticCode += "Ro" ;
+			geneticCode += "Ro";
 		geneticCode += Genetic.CODE_SEPARATOR;
 		if (this.getLayer(1).isLayerReccurent())
-			geneticCode +=  "Rh1" ;
+			geneticCode += "Rh1";
 		geneticCode += Genetic.CODE_SEPARATOR;
 		if (this.getLayers().size() - 2 > 1 && this.getLayer(2).isLayerReccurent())
-			geneticCode += "Rh2" ;
+			geneticCode += "Rh2";
 		geneticCode += Genetic.CODE_SEPARATOR;
 		if (this.getLayers().size() - 2 > 2 && this.getLayer(3).isLayerReccurent())
-			geneticCode +=  "Rh3" ;
+			geneticCode += "Rh3";
 		geneticCode += Genetic.CODE_SEPARATOR;
 		if (this.isRecurrentNodesLinked())
-			geneticCode += "-R-" ;
+			geneticCode += "-R-";
 		geneticCode += Genetic.CODE_SEPARATOR;
 		if (this.getLayer(1).getFunction() != null)
-			geneticCode +=  "Xh0" + this.getLayer(1).getFunction().name().charAt(0);
+			geneticCode += "Xh0" + this.getLayer(1).getFunction().name().charAt(0);
 		geneticCode += Genetic.CODE_SEPARATOR;
 		if (this.getLayers().size() - 2 > 1)
 			geneticCode += "Xh1" + this.getLayer(2).getFunction().name().charAt(0);
@@ -620,10 +632,10 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 		if (this.getLayers().size() - 2 > 2)
 			geneticCode += "Xh2" + this.getLayer(3).getFunction().name().charAt(0);
 		geneticCode += Genetic.CODE_SEPARATOR;
-		
-		geneticCode +=  "Xo" + this.getLastLayer().getFunction().name().charAt(0);
+
+		geneticCode += "Xo" + this.getLastLayer().getFunction().name().charAt(0);
 		geneticCode += Genetic.GENE_SEPARATOR;
-		
+
 		return geneticCode;
 	}
 
@@ -647,8 +659,8 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 	public void setRecurrentLayerId(Integer recurrentLayerId) {
 		this.recurrentLayerId = recurrentLayerId;
 	}
-	
-	public void appendName(String appended){
+
+	public void appendName(String appended) {
 		this.name += appended;
 	}
 
@@ -659,10 +671,5 @@ public class Network extends NetworkElement implements Serializable, INetwork{
 	public void setImpl(ENetworkImplementation impl) {
 		this.impl = impl;
 	}
-
-
-
-
-
 
 }

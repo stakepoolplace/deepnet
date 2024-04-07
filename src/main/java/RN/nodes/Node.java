@@ -313,7 +313,7 @@ public class Node extends NetworkElement implements INode {
 		if (dropOutActive && TestNetwork.getInstance().isDropOutActive())
 			sigmaWI *= Math.random() >= 0.5d ? 0.0D : 1.0D;	
 
-		performer = EActivation.getPerformer(fx);
+		performer = EActivation.getPerformer(fx, this);
 
 		activationFxResult = performActivationFunction(performer, sigmaWI);
 

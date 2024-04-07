@@ -162,6 +162,18 @@ public abstract class Linkage extends NetworkElement implements ILinkage {
 		
 	}
 	
+	public List<INode> getIncomingNodes(){
+		
+		List<INode> nodes = new ArrayList<INode>();
+		for(IArea area : getLinkedAreas()){
+			for (INode sourceNode : area.getNodes()) {
+				nodes.add(sourceNode);
+			}
+		}
+		
+		return nodes;
+	}
+	
 	
 	public void addGraphicInterface(Pane pane){
 	}

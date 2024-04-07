@@ -30,7 +30,7 @@ public interface IArea {
 	void addNode(INode node);
 
 	ILinkage getLinkage();
-	
+		
 	ILayer getLayer();
 	
 	Integer getAreaId();

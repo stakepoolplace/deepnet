@@ -3,8 +3,11 @@ package RN.transformer;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
+import org.apache.commons.lang3.tuple.Pair;
 import org.deeplearning4j.models.embeddings.loader.WordVectorSerializer;
 import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
 import org.nd4j.linalg.api.ndarray.INDArray;
@@ -21,14 +24,16 @@ public class TransformerModel {
     private static WordVectors wordVectors; // Chargé une fois, accessible statiquement
     private static int vocabSize = 0;
     private static INDArray meanVector = null;
-    private static int dModel = 512;
+    private static int dModel = 300;
     private static int numLayers = 6;
     private static int numHeads = 8;
     private static int dff = 2048;
 
     static {
         try {
-            wordVectors = WordVectorSerializer.loadStaticModel(new File("pretrained-embeddings/model.bin"));
+        	wordVectors = WordVectorSerializer.readWord2VecModel(new File("pretrained-embeddings/mon_model_word2vec.txt"), true);
+
+            //wordVectors = WordVectorSerializer.loadStaticModel(new File("pretrained-embeddings/word2vec.model"));
             vocabSize = wordVectors.vocab().numWords(); // Taille du vocabulaire Word2Vec
          // Calculer le vecteur moyen (à faire une seule fois, idéalement dans le constructeur ou une méthode d'initialisation)
             INDArray allVectors = Nd4j.create(vocabSize, dModel);
@@ -53,8 +58,8 @@ public class TransformerModel {
         INDArray pretrainedEmbeddings = createPretrainedEmbeddings(dModel);
         
         
-        this.encoder = new Encoder(numLayers, dModel, numHeads, dff, vocabSize, pretrainedEmbeddings, this.tokenizer);
-        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate, vocabSize);
+        this.encoder = new Encoder(numLayers, dModel, numHeads, dff, dropoutRate, pretrainedEmbeddings, this.tokenizer);
+        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate, vocabSize + 1);
         
         // Calcul du nombre total de paramètres
         long totalParams = encoder.getNumberOfParameters() + decoder.getNumberOfParameters();
@@ -67,25 +72,27 @@ public class TransformerModel {
     public INDArray createPretrainedEmbeddings(int dModel) {
 
         // Créer une matrice pour stocker les embeddings
-        INDArray embeddings = Nd4j.create(vocabSize, dModel);
+    	INDArray embeddings = Nd4j.create(vocabSize + 1, dModel);
         
         // Pour chaque mot dans le vocabulaire du tokenizer
-        for (int tokenId = 0; tokenId < vocabSize; tokenId++) {
+        int tokenId = 0;
+        for (; tokenId < vocabSize; tokenId++) {
             String word = tokenizer.getToken(tokenId); // Supposons que cette méthode existe
             if (wordVectors.hasWord(word)) {
                 INDArray wordVector = wordVectors.getWordVectorMatrix(word);
                 embeddings.putRow(tokenId, wordVector);
-            } else {
-                // Utiliser le vecteur moyen pour les mots inconnus
-                embeddings.putRow(tokenId, meanVector);
             }
         }
+        
+        // Utiliser le vecteur moyen pour les mots inconnus
+        embeddings.putRow(tokenId, meanVector);
 
         return embeddings;
     }
 
     public void train(DataGenerator dataGenerator) throws IOException {
-        for (int epoch = 0; epoch < 10; epoch++) {
+        
+    	for (int epoch = 0; epoch < 10; epoch++) {
             int batchNum = 0;
             
             optimizer.setEpoch(epoch);
@@ -101,15 +108,15 @@ public class TransformerModel {
                 List<Integer> dataTokenIds = tokenizer.tokensToIds(tokenizer.tokenize(String.join("", batch.getData())));
 
                 // Encodage et décodage pour obtenir les logits
-                INDArray encoded = encoder.encode(dataTokenIds);
+                INDArray encoded = encoder.encode(true, dataTokenIds);
                 List<INDArray> decodedLogits = decoder.decode(encoded); // Assumer que decode retourne désormais List<INDArray>
                             
-                // Calcul de la perte
-                float loss = calculateCrossEntropyLoss(decodedLogits, targetTokenIds);
 
+                backpropagation(decodedLogits, targetTokenIds);
+                
                 // Mise à jour des paramètres via l'optimiseur
                 List<INDArray> combinedParameters = getCombinedParameters();
-                List<INDArray> combinedGradients = getCombinedGradients(loss);
+                List<INDArray> combinedGradients = getCombinedGradients();
                 optimizer.update(combinedParameters, combinedGradients);
                 
                 batchNum++;
@@ -122,7 +129,67 @@ public class TransformerModel {
     }
 
     
-    private List<INDArray> getCombinedParameters() {
+
+    
+    private void backpropagation(List<INDArray> decodedLogits, List<Integer> targetTokenIds) {
+        // Étape 1: Calcul de la perte et des gradients initiaux
+        // Cette fonction est hypothétique et devrait retourner la perte et le gradient initial
+        Pair<Float, INDArray> lossAndGradients = calculateCrossEntropyLossAndGradient(decodedLogits, targetTokenIds);
+        float loss = lossAndGradients.getLeft();
+        INDArray initialGradients = lossAndGradients.getRight();
+        
+        // Afficher la perte pour le monitoring
+        System.out.println("Perte: " + loss);
+
+        // Étape 2: Rétropropagation à travers le Décodeur
+        // Cela ajuste les poids du décodeur basés sur les gradients calculés
+        Map<String, INDArray> decoderGradients = decoder.backward(initialGradients);
+        
+        // Extraire les gradients pertinents pour l'encodeur à partir de decoderGradients
+        Map<String, INDArray> encoderGradients = extractEncoderGradients(decoderGradients);
+        
+
+        // Étape 3: Rétropropagation à travers l'Encodeur
+        // L'encodeur ajuste ses poids basé sur ses propres calculs de gradients
+        // Dans un modèle Transformer, cela pourrait impliquer des gradients venant de la couche d'attention encodeur-décodeur
+        // Pour simplifier, nous allons juste appeler backward sur l'encodeur sans passer de gradients spécifiques
+        // car dans une implémentation réelle, cela dépendrait des détails spécifiques de votre modèle
+        encoder.backward(encoderGradients);
+
+        // Mettre à jour les poids basés sur les gradients calculés, normalement fait par l'optimiseur
+        updateModelWeights();
+    }
+
+
+    private Map<String, INDArray> extractEncoderGradients(Map<String, INDArray> decoderGradients) {
+        // Créez un nouveau Map pour contenir les gradients spécifiquement pour l'encoder.
+        Map<String, INDArray> encoderGradients = new HashMap<>();
+        
+        // Extrayez les gradients par rapport aux entrées K et V de l'attention encoder-décodeur.
+        // Ces gradients sont ceux qui doivent être propagés à travers l'encoder.
+        INDArray gradK = decoderGradients.get("inputK");
+        INDArray gradV = decoderGradients.get("inputV");
+        
+        // Ajoutez ces gradients au Map sous des clés représentant leur rôle dans l'encoder.
+        // Par exemple, vous pouvez simplement les renommer pour correspondre à la nomenclature attendue par l'encoder.
+        encoderGradients.put("gradK", gradK);
+        encoderGradients.put("gradV", gradV);
+        
+        return encoderGradients;
+    }
+
+
+
+
+	private void updateModelWeights() {
+        // Implémentez cette fonction pour mettre à jour les poids du modèle
+        // basé sur les gradients calculés. Normalement, cela est géré par votre optimiseur
+    }
+
+    
+
+
+	private List<INDArray> getCombinedParameters() {
         List<INDArray> combinedParameters = new ArrayList<>();
         
         // Ajoute les paramètres de l'encoder
@@ -134,15 +201,14 @@ public class TransformerModel {
         return combinedParameters;
     }
 
-    private List<INDArray> getCombinedGradients(float loss) {
+    private List<INDArray> getCombinedGradients() {
         List<INDArray> combinedGradients = new ArrayList<INDArray>();
         
-        INDArray encoderGradients = encoder.calculateGradients(loss);
-        INDArray decoderGradients = decoder.calculateGradients(loss);
+        // Ajoute les gradients de l'encoder
+        combinedGradients.addAll(encoder.getGradients());
         
-        // Supposons que chaque composant a une méthode pour obtenir ses gradients après backpropagation
-        combinedGradients.add(encoderGradients);
-        combinedGradients.add(decoderGradients);
+        // Ajoute les gradients du decoder
+        combinedGradients.addAll(decoder.getGradients());
         
         return combinedGradients;
     }
@@ -160,14 +226,14 @@ public class TransformerModel {
         List<Integer> promptTokenIds = tokenizer.tokensToIds(promptTokens);
 
         // Encodage
-        INDArray encodedPrompt = encoder.encode(promptTokenIds); // Supposons que la méthode encode retourne un INDArray
+        INDArray encodedPrompt = encoder.encode(false, promptTokenIds); // Supposons que la méthode encode retourne un INDArray
 
         // Décodeur : Préparation des arguments nécessaires
         // Supposons que encoderOutput est le même que encodedPrompt pour l'inférence simple
         // Les masques lookAheadMask et paddingMask sont initialisés à null pour l'exemple
         INDArray lookAheadMask = null;
         INDArray paddingMask = null;
-        INDArray logits = decoder.forward(encodedPrompt, encodedPrompt, lookAheadMask, paddingMask);
+        INDArray logits = decoder.forward(false, encodedPrompt, encodedPrompt, lookAheadMask, paddingMask);
 
         // Conversion des logits en IDs de tokens
         INDArray predictedTokenIds = Nd4j.argMax(logits, 2);
@@ -194,12 +260,15 @@ public class TransformerModel {
         return isTrained;
     }
 
-    private float calculateCrossEntropyLoss(List<INDArray> decodedLogits, List<Integer> targetTokenIds) {
+
+    
+    private Pair<Float, INDArray> calculateCrossEntropyLossAndGradient(List<INDArray> decodedLogits, List<Integer> targetTokenIds) {
         float loss = 0.0f;
         int N = targetTokenIds.size();
 
         // Assumons que decodedLogits contient une seule INDArray pour l'ensemble de la séquence
         INDArray logits = decodedLogits.get(0); // Obtenez les logits pour l'ensemble de la séquence
+        INDArray gradients = Nd4j.zeros(logits.shape()); // Initialiser le gradient de la même forme que les logits
 
         for (int i = 0; i < N; i++) {
             int targetId = targetTokenIds.get(i); // L'ID attendu à la position i
@@ -215,10 +284,17 @@ public class TransformerModel {
             
             // Accumuler la perte négative log softmax pour la cible
             loss += -logSoftmaxForTarget;
-        }
 
-        return loss / N; // Moyenne de la perte sur la longueur de la séquence
+            // Calcul du gradient initial : p - y
+            INDArray targetOneHot = Nd4j.zeros(logitsForPosition.shape());
+            targetOneHot.putScalar(targetId, 1);
+            INDArray gradForPosition = softmaxLogits.sub(targetOneHot);
+            gradients.putRow(i, gradForPosition);
+        }
+        
+        return Pair.of(loss / N, gradients); // Retourner la moyenne de la perte et les gradients accumulés
     }
+
 
 
 
