@@ -3,6 +3,7 @@ package RN;
 import java.util.List;
 
 import RN.algoactivations.EActivation;
+import RN.algoactivations.IActivation;
 import RN.dataset.inputsamples.ESamples;
 import RN.linkage.ELinkage;
 import RN.linkage.ELinkageBetweenAreas;
@@ -91,5 +92,8 @@ public interface IArea {
 	
 	void postPropagation();
 	
+	EActivation getActivation();
+	
+	IActivation getPerformer();	
 
 }

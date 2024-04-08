@@ -60,6 +60,13 @@ public class Layer extends NetworkElement implements Serializable, ILayer{
 		this.name = name;
 		addArea(new Area(inputSize));
 	}
+	
+	public Layer(String name, EActivation activation, int inputSize) {
+		this.sublayers = new ArrayList<ILayer>();
+		this.areas = new ArrayList<IArea>();
+		this.name = name;
+		addArea(new Area(activation, inputSize));
+	}
 
 	/* (non-Javadoc)
 	 * @see RN.ILayer#isLayerReccurent()

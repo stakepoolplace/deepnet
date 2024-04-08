@@ -53,7 +53,7 @@ public class SimpleFeedforwardNetwork {
 
 			// Chargement des données d'entraînement
 			// Note: Adaptez cette partie pour charger vos propres données
-			loadData("./data/dataset-OR.csv");
+			loadData("./src/test/resources/datasets/dataset-OR.csv");
 			
 			// Initialisation aléatoire des poids du réseau
 			tester.initWeights(tester.getInitWeightRange(0), tester.getInitWeightRange(1));

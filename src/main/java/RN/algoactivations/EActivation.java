@@ -1,6 +1,6 @@
 package RN.algoactivations;
 
-import RN.nodes.Node;
+import RN.IArea;
 
 /**
  * @author Eric Marchand
@@ -47,8 +47,12 @@ public enum EActivation {
 		return null;
 	
 	}
+	
+	public static IActivation getPerformer(EActivation function) {
+		return getPerformer(function, null);
+	}
 
-	public static IActivation getPerformer(EActivation function, Node node) {
+	public static IActivation getPerformer(EActivation function, IArea area) {
 		
 		IActivation performer = null;
 		
@@ -81,7 +85,7 @@ public enum EActivation {
 		else if (function == EActivation.LEAKY_RELU)
 			performer = new LeakyReLUPerformer();	
 		else if (function == EActivation.SOFTMAX)
-			performer = new SoftMaxPerformer(node);
+			performer = new SoftMaxPerformer(area);
 		
 		
 		return performer;

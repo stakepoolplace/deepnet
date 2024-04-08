@@ -2,6 +2,8 @@ package RN.algoactivations;
 
 import java.io.Serializable;
 
+import RN.IArea;
+import RN.links.Link;
 import RN.nodes.INode;
 
 /**
@@ -10,74 +12,126 @@ import RN.nodes.INode;
  */
 public class SoftMaxPerformer implements Serializable, IActivation{
 	
-	private INode node;
+	private IArea area;
 	
 
-    public SoftMaxPerformer(INode node) {
-    	this.node = node;
+    public SoftMaxPerformer(IArea area) {
+    	this.area = area;
 	}
 
 	@Override
     public double perform(double... values) throws Exception {
         
+      
+        for(INode softmaxNode : area.getNodes()) {
+        	double sumExp = 0;
+        	double expSourceValue = 0;
+        	double backupedValue = 0;
+        	int i = softmaxNode.getNodeId();
+        	for(Link link : softmaxNode.getInputs()) {
+        		INode sourceNode = link.getSourceNode();
+            	int j = sourceNode.getNodeId();
+        		expSourceValue = Math.exp(sourceNode.getComputedOutput());
+        		if(i == j) {
+        			backupedValue = expSourceValue;
+        		}
+        		sumExp += expSourceValue;
+        	}
 
-        double sumExp = 0;
-        
-        
-//        for(INode currentNode : node.getArea().getLinkage().getIncomingNodes()) {
-//        	sumExp += Math.exp(currentNode.getComputedOutput());
-//        }
-//
-//        // Application de la fonction softmax à chaque valeur
-//        return Math.exp(node.getInput(node.getNodeId()).getValue()) / sumExp;
-        
-        for(INode sameLayerNode : node.getArea().getNodes()) {
-        	sumExp = Math.exp(sameLayerNode.getArea().getLinkage().getSigmaPotentials(sameLayerNode));
-        	
+
+        	softmaxNode.setComputedOutput(backupedValue / sumExp);
         }
-
         
-        return Math.exp(values[0]) / sumExp;
+        return 1;
         
     }
+	
+	private double softmax(double val, double...values) {
+		
+		double sumExp = 0;
+		for(double det: values) {
+			sumExp += Math.exp(det);
+		}
+		
+		return Math.exp(val) / sumExp;
+	}
 
     @Override
     public double performDerivative(double... values) throws Exception {
 
     	
-    	
-//        double derivativeSum = 0.0; // Ce sera la somme des dérivées par rapport à chaque entrée.
-//        double yi = perform(values);
-//        
-//        i = node.getNodeId();
-//        j = 
-//        
-//        if(i = j) {
+        double derivative = 0.0; //  dérivée par rapport à chaque entrée.
+       
+        double max = 0;
+        int maxIndex = 0;
+        double[] all = new double[area.getNodes().size()];
+        int idx = 0;
+        for(INode nodeI : area.getNodes()) {
+        	if(nodeI.getComputedOutput() > max) {
+        		maxIndex = nodeI.getNodeId();
+        	}
+        	all[idx++] = nodeI.getComputedOutput();
+        }
+        
+        for(INode nodeI : area.getNodes()) {
+        	double yi = softmax(nodeI.getComputedOutput(), all);
+        	
+        	if(nodeI.getNodeId() != maxIndex) {
+        		derivative = yi * (1 - yi);
+        	} else {
+        		derivative = -yi * yi;
+        	}
+        	nodeI.setDerivativeValue(derivative);
+        }
+        
+        
+        
+        
+//        for(INode nodeI : area.getNodes()) {
 //        	
-//			derivativeSum = yi * (1 - yi); // Cas où i = j
+//	        int i = nodeI.getNodeId();
+//        	double expSourceValue = 0;
+//        	double backupedValue = 0;
+//        	double sumExp = 0;
+//        	for(Link link : nodeI.getInputs()) {
+//        		INode sourceNode = link.getSourceNode();
+//            	int j = sourceNode.getNodeId();
+//        		expSourceValue = Math.exp(sourceNode.getComputedOutput());
+//        		if(i == j) {
+//        			backupedValue = expSourceValue;
+//        		}
+//        		sumExp += expSourceValue;
+//        	}
+//	        
+//	        		
+//	        double yi = backupedValue / sumExp;
+//	        
+//        
+//	        for(Link link : nodeI.getInputs()) {
+//	        
+//		        INode nodeJ = link.getSourceNode();
+//		        int j = nodeJ.getNodeId();
+//		        double yj = Math.exp(nodeJ.getComputedOutput()) / sumExp;
 //
-//        } else {
-//			derivativeSum = -yi * yj; // Cas où i != j
+//		        if(i == j) {
+//		        	
+//					derivative += yi * (1 - yi); // Cas où i = j
+//		
+//		        } else {
+//		        	
+//					derivative += -yi * yj; // Cas où i != j
+//		
+//		        }
+//		        
+//	        }
+//	        
+//			derivative += yi * (1 - yi); // Cas où i = j
 //
+//	        nodeI.setDerivativeValue(derivative);
+//        
 //        }
-//        
-//        
-//        for(INode currentNode : node.getArea().getNodes()) {
-//        	
-//    		if(currentNode.getNodeId() == node.getNodeId()) {
-//    			derivativeSum += yi * (1 - yi); // Cas où i = j
-//    		} else {
-//        		double sigmaWI = currentNode.getArea().getLinkage().getSigmaPotentials(currentNode);
-//        		double yj = Math.exp(currentNode.getInput(currentNode.getNodeId()).getValue()) / sigmaWI;
-//    			derivativeSum += -yi * yj; // Cas où i != j
-//    		}
-//
-//        }
-//        
-//        return derivativeSum;  
-    	
-    	return 1D;
-    	
+
+    	return 0D;
     	
     }
 }

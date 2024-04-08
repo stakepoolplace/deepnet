@@ -65,6 +65,8 @@ public interface INode {
 	double getError();
 
 	double getDerivativeValue();
+	
+	void setDerivativeValue(double aggregatedValue);
 
 	List<Link> getOutputs();
 

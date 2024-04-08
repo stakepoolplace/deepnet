@@ -10,6 +10,7 @@ import RN.ENetworkImplementation;
 import RN.ILayer;
 import RN.INetwork;
 import RN.TestNetwork;
+import RN.algoactivations.EActivation;
 import RN.dataset.InputData;
 import RN.dataset.OutputData;
 import RN.links.ELinkType;
@@ -360,11 +361,15 @@ public class BackPropagationTrainer implements ITrainer {
 				// la valeur dérivée à été calculée lors du feedforward
 				
 				if (layer.isLastLayer()) {
+					
 					// on defini l'erreur totale de la couche de sortie
 					derivatedError = node.getError() * node.getDerivativeValue();
+					
 					// on se dirige vers les minimum locaux (TODO a modifier)
 					// Backpropagation in-line (not batch), algo LMS (Least Mean Squared)
 					errorRate += Math.pow(node.getError(), 2.0D);
+					
+
 
 				} else {
 
@@ -390,13 +395,13 @@ public class BackPropagationTrainer implements ITrainer {
 					
 					derivatedError *= node.getDerivativeValue();
 
+
 				}
 
-				// on defini l'erreur aggregé sur le node
+				// on defini l'erreur aggregée sur le node
 				// node.setDerivatedError(node.getDerivatedError() + derivatedError);
 				// la backpropagation in-line ne cumule pas les erreurs sur les
 				// differents jeux de test
-				
 				node.setDerivatedError(derivatedError);
 				
 				layer.setLayerError(layer.getLayerError() + derivatedError);

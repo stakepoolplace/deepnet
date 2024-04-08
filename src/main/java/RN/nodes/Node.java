@@ -313,7 +313,7 @@ public class Node extends NetworkElement implements INode {
 		if (dropOutActive && TestNetwork.getInstance().isDropOutActive())
 			sigmaWI *= Math.random() >= 0.5d ? 0.0D : 1.0D;	
 
-		performer = EActivation.getPerformer(fx, this);
+		performer = EActivation.getPerformer(fx);
 
 		activationFxResult = performActivationFunction(performer, sigmaWI);
 
@@ -338,7 +338,6 @@ public class Node extends NetworkElement implements INode {
 	public double performActivationFunction(final IActivation performer, double... values) throws Exception {
 
 		return performer.perform(values);
-
 	}
 
 	/**
@@ -465,6 +464,7 @@ public class Node extends NetworkElement implements INode {
 		// result += "\n                  ACTIVATION FX : " + this.function +
 		// "\n                  OUTPUT :\n                      " + this.output;
 		result += ITester.NEWLINE + "                   ERROR : " + ITester.NEWLINE + "                            " + this.error;
+		result += ITester.NEWLINE + "              DERIVATIVE : " + ITester.NEWLINE + "                            " + this.aggregatedValue;
 		result += ITester.NEWLINE + "                  OUTPUT : ";
 		
 		jump = 0;

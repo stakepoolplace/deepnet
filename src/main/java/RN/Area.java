@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import RN.algoactivations.EActivation;
+import RN.algoactivations.IActivation;
 import RN.dataset.inputsamples.ESamples;
 import RN.linkage.DefaultLinkage;
 import RN.linkage.EFilterPosition;
@@ -57,8 +58,11 @@ public class Area extends NetworkElement implements IArea{
 	
 	protected ILinkage linkage = new DefaultLinkage();
 	
-	protected EActivation activation = EActivation.IDENTITY;
+	protected EActivation activation = null;
+	protected IActivation performer = null;
 	
+
+
 	Area(){
 	}
 	
@@ -78,6 +82,16 @@ public class Area extends NetworkElement implements IArea{
 			this.imageArea.setArea(this);
 		}
 
+	}
+	
+	public Area(EActivation activation, int nodeCount) {
+		
+		this.nodes = new ArrayList<INode>(nodeCount);
+		this.activation = activation;
+		if(activation != null) {
+			performer = EActivation.getPerformer(activation, this);
+		}
+		
 	}
 	
 	public void initWidthPx(int pixSize){
@@ -161,8 +175,6 @@ public class Area extends NetworkElement implements IArea{
 	}
 	
 	public IArea configureNode(boolean bias, EActivation activation, ENodeType type){
-		
-		this.activation = activation;
 		
 		this.nodeFactory.configureNode(bias, activation,  type);
 		
@@ -525,12 +537,33 @@ public class Area extends NetworkElement implements IArea{
 
 	@Override
 	public void postPropagation() {
+		
 		getLinkage().postPropagation();
 		
+
+		if(activation != null) {
+			try {
+				performer.perform();
+				performer.performDerivative();
+
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+		
+
 	}
 	
 	public Boolean isShowImage() {
 		return showImage;
+	}
+
+	public IActivation getPerformer() {
+		return performer;
+	}
+
+	public void setPerformer(IActivation performer) {
+		this.performer = performer;
 	}
 
 

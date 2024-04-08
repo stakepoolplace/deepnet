@@ -31,7 +31,7 @@ public class TestSoftmax {
 		int hiddenSize = 2; // Nombre de neurones dans la couche cachée
 		int outputSize = 1; // Taille de la sortie
 		network.addLayer(new Layer("InputLayer", inputSize));
-		network.addLayer(new Layer("HiddenLayer1", hiddenSize));
+		network.addLayer(new Layer("HiddenLayer1", EActivation.SOFTMAX, hiddenSize));
 		network.addLayer(new Layer("OutputLayer", outputSize));
 
 		// Création des connexions entre les couches
@@ -41,7 +41,7 @@ public class TestSoftmax {
 
 		// no bias for softmax
 		network.getLayer(1).getArea(0).configureLinkage(ELinkage.MANY_TO_MANY, null, false).configureNode(false,
-		    EActivation.SOFTMAX, ENodeType.REGULAR).createNodes(hiddenSize);
+		    EActivation.IDENTITY, ENodeType.REGULAR).createNodes(hiddenSize);
 
 		network.getLastLayer().getArea(0).configureLinkage(ELinkage.MANY_TO_MANY, null, true)
 		    .configureNode(true, EActivation.SYGMOID_0_1, ENodeType.REGULAR).createNodes(outputSize);			
@@ -76,7 +76,7 @@ public class TestSoftmax {
 	public void testPerformDerivative() throws Exception {
 		
 		INode node = network.getNode(1, 0, 0);
-		SoftMaxPerformer syg = new SoftMaxPerformer(node);
+		SoftMaxPerformer syg = new SoftMaxPerformer(node.getArea());
 		assertEquals(-56D, syg.performDerivative(8D, 0.5D, 4D, 9D), 0.01);
 	}
 

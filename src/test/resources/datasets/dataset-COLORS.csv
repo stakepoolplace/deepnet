@@ -1,0 +1,6 @@
+INPUT;INPUT;INPUT;EXPECTED;EXPECTED;EXPECTED;EXPECTED;EXPECTED;red;yellow;blue;;orange;green;purple;black;white
+1;1;-1;1;-1;-1;-1;-1;;;;;;;;;
+-1;1;1;-1;1;-1;-1;-1;;;;;;;;;
+1;-1;1;-1;-1;1;-1;-1;;;;;;;;;
+1;1;1;-1;-1;-1;1;-1;;;;;;;;;
+-1;-1;-1;-1;-1;-1;-1;1;;;;;;;;;
