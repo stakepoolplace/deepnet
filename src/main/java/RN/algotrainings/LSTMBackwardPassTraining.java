@@ -370,7 +370,7 @@ public class LSTMBackwardPassTraining implements ITrainer {
 	}
 
 
-	private boolean backPropagateError() throws Exception {
+	public boolean backPropagateError() throws Exception {
 
 		List<ILayer> layers = getNetwork().getLayers();
 		int layerCount = layers.size();

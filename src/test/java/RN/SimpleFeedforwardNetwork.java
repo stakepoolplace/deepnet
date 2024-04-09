@@ -19,7 +19,7 @@ public class SimpleFeedforwardNetwork {
 	public static void main(String[] args) {
 		try {
 			// Initialisation du réseau
-			Network network = Network.getInstance().setName("SimpleFFNetwork");
+			Network network = Network.getInstance(ENetworkImplementation.LINKED).setName("SimpleFFNetwork");
 
 			// Configuration des couches
 			int inputSize = 2; // Taille de l'entrée
@@ -63,6 +63,9 @@ public class SimpleFeedforwardNetwork {
 
 			// Entraînement du réseau
 			trainer.launchTrain(20000); // 20 000 itérations
+			
+			System.out.println(network.getString());
+
 
 			System.out.println("Entraînement terminé.");
 		} catch (Exception e) {

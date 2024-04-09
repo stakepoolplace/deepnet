@@ -31,7 +31,7 @@ public class BackPropagationTrainer implements ITrainer {
 
 	private static int maxTrainingCycles = 500;
 
-	private double errorRate;
+	protected double errorRate;
 	private double absoluteError = 0.0D;
 
 	private volatile boolean breakTraining = false;
@@ -41,8 +41,8 @@ public class BackPropagationTrainer implements ITrainer {
 
 	private static int trainCycleAbsolute = 0;
 
-	private double learningRate = 0.5D;
-	private double alphaDeltaWeight = 0.0D;
+	protected double learningRate = 0.5D;
+	protected double alphaDeltaWeight = 0.0D;
 	private int meanPeriodCount = 0;
 
 	private double delta = 0.05;
@@ -338,7 +338,7 @@ public class BackPropagationTrainer implements ITrainer {
 	}
 
 
-	private boolean backPropagateError() throws Exception {
+	public boolean backPropagateError() throws Exception {
 
 		List<ILayer> layers = getNetwork().getLayers();
 		int layerCount = layers.size();
@@ -362,10 +362,11 @@ public class BackPropagationTrainer implements ITrainer {
 				
 				if (layer.isLastLayer()) {
 					
+					
 					// on defini l'erreur totale de la couche de sortie
 					derivatedError = node.getError() * node.getDerivativeValue();
 					
-					// on se dirige vers les minimum locaux (TODO a modifier)
+					// on se dirige vers les minimum locaux
 					// Backpropagation in-line (not batch), algo LMS (Least Mean Squared)
 					errorRate += Math.pow(node.getError(), 2.0D);
 					
@@ -379,13 +380,12 @@ public class BackPropagationTrainer implements ITrainer {
 						
 						for (Link link : node.getOutputs()) {
 							if(link != null && (link.getType() == ELinkType.REGULAR || link.getType() == ELinkType.SHARED)){
-								derivatedError += link.getWeight() * getDerivatedErrorFromTargetNode(link);
+								derivatedError += link.getWeight() * link.getTargetNode().getDerivatedError();
 							}
 						}
 						
 					}else{
 						
-						// TODO Optimiser la methode
 						derivatedError = node.getDerivatedErrorSum();
 						
 					}
@@ -423,14 +423,7 @@ public class BackPropagationTrainer implements ITrainer {
 	
 
 
-	private double getDerivatedErrorFromTargetNode(Link link) throws Exception {
-		
-		if(link.getTargetNode().getArea().getActivation() == EActivation.SOFTMAX) {
-			return EActivation.getAreaPerformer(EActivation.SOFTMAX, link).performDerivative();
-		} else {
-			return link.getTargetNode().getDerivatedError();
-		}
-	}
+
 
 	/*
 	 * (non-Javadoc)

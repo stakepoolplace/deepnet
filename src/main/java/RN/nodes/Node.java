@@ -450,7 +450,7 @@ public class Node extends NetworkElement implements INode {
 				result += ITester.NEWLINE + "\n\n\n---------------- Jumping to the last "+jump+"th input links... ----------------\n\n\n";
 			
 			link = inputs.get(id);
-			result += ITester.NEWLINE + "                            " + link.getString();
+			result += ITester.NEWLINE + "                           Value : " +  this.getEntry() + " " + link.getString() ;
 		}
 		
 		if(biasInput != null) {
@@ -466,6 +466,8 @@ public class Node extends NetworkElement implements INode {
 		result += ITester.NEWLINE + "                   ERROR : " + ITester.NEWLINE + "                            " + this.error;
 		result += ITester.NEWLINE + "              DERIVATIVE : " + ITester.NEWLINE + "                            " + this.aggregatedValue;
 		result += ITester.NEWLINE + "                  OUTPUT : ";
+		
+		result += ITester.NEWLINE + "                            Value: " + this.computedOutput;
 		
 		jump = 0;
 		if(outputs.size() > 2000){

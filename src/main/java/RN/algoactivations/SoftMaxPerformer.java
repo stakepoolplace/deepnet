@@ -47,7 +47,7 @@ public class SoftMaxPerformer implements Serializable, IActivation{
         	
         }
         
-        return 1;
+        return 0;
         
     }
 	
@@ -79,7 +79,7 @@ public class SoftMaxPerformer implements Serializable, IActivation{
     	double[] all = new double[sourceNode.getArea().getNodes().size()];
         int idx = 0;
 
-        for(INode nodeI : area.getNodes()) {
+        for(INode nodeI : sourceNode.getArea().getNodes()) {
         	all[idx++] = nodeI.getComputedOutput();
         }
     	double yi = softmax(targetNode.getComputedOutput(), all);

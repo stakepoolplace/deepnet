@@ -42,6 +42,8 @@ public interface ITrainer {
 	public abstract void setMomentum(double alphaDeltaWeight);
 
 	void feedForward() throws Exception;
+	
+	boolean backPropagateError() throws Exception;
 
 	void setInputDataSetIterator(ListIterator<InputData> inputDataSetIterator);
 	
@@ -60,5 +62,7 @@ public interface ITrainer {
 	double getAbsoluteError();
 
 	void setMaxTrainingCycles(int maxTrainingCycles);
+	
+	void setCurrentOutputData(OutputData currentOutputData);
 
 }

@@ -5,22 +5,21 @@ import static org.junit.Assert.assertEquals;
 import java.io.File;
 import java.io.IOException;
 
-import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.FixMethodOrder;
 import org.junit.Test;
 import org.junit.runners.MethodSorters;
 
+import RN.ENetworkImplementation;
 import RN.ITester;
 import RN.Layer;
 import RN.Network;
 import RN.TestNetwork;
-import RN.algotrainings.BackPropagationTrainer;
+import RN.algotrainings.BackPropagationWithCrossEntropyTrainer;
 import RN.algotrainings.ITrainer;
 import RN.dataset.inputsamples.InputSample;
 import RN.linkage.ELinkage;
 import RN.nodes.ENodeType;
-import RN.nodes.INode;
 
 /**
  * @author Eric Marchand
@@ -31,20 +30,22 @@ public class TestSoftmax {
 	
 	
 	private static Network network = null;
+	private static ITester tester = null;
+	private static ITrainer trainer = null;
 	
 	@BeforeClass
 	public static void setUp() {
 	
 		// Initialisation du réseau
-		network = Network.getInstance().setName("SimpleFFNetwork");
+		network = Network.getInstance(ENetworkImplementation.LINKED).setName("SimpleFFNetwork");
 
 		// Configuration des couches
 		int inputSize = 2; // Taille de l'entrée
 		int hiddenSize = 2; // Nombre de neurones dans la couche cachée
-		int outputSize = 1; // Taille de la sortie
+		int outputSize = 2; // Taille de la sortie
 		network.addLayer(new Layer("InputLayer", inputSize));
-		network.addLayer(new Layer("HiddenLayer1", EActivation.SOFTMAX, hiddenSize));
-		network.addLayer(new Layer("OutputLayer", outputSize));
+		network.addLayer(new Layer("HiddenLayer1", hiddenSize));
+		network.addLayer(new Layer("OutputLayer", EActivation.SOFTMAX, outputSize));
 
 		// Création des connexions entre les couches
 		// Note: Implémentez la logique de connexion dans vos classes Layer/Node
@@ -56,11 +57,16 @@ public class TestSoftmax {
 		    EActivation.SYGMOID_0_1, ENodeType.REGULAR).createNodes(hiddenSize);
 
 		network.getLastLayer().getArea(0).configureLinkage(ELinkage.MANY_TO_MANY, null, true)
-		    .configureNode(true, EActivation.SYGMOID_0_1, ENodeType.REGULAR).createNodes(outputSize);			
+		    .configureNode(false, EActivation.SYGMOID_0_1, ENodeType.REGULAR).createNodes(outputSize);			
 
 		network.finalizeConnections();
 		
-		
+		// Initialisation de l'entraîneur et configuration des paramètres d'entraînement
+		tester = TestNetwork.getInstance();
+		trainer = new BackPropagationWithCrossEntropyTrainer();
+		tester.setNetwork(network);
+		trainer.setLearningRate(0.1);
+        trainer.setMomentum(0.9);
 		
 		
 	}
@@ -69,16 +75,11 @@ public class TestSoftmax {
 	public void testA_Train() throws Exception {
 		
 		
-		// Initialisation de l'entraîneur et configuration des paramètres d'entraînement
-		ITester tester = TestNetwork.getInstance();
-		ITrainer trainer = new BackPropagationTrainer();
-		tester.setNetwork(network);
-		trainer.setLearningRate(0.1);
-        trainer.setMomentum(0.9);
+
 
 		// Chargement des données d'entraînement
 		// Note: Adaptez cette partie pour charger vos propres données
-		loadData("./src/test/resources/datasets/dataset-OR.csv");
+		loadData("./src/test/resources/datasets/dataset-SOFTMAX.csv");
 		
 		// Initialisation aléatoire des poids du réseau
 		tester.initWeights(tester.getInitWeightRange(0), tester.getInitWeightRange(1));
@@ -87,9 +88,9 @@ public class TestSoftmax {
 		System.out.println(network.getString());
 
 		// Entraînement du réseau
-		trainer.launchTrain(200); // 20 000 itérations	
+		trainer.launchTrain(20000); // 20 000 itérations	
 		
-		//System.out.println(network.getString());
+		System.out.println(network.getString());
 		
 	}
 	
@@ -100,12 +101,16 @@ public class TestSoftmax {
 		network.getNode(0, 0, 0).getInput(0).setUnlinkedValue(3.0D);
 		network.getNode(0, 0, 1).getInput(0).setUnlinkedValue(2.0D);
 
-		
-		network.show();
 		network.init(0, 1);
 		
-		network.propagation(false);
+		network.show();
 
+		trainer.setCurrentOutputData(network.propagation(false));
+		
+		network.show();
+
+		trainer.backPropagateError();
+		
 		network.show();
 
 		assertEquals(0.73D, network.getNode(1, 0, 0).getComputedOutput(), 0.01);

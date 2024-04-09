@@ -269,4 +269,16 @@ public class LSTMTrainer implements ITrainer {
 		
 	}
 
+	@Override
+	public boolean backPropagateError() throws Exception {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	@Override
+	public void setCurrentOutputData(OutputData currentOutputData) {
+		// TODO Auto-generated method stub
+		
+	}
+
 }
