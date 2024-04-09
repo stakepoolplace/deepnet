@@ -1,6 +1,7 @@
 package RN.algoactivations;
 
 import RN.IArea;
+import RN.links.Link;
 
 /**
  * @author Eric Marchand
@@ -86,6 +87,18 @@ public enum EActivation {
 			performer = new LeakyReLUPerformer();	
 		else if (function == EActivation.SOFTMAX)
 			performer = new SoftMaxPerformer(area);
+		
+		
+		return performer;
+	}
+	
+	public static IActivation getAreaPerformer(EActivation function, Link link) {
+		
+		IActivation performer = null;
+		
+	
+		if (function == EActivation.SOFTMAX)
+			performer = new SoftMaxPerformer(link);
 		
 		
 		return performer;

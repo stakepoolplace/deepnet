@@ -13,10 +13,14 @@ import RN.nodes.INode;
 public class SoftMaxPerformer implements Serializable, IActivation{
 	
 	private IArea area;
-	
+	private Link link;
 
     public SoftMaxPerformer(IArea area) {
     	this.area = area;
+	}
+    
+    public SoftMaxPerformer(Link link) {
+    	this.link = link;
 	}
 
 	@Override
@@ -40,6 +44,7 @@ public class SoftMaxPerformer implements Serializable, IActivation{
 
 
         	softmaxNode.setComputedOutput(backupedValue / sumExp);
+        	
         }
         
         return 1;
@@ -60,78 +65,33 @@ public class SoftMaxPerformer implements Serializable, IActivation{
     public double performDerivative(double... values) throws Exception {
 
     	
-        double derivative = 0.0; //  dérivée par rapport à chaque entrée.
-       
-        double max = 0;
-        int maxIndex = 0;
-        double[] all = new double[area.getNodes().size()];
+    	INode sourceNode = this.link.getSourceNode();
+    	INode targetNode = this.link.getTargetNode();
+    	
+    	int targetNodeCount = targetNode.getArea().getNodeCount();
+    	int sourceNodeCount = sourceNode.getArea().getNodeCount();
+    	if(targetNodeCount != sourceNodeCount) {
+        	throw new RuntimeException("Softmax can only be calculated with 2 layers with equal number of nodes.");
+    	}
+    	
+    	
+        
+    	double[] all = new double[sourceNode.getArea().getNodes().size()];
         int idx = 0;
+
         for(INode nodeI : area.getNodes()) {
-        	if(nodeI.getComputedOutput() > max) {
-        		maxIndex = nodeI.getNodeId();
-        	}
         	all[idx++] = nodeI.getComputedOutput();
         }
-        
-        for(INode nodeI : area.getNodes()) {
-        	double yi = softmax(nodeI.getComputedOutput(), all);
-        	
-        	if(nodeI.getNodeId() != maxIndex) {
-        		derivative = yi * (1 - yi);
-        	} else {
-        		derivative = -yi * yi;
-        	}
-        	nodeI.setDerivativeValue(derivative);
-        }
-        
-        
-        
-        
-//        for(INode nodeI : area.getNodes()) {
-//        	
-//	        int i = nodeI.getNodeId();
-//        	double expSourceValue = 0;
-//        	double backupedValue = 0;
-//        	double sumExp = 0;
-//        	for(Link link : nodeI.getInputs()) {
-//        		INode sourceNode = link.getSourceNode();
-//            	int j = sourceNode.getNodeId();
-//        		expSourceValue = Math.exp(sourceNode.getComputedOutput());
-//        		if(i == j) {
-//        			backupedValue = expSourceValue;
-//        		}
-//        		sumExp += expSourceValue;
-//        	}
-//	        
-//	        		
-//	        double yi = backupedValue / sumExp;
-//	        
-//        
-//	        for(Link link : nodeI.getInputs()) {
-//	        
-//		        INode nodeJ = link.getSourceNode();
-//		        int j = nodeJ.getNodeId();
-//		        double yj = Math.exp(nodeJ.getComputedOutput()) / sumExp;
-//
-//		        if(i == j) {
-//		        	
-//					derivative += yi * (1 - yi); // Cas où i = j
-//		
-//		        } else {
-//		        	
-//					derivative += -yi * yj; // Cas où i != j
-//		
-//		        }
-//		        
-//	        }
-//	        
-//			derivative += yi * (1 - yi); // Cas où i = j
-//
-//	        nodeI.setDerivativeValue(derivative);
-//        
-//        }
+    	double yi = softmax(targetNode.getComputedOutput(), all);
+    	double yj = softmax(sourceNode.getComputedOutput(), all);
 
-    	return 0D;
+
+    	if(sourceNode.getNodeId() == targetNode.getNodeId()) {
+    		return yi * (1 - yi); // Cas où i = j
+    	} else {
+    		return -yi * yj; // Cas où i != j
+    	}
+
     	
     }
 }

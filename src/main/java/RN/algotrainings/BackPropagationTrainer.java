@@ -370,7 +370,6 @@ public class BackPropagationTrainer implements ITrainer {
 					errorRate += Math.pow(node.getError(), 2.0D);
 					
 
-
 				} else {
 
 					// somme pondérés du produit des poids des noeuds reliés sur
@@ -380,7 +379,7 @@ public class BackPropagationTrainer implements ITrainer {
 						
 						for (Link link : node.getOutputs()) {
 							if(link != null && (link.getType() == ELinkType.REGULAR || link.getType() == ELinkType.SHARED)){
-								derivatedError += link.getWeight() * link.getTargetNode().getDerivatedError();
+								derivatedError += link.getWeight() * getDerivatedErrorFromTargetNode(link);
 							}
 						}
 						
@@ -423,6 +422,15 @@ public class BackPropagationTrainer implements ITrainer {
 	
 	
 
+
+	private double getDerivatedErrorFromTargetNode(Link link) throws Exception {
+		
+		if(link.getTargetNode().getArea().getActivation() == EActivation.SOFTMAX) {
+			return EActivation.getAreaPerformer(EActivation.SOFTMAX, link).performDerivative();
+		} else {
+			return link.getTargetNode().getDerivatedError();
+		}
+	}
 
 	/*
 	 * (non-Javadoc)

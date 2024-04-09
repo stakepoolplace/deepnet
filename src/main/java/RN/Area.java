@@ -544,8 +544,6 @@ public class Area extends NetworkElement implements IArea{
 		if(activation != null) {
 			try {
 				performer.perform();
-				performer.performDerivative();
-
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
