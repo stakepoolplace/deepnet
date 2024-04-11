@@ -54,10 +54,6 @@ public interface ILayer {
 
 	Double[] propagate(boolean playAgain) throws Exception;
 
-	EActivation getFunction();
-
-	void setFunction(EActivation function);
-
 	void finalizeConnections();
 
 	void setReccurent(boolean b);

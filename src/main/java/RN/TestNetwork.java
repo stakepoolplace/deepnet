@@ -229,8 +229,7 @@ public class TestNetwork implements ITester {
 		optimizedNumHiddens = getTrainingVectorNumber() / (5 * (getInputSize() + getOutputSize()));
 		optimizedNumHiddens = Math.max(5, optimizedNumHiddens);
 
-		Layer layer = new Layer(
-				layerInActivation == null ? EActivation.IDENTITY : EActivation.getEnum(layerInActivation));
+		Layer layer = new Layer();
 		Area area = new Area(inputSize != null ? inputSize : layerInNodesCount);
 		layer.addArea(area);
 		area.configureLinkage(ELinkage.ONE_TO_ONE, null, false);
@@ -242,7 +241,7 @@ public class TestNetwork implements ITester {
 		network.setRecurrentNodesLinked(lateralLinkRecurrentNodes);
 
 		if (layerHidden0NodesCount != null && layerHidden0NodesCount > 0) {
-			layer = new Layer(EActivation.getEnum(layerHidden0Activation));
+			layer = new Layer();
 			Area area0 = null;
 			if (!hiddensNodeNumberOptimized) {
 				area0 = new Area(layerHidden0NodesCount);
@@ -264,7 +263,7 @@ public class TestNetwork implements ITester {
 		}
 
 		if (layerHidden1NodesCount != null && layerHidden1NodesCount > 0) {
-			layer = new Layer(EActivation.getEnum(layerHidden1Activation));
+			layer = new Layer();
 			Area area1 = null;
 			if (!hiddensNodeNumberOptimized) {
 				area1 = new Area(layerHidden1NodesCount);
@@ -287,7 +286,7 @@ public class TestNetwork implements ITester {
 		}
 
 		if (layerHidden2NodesCount != null && layerHidden2NodesCount > 0) {
-			layer = new Layer(EActivation.getEnum(layerHidden2Activation));
+			layer = new Layer();
 			Area area2 = null;
 			if (!hiddensNodeNumberOptimized) {
 				area2 = new Area(layerHidden2NodesCount);
@@ -309,7 +308,7 @@ public class TestNetwork implements ITester {
 			network.addLayer(layer);
 		}
 
-		layer = new Layer(EActivation.getEnum(layerOutActivation));
+		layer = new Layer();
 		Area area3 = new Area(outputSize != null ? outputSize : layerOutNodesCount);
 		layer.addArea(area3);
 		area3.configureLinkage(ELinkage.MANY_TO_MANY, null, true);

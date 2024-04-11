@@ -426,7 +426,7 @@ public class NetworkContext {
 
 		for(int idx = 0; idx < getLayerCount(); idx++){
 			
-			layer = new Layer(EActivation.IDENTITY);
+			layer = new Layer();
 			network.addLayer(layer);
 			
 			for(int idxArea = 0; idxArea < getAreaCount(idx); idxArea++){

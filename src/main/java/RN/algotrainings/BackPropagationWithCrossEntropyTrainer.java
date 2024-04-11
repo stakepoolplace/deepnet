@@ -2,6 +2,7 @@ package RN.algotrainings;
 
 import java.util.List;
 
+import RN.DataSeries;
 import RN.ENetworkImplementation;
 import RN.ILayer;
 import RN.algoactivations.EActivation;
@@ -9,6 +10,11 @@ import RN.links.ELinkType;
 import RN.links.Link;
 import RN.nodes.ENodeType;
 import RN.nodes.INode;
+import RN.strategy.EStrategy;
+import RN.strategy.Strategy;
+import RN.strategy.StrategyFactory;
+import javafx.scene.chart.LineChart;
+import javafx.scene.control.TextArea;
 
 /**
  * @author Eric Marchand
@@ -43,15 +49,21 @@ public class BackPropagationWithCrossEntropyTrainer extends BackPropagationTrain
 
 				// la valeur dérivée à été calculée lors du feedforward
 				
-				if (layer.isLastLayer()) {
-					
-
+				if (layer.isLastLayer() && node.getArea().getActivation() == EActivation.SOFTMAX) {
 					
 					// Pour la dernière couche avec cross-entropy + softmax
 	                // Mettre à jour le taux d'erreur total pour l'évaluation de la performance du modèle
-					 derivatedError = node.getError();
-					 errorRate += -Math.log(Math.max(node.getComputedOutput(), 1e-15)) * node.getIdealOutput();
+					derivatedError = node.getError();
+					errorRate += -Math.log(Math.max(node.getComputedOutput(), 1e-15)) * node.getIdealOutput();
 
+				} else if(layer.isLastLayer() && node.getArea().getActivation() != EActivation.SOFTMAX) {
+					// on defini l'erreur totale de la couche de sortie
+					derivatedError = node.getError() * node.getDerivativeValue();
+					
+					// on se dirige vers les minimum locaux
+					// Backpropagation in-line (not batch), algo LMS (Least Mean Squared)
+					errorRate += Math.pow(node.getError(), 2.0D);
+					 
 				} else {
 
 					// somme pondérés du produit des poids des noeuds reliés sur
@@ -61,13 +73,12 @@ public class BackPropagationWithCrossEntropyTrainer extends BackPropagationTrain
 						
 						for (Link link : node.getOutputs()) {
 							if(link != null && (link.getType() == ELinkType.REGULAR || link.getType() == ELinkType.SHARED)){
-								derivatedError += link.getWeight() * getDerivatedErrorFromTargetNode(link);
+								derivatedError += link.getWeight() * link.getTargetNode().getDerivatedError();
 							}
 						}
 						
 					}else{
-						
-						// TODO Optimiser la methode
+
 						derivatedError = node.getDerivatedErrorSum();
 						
 					}
@@ -103,16 +114,63 @@ public class BackPropagationWithCrossEntropyTrainer extends BackPropagationTrain
 	}
 	
 	
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see RN.ITester#lauchTrain(java.lang.Long, java.lang.Long)
+	 */
+	@Override
+	public void launchTrain(boolean verbose, TextArea console) throws Exception {
 
-
-	private double getDerivatedErrorFromTargetNode(Link link) throws Exception {
+		int samplesNb = DataSeries.getInstance().getInputDataSet().size();
+		breakTraining = false;
 		
-		if(link.getTargetNode().getArea().getActivation() == EActivation.SOFTMAX) {
-			return EActivation.getAreaPerformer(EActivation.SOFTMAX, link).performDerivative();
-		} else {
-			return link.getTargetNode().getDerivatedError();
+		if (samplesNb > 0) {
+
+			int trainCycle = 0;
+			absoluteError = 0.0D;
+			double sigmaAbsoluteError = 0.0D;
+			Strategy strategy = StrategyFactory.create(getNetwork(), EStrategy.AUTO_GROWING_HIDDENS);
+			do {
+				
+				long start = System.currentTimeMillis();
+				
+				absoluteError = 0.0D;
+				getNetwork().newLearningCycle(trainCycleAbsolute);
+				for (int ind = 1; ind <= samplesNb; ind++) {
+					train();
+					absoluteError += getErrorRate();
+				}
+				absoluteError =  Math.sqrt(absoluteError / samplesNb);
+				getNetwork().setAbsoluteError(absoluteError);
+
+				// Sampling 1/10 de l'affichage de l'erreur
+				if(trainCycle % (maxTrainingCycles / 100) == 0)
+					errorLevel.add(new LineChart.Data<Number, Number>(trainCycleAbsolute, absoluteError));
+				
+//				if(ViewerFX.growingHiddens.isSelected() && (trainCycle % 20 == 0) && sigmaAbsoluteError > 0.0D && ((sigmaAbsoluteError / (trainCycle + 1)) <= absoluteError * 1.1D))
+//					strategy.apply();
+//				
+				long stop = System.currentTimeMillis();
+				if (verbose) {
+					if(console != null)
+						console.appendText("Stage #" + trainCycleAbsolute + "    Error: " + absoluteError + "    Error mean: " + (sigmaAbsoluteError / (trainCycle + 1)) + "    Duration: "+ (stop-start)/1000 + " second(s)"+ "\n");
+					else
+						System.out.println("Stage #" + trainCycleAbsolute + "    Error: " + absoluteError + "    Error mean: " + (sigmaAbsoluteError / (trainCycle + 1)) + "    Duration: "+ (stop-start)/1000 + " second(s)");
+				}
+				
+				trainCycleAbsolute++;
+				trainCycle++;
+				sigmaAbsoluteError += absoluteError;
+				// }while(train.getErrorRate() > 0.00001);
+			} while (!breakTraining && trainCycle < maxTrainingCycles && absoluteError > 0.001);
+
 		}
 	}
+	
+	
+
+
 
 
 	

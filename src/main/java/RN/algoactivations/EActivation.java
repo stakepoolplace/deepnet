@@ -10,7 +10,7 @@ import RN.links.Link;
 public enum EActivation {
 
 	
-	COS, SIN, IDENTITY, EXP, SOFTMAX, HEAVISIDE, SYGMOID_0_1, SYGMOID_1_1, TANH, LINEAR, SYGMOID_0_1_INVERSE, SYGMOID_0_1_NEGATIVE, NEGATIVE, RLU, LEAKY_RELU;
+	COS, SIN, IDENTITY, EXP, SOFTMAX, HEAVISIDE, SYGMOID_0_1, SYGMOID_1_1, TANH, LINEAR, SYGMOID_0_1_INVERSE, SYGMOID_0_1_NEGATIVE, NEGATIVE, RLU, LEAKY_RELU, SOFTPLUS, ELU;
 	
 	public static EActivation getEnum(String function){
 	
@@ -44,16 +44,17 @@ public enum EActivation {
 		return EActivation.LEAKY_RELU;		
 	else if (function.equalsIgnoreCase(EActivation.SOFTMAX.name()))
 		return EActivation.SOFTMAX;		
+	else if (function.equalsIgnoreCase(EActivation.SOFTPLUS.name()))
+		return EActivation.SOFTPLUS;	
+	else if (function.equalsIgnoreCase(EActivation.ELU.name()))
+		return EActivation.ELU;
 		
 		return null;
 	
 	}
 	
-	public static IActivation getPerformer(EActivation function) {
-		return getPerformer(function, null);
-	}
 
-	public static IActivation getPerformer(EActivation function, IArea area) {
+	public static IActivation getPerformer(EActivation function) {
 		
 		IActivation performer = null;
 		
@@ -85,20 +86,21 @@ public enum EActivation {
 			performer = new ReLUPerformer();
 		else if (function == EActivation.LEAKY_RELU)
 			performer = new LeakyReLUPerformer();	
-		else if (function == EActivation.SOFTMAX)
-			performer = new SoftMaxPerformer(area);
-		
+		else if (function == EActivation.SOFTPLUS)
+			performer = new SoftPlusPerformer();		
+		else if (function == EActivation.ELU)
+			performer = new ELUPerformer();
 		
 		return performer;
 	}
 	
-	public static IActivation getAreaPerformer(EActivation function, Link link) {
+	public static IActivation getAreaPerformer(EActivation function, IArea area) {
 		
 		IActivation performer = null;
 		
 	
 		if (function == EActivation.SOFTMAX)
-			performer = new SoftMaxPerformer(link);
+			performer = new SoftMaxPerformer(area);
 		
 		
 		return performer;

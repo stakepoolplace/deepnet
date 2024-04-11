@@ -60,7 +60,7 @@ public class Node extends NetworkElement implements INode {
 	
 	protected EActivation activationFx;
 	
-	protected boolean activationFxPerNode = true;
+	protected boolean activationFxPerNode = false;
 	
 	// When we have no link, input value is stored here
 	protected Double inputValue;
@@ -76,6 +76,8 @@ public class Node extends NetworkElement implements INode {
 		this.outputs = new ArrayList<Link>();
 		this.nodeType = ENodeType.REGULAR;
 		this.biasWeight = new Weight(0D);
+		this.activationFxPerNode = false;
+
 	}
 	
 	public Node(EActivation activationFx, INode innerNode){
@@ -302,7 +304,7 @@ public class Node extends NetworkElement implements INode {
 		double sigmaWI = 0;
 		double activationFxResult;
 		
-		EActivation fx = activationFxPerNode ? activationFx : area.getLayer().getFunction();
+		EActivation fx = activationFxPerNode ? activationFx : area.getActivation();
 
 
 		// somme des entrees pondérées - biais
@@ -337,6 +339,9 @@ public class Node extends NetworkElement implements INode {
 	 */
 	public double performActivationFunction(final IActivation performer, double... values) throws Exception {
 
+		if(performer == null)
+			return 0D;
+		
 		return performer.perform(values);
 	}
 
@@ -348,6 +353,9 @@ public class Node extends NetworkElement implements INode {
 	 */
 	public double performDerivativeFunction(final IActivation performer, double... values) throws Exception {
 
+		if(performer == null)
+			return 0D;
+		
 		return performer.performDerivative(values);
 	}
 	
@@ -461,6 +469,8 @@ public class Node extends NetworkElement implements INode {
 					+ (biasWeight != null && biasWeight.getWeight() != 0D ? biasWeight : "aucun");
 		}
 		
+		result += ITester.NEWLINE + "          FN. ACTIVATION : " + (activationFx != null ? activationFx : this.getArea().getActivation() ) + "  activationFxPerNode : " + activationFxPerNode  ;
+		
 		// result += "\n                  ACTIVATION FX : " + this.function +
 		// "\n                  OUTPUT :\n                      " + this.output;
 		result += ITester.NEWLINE + "                   ERROR : " + ITester.NEWLINE + "                            " + this.error;
@@ -468,6 +478,10 @@ public class Node extends NetworkElement implements INode {
 		result += ITester.NEWLINE + "                  OUTPUT : ";
 		
 		result += ITester.NEWLINE + "                            Value: " + this.computedOutput;
+		
+		if(this.getArea().getLayer().isLastLayer()) {
+			result += ITester.NEWLINE + "                         Expected: " + this.idealOutput;
+		}
 		
 		jump = 0;
 		if(outputs.size() > 2000){
@@ -608,7 +622,7 @@ public class Node extends NetworkElement implements INode {
 				
 		} catch (Exception e) {
 			System.out.println("Back-propagation erreur sur le neurone : " + this);
-			throw e;
+			throw new RuntimeException(e);
 		}
 	}
 

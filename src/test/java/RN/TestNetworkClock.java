@@ -47,15 +47,15 @@ public class TestNetworkClock {
 		area.configureLinkage(ELinkage.ONE_TO_ONE, null, false).configureNode(false, EActivation.IDENTITY, ENodeType.REGULAR).createNodes(2);
 		
 		
-		layerHidden = new Layer(EActivation.SYGMOID_0_1);
-		area = new Area(2);
+		layerHidden = new Layer();
+		area = new Area(EActivation.SYGMOID_0_1, 2);
 		layerHidden.addArea(area);
 		net.addLayer(layerHidden);
 		area.configureLinkage(ELinkage.MANY_TO_MANY, null, false).configureNode( true, EActivation.IDENTITY, ENodeType.REGULAR).createNodes(2);
 		
-		layerOut = new Layer(EActivation.SYGMOID_0_1);
+		layerOut = new Layer();
 		net.addLayer(layerOut);
-		area = new Area(1);
+		area = new Area(EActivation.SYGMOID_0_1, 1);
 		layerOut.addArea(area);
 		area.configureLinkage(ELinkage.MANY_TO_MANY, null, false).configureNode( true, EActivation.IDENTITY, ENodeType.REGULAR).createNodes(1);
 		

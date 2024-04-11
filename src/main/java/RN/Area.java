@@ -89,8 +89,9 @@ public class Area extends NetworkElement implements IArea{
 		this.nodes = new ArrayList<INode>(nodeCount);
 		this.activation = activation;
 		if(activation != null) {
-			performer = EActivation.getPerformer(activation, this);
+			performer = EActivation.getAreaPerformer(activation, this);
 		}
+		
 		
 	}
 	

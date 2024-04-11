@@ -21,8 +21,6 @@ public class Layer extends NetworkElement implements Serializable, ILayer{
 	
 	private String name;
 	
-	private EActivation function;
-	
 	List<ILayer> sublayers;
 
 	List<IArea> areas;
@@ -39,11 +37,6 @@ public class Layer extends NetworkElement implements Serializable, ILayer{
 		this.areas = new ArrayList<IArea>();
 	}
 	
-	public Layer(EActivation eFunction) {
-		this.function = eFunction;
-		this.sublayers = new ArrayList<ILayer>();
-		this.areas = new ArrayList<IArea>();
-	}
 	
 
 	public Layer(Area... areas) {
@@ -279,21 +272,6 @@ public class Layer extends NetworkElement implements Serializable, ILayer{
 	}
 
 
-	/* (non-Javadoc)
-	 * @see RN.ILayer#getFunction()
-	 */
-	@Override
-	public EActivation getFunction() {
-		return function;
-	}
-
-	/* (non-Javadoc)
-	 * @see RN.ILayer#setFunction(RN.algoactivations.EActivation)
-	 */
-	@Override
-	public void setFunction(EActivation function) {
-		this.function = function;
-	}
 
 	/* (non-Javadoc)
 	 * @see RN.ILayer#finalizeConnections()
@@ -370,7 +348,6 @@ public class Layer extends NetworkElement implements Serializable, ILayer{
 		Collections.copy(copy_areas, areas);
 		
 		copy_layer.setDropOut(new Boolean(dropOutNodes));
-		copy_layer.setFunction(EActivation.valueOf(function.name()));
 		copy_layer.setLayerError(layerError);
 		copy_layer.setLayerId(layerId);
 		copy_layer.setReccurent(recurrent);

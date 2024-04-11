@@ -407,7 +407,6 @@ public class Network extends NetworkElement implements Serializable, INetwork {
 	public OutputData propagation(boolean playAgain) throws Exception {
 
 		OutputData outputData = null;
-		// outputDataList.clear();
 
 		// start of propagation
 		getContext().incrementClock();
@@ -421,7 +420,6 @@ public class Network extends NetworkElement implements Serializable, INetwork {
 
 			// on conserve les sorties pour un eventuel traitement par batch
 			if (outputValues != null && layer.isLastLayer()) {
-//				outputDataList.addData(outputValues);
 				outputData = new OutputData(outputValues);
 			}
 
@@ -623,18 +621,6 @@ public class Network extends NetworkElement implements Serializable, INetwork {
 		if (this.isRecurrentNodesLinked())
 			geneticCode += "-R-";
 		geneticCode += Genetic.CODE_SEPARATOR;
-		if (this.getLayer(1).getFunction() != null)
-			geneticCode += "Xh0" + this.getLayer(1).getFunction().name().charAt(0);
-		geneticCode += Genetic.CODE_SEPARATOR;
-		if (this.getLayers().size() - 2 > 1)
-			geneticCode += "Xh1" + this.getLayer(2).getFunction().name().charAt(0);
-		geneticCode += Genetic.CODE_SEPARATOR;
-		if (this.getLayers().size() - 2 > 2)
-			geneticCode += "Xh2" + this.getLayer(3).getFunction().name().charAt(0);
-		geneticCode += Genetic.CODE_SEPARATOR;
-
-		geneticCode += "Xo" + this.getLastLayer().getFunction().name().charAt(0);
-		geneticCode += Genetic.GENE_SEPARATOR;
 
 		return geneticCode;
 	}

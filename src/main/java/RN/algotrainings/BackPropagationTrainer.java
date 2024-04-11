@@ -29,27 +29,27 @@ import javafx.scene.control.TextArea;
  */
 public class BackPropagationTrainer implements ITrainer {
 
-	private static int maxTrainingCycles = 500;
+	protected static int maxTrainingCycles = 500;
 
 	protected double errorRate;
-	private double absoluteError = 0.0D;
+	protected double absoluteError = 0.0D;
 
-	private volatile boolean breakTraining = false;
+	protected volatile boolean breakTraining = false;
 
-	private ListIterator<InputData> inputDataSetIterator = null;
-	private List<LineChart.Data<Number, Number>> errorLevel = new ArrayList<LineChart.Data<Number, Number>>(maxTrainingCycles);
+	protected ListIterator<InputData> inputDataSetIterator = null;
+	protected List<LineChart.Data<Number, Number>> errorLevel = new ArrayList<LineChart.Data<Number, Number>>(maxTrainingCycles);
 
-	private static int trainCycleAbsolute = 0;
+	protected static int trainCycleAbsolute = 0;
 
 	protected double learningRate = 0.5D;
 	protected double alphaDeltaWeight = 0.0D;
-	private int meanPeriodCount = 0;
+	protected int meanPeriodCount = 0;
 
-	private double delta = 0.05;
-	private double delay = 0.1;
+	protected double delta = 0.05;
+	protected double delay = 0.1;
 	
-	private InputData currentEntry = null;
-	private OutputData currentOutputData = null;
+	protected InputData currentEntry = null;
+	protected OutputData currentOutputData = null;
 
 	public BackPropagationTrainer() {
 		errorRate = 0;
