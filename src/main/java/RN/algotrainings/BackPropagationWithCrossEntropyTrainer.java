@@ -141,11 +141,11 @@ public class BackPropagationWithCrossEntropyTrainer extends BackPropagationTrain
 					train();
 					absoluteError += getErrorRate();
 				}
-				absoluteError =  Math.sqrt(absoluteError / samplesNb);
+				absoluteError = absoluteError / samplesNb;
 				getNetwork().setAbsoluteError(absoluteError);
 
 				// Sampling 1/10 de l'affichage de l'erreur
-				if(trainCycle % (maxTrainingCycles / 100) == 0)
+				if(maxTrainingCycles >= 100 && trainCycle % (maxTrainingCycles / 100) == 0)
 					errorLevel.add(new LineChart.Data<Number, Number>(trainCycleAbsolute, absoluteError));
 				
 //				if(ViewerFX.growingHiddens.isSelected() && (trainCycle % 20 == 0) && sigmaAbsoluteError > 0.0D && ((sigmaAbsoluteError / (trainCycle + 1)) <= absoluteError * 1.1D))

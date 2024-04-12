@@ -42,6 +42,8 @@ public interface ILinkage {
 	
 	double getLinkedSigmaPotentials(INode thisNode);
 	
+	double getLinkedSigmaPotentialsUnsync(INode thisNode);
+	
 	double getUnLinkedSigmaPotentials(INode thisNode);
 	
 	List<INode> getIncomingNodes();

@@ -92,7 +92,7 @@
 		</dependency>
 
 
-		<!-- Dépendance pour JUnit -->
+		<!-- Dépendance pour JUnit 4 -->
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
@@ -105,6 +105,21 @@
 			<version>4.5.1</version>
 			<scope>test</scope>
 		</dependency>
+		
+        <!-- JUnit 5 Jupiter API -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>5.7.0</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- JUnit 5 Jupiter Engine -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>5.7.0</version>
+            <scope>test</scope>
+        </dependency>
 
 
 	</dependencies>

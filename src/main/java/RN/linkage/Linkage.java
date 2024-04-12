@@ -144,6 +144,27 @@ public abstract class Linkage extends NetworkElement implements ILinkage {
 		return sigmaWI;
 	}
 	
+	public double getLinkedSigmaPotentialsUnsync(INode thisNode){
+		
+		Double sigmaWI = 0D;
+		
+		// somme des entrees pondérées
+		for (Link input : thisNode.getInputs()) {
+				
+				sigmaWI += input.getValue() * input.getWeight();
+			
+		}
+		
+		// ajout du biais
+		if (thisNode.getBiasInput() != null){
+				
+				sigmaWI -= thisNode.getBiasInput().getValue() * thisNode.getBiasInput().getWeight();
+				
+		}
+		
+		return sigmaWI;
+	}
+	
 	public double getSigmaPotentials(INode thisNode){
 		
 		Double sigmaWI = 0D;
