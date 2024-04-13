@@ -15,17 +15,22 @@ public class Tokenizer {
     private Map<Integer, String> idToTokenMap = new HashMap<>();
     private WordVectors wordVectors;
     private int unkTokenId; // Identifiant pour les tokens inconnus
-
+    private int padTokenId; // Identifiant pour les tokens de padding
+    
+    public Tokenizer() {
+	}
+    
     public Tokenizer(WordVectors wordVectors) throws IOException {
     	
         // Synchroniser le vocabulaire avec Word2Vec
         synchronizeVocabularyWithWord2Vec(wordVectors);
     }
 
+
     private void synchronizeVocabularyWithWord2Vec(WordVectors wordVectors) {
         int index = 0;
-        Collection<String> workds = wordVectors.vocab().words();
-        for (String word : workds) {
+        Collection<String> words = wordVectors.vocab().words();
+        for (String word : words) {
             tokenToIdMap.put(word, index);
             idToTokenMap.put(index, word);
             index++;
@@ -36,8 +41,19 @@ public class Tokenizer {
         unkTokenId = index; // Attribuer l'identifiant suivant au token inconnu
         tokenToIdMap.put(unkToken, unkTokenId);
         idToTokenMap.put(unkTokenId, unkToken);
+
+        // Ajouter un token de padding
+        String padToken = "[PAD]";
+        padTokenId = ++index; // Attribuer le prochain identifiant au token de padding
+        tokenToIdMap.put(padToken, padTokenId);
+        idToTokenMap.put(padTokenId, padToken);
     }
 
+
+    public int getPadTokenId() {
+        return padTokenId; // Retourner l'identifiant du token de padding
+    }	
+	
     public String getToken(int tokenId) {
         return idToTokenMap.getOrDefault(tokenId, "[UNK]");
     }

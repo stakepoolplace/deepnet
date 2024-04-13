@@ -8,6 +8,8 @@ import java.util.Map;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 
+import RN.transformer.Encoder.EncoderLayer;
+
 /**
  * numLayers: Comme pour l'encodeur.
  * dModel: Identique à celui de l'encodeur.
@@ -20,7 +22,7 @@ public class Decoder {
     private List<DecoderLayer> layers;
     private LayerNorm layerNorm;
     private int numLayers;
-    private int dModel;
+    protected int dModel;
     private int numHeads;
     private double dropoutRate;
     private LinearProjection linearProjection; // Projection linéaire vers la taille du vocabulaire
@@ -39,26 +41,25 @@ public class Decoder {
         }
     }
     
-    public List<INDArray> decode(INDArray encodedData) {
-        // Applique une projection linéaire à l'ensemble du batch d'encodages pour obtenir les logits
-        INDArray logits = linearProjection.project(encodedData);
 
-        // Emballez les logits dans une liste pour maintenir la cohérence avec l'interface attendue
-        List<INDArray> decodedLogits = new ArrayList<>();
-        decodedLogits.add(logits); // Ajoutez directement les logits comme un seul élément de la liste
-
-        return decodedLogits;
-    }
-
-
-    public INDArray forward(boolean isTraining, INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray paddingMask) {
+    
+    public INDArray decode(boolean isTraining, INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray paddingMask) {
+        // Traitement par les couches de décodeur
         for (DecoderLayer layer : layers) {
             x = layer.forward(isTraining, x, encoderOutput, lookAheadMask, paddingMask);
         }
+        
+        // Normalisation finale
         x = layerNorm.forward(x);
-        x = linearProjection.project(x); // Applique une projection linéaire à la sortie du décodeur
+        
+        // Application d'une projection linéaire, si nécessaire
+        if (this.linearProjection != null) {
+            x = linearProjection.project(x); // Transforme la sortie du décodeur pour les logits de vocabulaire
+        }
+        
         return x;
     }
+    
     
     public Map<String, INDArray> backward(INDArray gradOutput) {
         

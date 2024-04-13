@@ -23,6 +23,9 @@ public class TransformerModelTest {
         assertNotNull("Le tokenizer ne devrait pas être null après l'initialisation du modèle", model.tokenizer);
         assertFalse("Le modèle ne devrait pas être marqué comme entraîné initialement", model.isTrained());
     }
+    
+
+
 
     @Test
     public void testTrainingChangesModelToTrained() throws Exception {
@@ -37,6 +40,8 @@ public class TransformerModelTest {
         // Tentative d'inférence avant l'entraînement devrait lancer une exception
         model.infer("Some input text");
     }
+    
+
 
     @Test
     public void testInferenceAfterTraining() throws Exception {

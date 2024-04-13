@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.List;
 
 class DummyDataGenerator extends DataGenerator {
+	
     public DummyDataGenerator(String dataPath, String targetPath, Tokenizer tokenizer, int batchSize, int maxTokensPerBatch) throws IOException {
         super(dataPath, targetPath, tokenizer, batchSize, maxTokensPerBatch);
     }

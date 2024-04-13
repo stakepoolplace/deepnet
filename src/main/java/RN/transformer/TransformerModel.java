@@ -22,7 +22,7 @@ public class TransformerModel {
     public Tokenizer tokenizer;
     private double dropoutRate = 0.1; // Exemple de taux de dropout fixe
     private static WordVectors wordVectors; // Chargé une fois, accessible statiquement
-    private static int vocabSize = 0;
+    protected static int vocabSize = 0;
     private static INDArray meanVector = null;
     private static int dModel = 300;
     private static int numLayers = 6;
@@ -91,44 +91,57 @@ public class TransformerModel {
     }
 
     public void train(DataGenerator dataGenerator) throws IOException {
-        
-    	for (int epoch = 0; epoch < 10; epoch++) {
-            int batchNum = 0;
-            
+        for (int epoch = 0; epoch < 10; epoch++) {
             optimizer.setEpoch(epoch);
-            
-            // Itération sur les batches générés par le générateur de données
+
             while (dataGenerator.hasNextBatch()) {
                 Batch batch = dataGenerator.nextBatch();
-                
-                // Tokenization du texte cible et conversion en IDs
+
                 List<Integer> targetTokenIds = tokenizer.tokensToIds(tokenizer.tokenize(String.join("", batch.getTarget())));
-                
-                // Tokenization du texte source et conversion en IDs
                 List<Integer> dataTokenIds = tokenizer.tokensToIds(tokenizer.tokenize(String.join("", batch.getData())));
 
-                // Encodage et décodage pour obtenir les logits
                 INDArray encoded = encoder.encode(true, dataTokenIds);
-                List<INDArray> decodedLogits = decoder.decode(encoded); // Assumer que decode retourne désormais List<INDArray>
-                            
+                // Assume that masks are created or fetched appropriately here
+                INDArray lookAheadMask = createLookAheadMask(dataTokenIds.size()); // You need to implement createLookAheadMask
+                INDArray paddingMask = createPaddingMask(dataTokenIds); // You need to implement createPaddingMask
+
+                INDArray decodedOutput = decoder.decode(true, encoded, encoded, lookAheadMask, paddingMask); // Assumes encoder outputs are used for encoder-decoder attention
+
+                List<INDArray> decodedLogits = new ArrayList<>();
+                decodedLogits.add(decodedOutput);
 
                 backpropagation(decodedLogits, targetTokenIds);
-                
-                // Mise à jour des paramètres via l'optimiseur
                 List<INDArray> combinedParameters = getCombinedParameters();
                 List<INDArray> combinedGradients = getCombinedGradients();
                 optimizer.update(combinedParameters, combinedGradients);
-                
-                batchNum++;
             }
-            
-            dataGenerator.init(); // Réinitialiser le générateur de données si nécessaire
+
+            dataGenerator.init(); // Reset data generator if needed
         }
 
         isTrained = true;
     }
-
     
+    public INDArray createLookAheadMask(int size) {
+        // Création d'une matrice où les éléments au-dessus de la diagonale sont 1 (ce qui signifie masqués)
+        INDArray mask = Nd4j.ones(size, size);
+        INDArray lowerTriangle = Nd4j.tri(size, size, 0); // Crée une matrice triangulaire inférieure
+        mask.subi(lowerTriangle).muli(Double.POSITIVE_INFINITY); // Appliquer le masquage infini pour softmax
+        return mask;
+    }
+    
+    public INDArray createPaddingMask(List<Integer> tokenIds) {
+        // Génération d'un masque où chaque emplacement de padding est marqué par 1 (infinité après le masquage)
+        long size = tokenIds.size();
+        INDArray mask = Nd4j.zeros(1, size);
+        for (int i = 0; i < size; i++) {
+            if (tokenIds.get(i) == tokenizer.getPadTokenId()) { 
+                mask.putScalar(i, Double.POSITIVE_INFINITY);
+            }
+        }
+        return mask;
+    }
+
 
     
     private void backpropagation(List<INDArray> decodedLogits, List<Integer> targetTokenIds) {
@@ -186,8 +199,6 @@ public class TransformerModel {
         // basé sur les gradients calculés. Normalement, cela est géré par votre optimiseur
     }
 
-    
-
 
 	private List<INDArray> getCombinedParameters() {
         List<INDArray> combinedParameters = new ArrayList<>();
@@ -233,7 +244,7 @@ public class TransformerModel {
         // Les masques lookAheadMask et paddingMask sont initialisés à null pour l'exemple
         INDArray lookAheadMask = null;
         INDArray paddingMask = null;
-        INDArray logits = decoder.forward(false, encodedPrompt, encodedPrompt, lookAheadMask, paddingMask);
+        INDArray logits = decoder.decode(false, encodedPrompt, encodedPrompt, lookAheadMask, paddingMask);
 
         // Conversion des logits en IDs de tokens
         INDArray predictedTokenIds = Nd4j.argMax(logits, 2);
@@ -262,7 +273,7 @@ public class TransformerModel {
 
 
     
-    private Pair<Float, INDArray> calculateCrossEntropyLossAndGradient(List<INDArray> decodedLogits, List<Integer> targetTokenIds) {
+    protected Pair<Float, INDArray> calculateCrossEntropyLossAndGradient(List<INDArray> decodedLogits, List<Integer> targetTokenIds) {
         float loss = 0.0f;
         int N = targetTokenIds.size();
 
