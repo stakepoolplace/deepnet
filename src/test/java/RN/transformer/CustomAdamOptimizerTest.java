@@ -16,6 +16,8 @@ public class CustomAdamOptimizerTest {
     private List<INDArray> gradients;
     private final double initialLr = 0.001;
     private final int warmupSteps = 1000;
+    private final int modelSize = 512;
+    
     
 
     @Before
@@ -23,7 +25,7 @@ public class CustomAdamOptimizerTest {
         // Initialiser directement le nombre total de paramètres basé sur ce que vous allez ajouter à 'parameters'
         int numberOfParameters = 2; // Par exemple, si vous savez que vous ajouterez un INDArray avec 2 éléments
 
-        optimizer = new CustomAdamOptimizer(initialLr, warmupSteps, numberOfParameters);
+        optimizer = new CustomAdamOptimizer(initialLr, modelSize, warmupSteps, numberOfParameters);
         
         // Ensuite, initialiser 'parameters' avec les valeurs de test
         parameters = new ArrayList<>();

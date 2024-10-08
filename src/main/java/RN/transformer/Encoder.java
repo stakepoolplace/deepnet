@@ -1,7 +1,9 @@
 package RN.transformer;
 
 
+import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,22 +21,24 @@ import org.nd4j.linalg.factory.Nd4j;
  *	maxSeqLength: La longueur maximale de séquence, utilisée pour les embeddings positionnels.
  */
 
-public class Encoder {
+public class Encoder implements Serializable  {
 	
-    private List<EncoderLayer> layers;
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = -5716799542280937448L;
+	private List<EncoderLayer> layers;
     private PositionalEncoding positionalEncoding;
     private LayerNorm layerNorm;
-    private INDArray pretrainedEmbeddings; // Matrice d'embeddings pré-entraînée
     private Tokenizer tokenizer;
 
     public Encoder() {
 	}
     
-    public Encoder(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, INDArray pretrainedEmbeddings, Tokenizer tokenizer) {
-        this.positionalEncoding = new PositionalEncoding(dModel);
+    public Encoder(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, Tokenizer tokenizer) {
+    	this.positionalEncoding = new PositionalEncoding(dModel);
         this.layers = new ArrayList<>();
         this.layerNorm = new LayerNorm(dModel);
-        this.pretrainedEmbeddings = pretrainedEmbeddings; // Initialiser la matrice d'embeddings pré-entraînée
         this.tokenizer = tokenizer;
         
         for (int i = 0; i < numLayers; i++) {
@@ -52,21 +56,23 @@ public class Encoder {
 
         // Encodage des IDs de tokens à travers les couches de l'encodeur
         INDArray inputEmbeddings = lookupEmbeddings(tokenIds);
-        INDArray encoded = forward(isTraining, inputEmbeddings);
+        INDArray encoded = forward(isTraining, inputEmbeddings, null);
         
         // Conversion des embeddings encodés en logits
         return convertToLogits(encoded);
     }
     
-    public INDArray encode(boolean isTraining, List<Integer> tokenIds) {
+    public INDArray encode(boolean isTraining, List<Integer> tokenIds, INDArray paddingMask) {
+    	
         // Utiliser la matrice d'embeddings pré-entraînée pour récupérer les embeddings correspondants aux IDs de tokens
         INDArray inputEmbeddings = lookupEmbeddings(tokenIds);
 
         // Appliquer les transformations de l'encodeur sur les embeddings
-        INDArray encoded = forward(isTraining, inputEmbeddings);
+        INDArray encoded = forward(isTraining, inputEmbeddings, paddingMask);
 
         return encoded;
     }
+    
 
     
    
@@ -78,9 +84,16 @@ public class Encoder {
         INDArray embeddings = Nd4j.zeros(maxSeqLength, dModel);
 
         for (int i = 0; i < tokenIds.size(); i++) {
-            int tokenId = tokenIds.get(i);
+            int tokenId = tokenIds.get(i) - 1;
+            
+            // Vérifier que tokenId est valide
+            if (tokenId >= TransformerModel.getPretrainedEmbeddings().rows()) {
+                throw new IllegalArgumentException("Token ID " + tokenId + " est hors des limites de la matrice d'embeddings qui a " + TransformerModel.getPretrainedEmbeddings().rows() + " lignes.");
+            }
+            
+            
             // Récupérer l'embedding correspondant au token ID à partir de la matrice d'embeddings pré-entraînée
-            embeddings.putRow(i, pretrainedEmbeddings.getRow(tokenId));
+            embeddings.putRow(i, TransformerModel.getPretrainedEmbeddings().getRow(tokenId));
         }
 
         return embeddings;
@@ -101,17 +114,19 @@ public class Encoder {
         return logits;
     }
 
-    private INDArray forward(boolean isTraining, INDArray x) {
+    private INDArray forward(boolean isTraining, INDArray x, INDArray paddingMask) {
     	
         // Appliquer les embeddings positionnels
         INDArray posEncoding = positionalEncoding.getPositionalEncoding(x.shape()[0]);
         x = x.add(posEncoding);
 
         for (EncoderLayer layer : layers) {
-            x = layer.forward(isTraining, x);
+            x = layer.forward(isTraining, x, paddingMask);
         }
         
-        return layerNorm.forward(x);
+        x =  layerNorm.forward(x);
+
+        return x;
     }
     
 
@@ -220,9 +235,14 @@ public class Encoder {
 
 
 
-    static class EncoderLayer {
+    static class EncoderLayer implements Serializable {
     	
-        MultiHeadAttention selfAttention;
+        /**
+		 * 
+		 */
+		private static final long serialVersionUID = -88886021425567141L;
+		
+		MultiHeadAttention selfAttention;
         PositionwiseFeedForward feedForward;
         LayerNorm layerNorm1;
         LayerNorm layerNorm2;
@@ -239,9 +259,9 @@ public class Encoder {
             this.dropout2 = new Dropout(dropoutRate);
         }
         
-        public INDArray forward(boolean isTraining, INDArray x) {
+        public INDArray forward(boolean isTraining, INDArray x, INDArray paddingMask) {
         	
-            INDArray attnOutput = selfAttention.forward(x, x, x, null); // Assume no need for mask here
+            INDArray attnOutput = selfAttention.forward(x, x, x, paddingMask);
             attnOutput = dropout1.apply(isTraining, attnOutput);
             x = layerNorm1.forward(x.add(attnOutput)); // Add & norm
 

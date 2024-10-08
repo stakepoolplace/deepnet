@@ -1,8 +1,17 @@
 package RN.transformer;
 
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
+
 import org.junit.Before;
 import org.junit.Test;
-import static org.junit.Assert.*;
+import org.nd4j.linalg.api.ndarray.INDArray;
 
 public class TransformerModelTest {
 
@@ -25,7 +34,87 @@ public class TransformerModelTest {
     }
     
 
-
+    @Test
+    public void testSaveAndLoadState() throws IOException, ClassNotFoundException {
+        // Créer une instance du modèle
+        TransformerModel originalModel = new TransformerModel();
+        
+        // Simuler un entraînement en modifiant quelques paramètres
+        originalModel.train(new MockDataGenerator()); // Supposons que vous avez une implémentation mock de DataGenerator pour les tests
+        
+        // Sauvegarder l'état du modèle
+        String filePath = "test_transformer_state.ser";
+        originalModel.saveState(filePath);
+        
+        // Créer une nouvelle instance du modèle
+        TransformerModel loadedModel = new TransformerModel();
+        
+        // Charger l'état sauvegardé
+        loadedModel.loadState(filePath);
+        
+        // Vérifier que les états sont identiques
+        assertTrue(compareModels(originalModel, loadedModel));
+        
+        // Nettoyer le fichier de test
+        new File(filePath).delete();
+    }
+    
+    private boolean compareModels(TransformerModel model1, TransformerModel model2) {
+        // Comparer les paramètres de l'encodeur
+        if (!compareParameters(model1.encoder.getParameters(), model2.encoder.getParameters())) {
+            return false;
+        }
+        
+        // Comparer les paramètres du décodeur
+        if (!compareParameters(model1.decoder.getParameters(), model2.decoder.getParameters())) {
+            return false;
+        }
+        
+        // Comparer l'état de l'optimiseur
+        if (model1.optimizer.getCurrentStep() != model2.optimizer.getCurrentStep() ||
+            model1.optimizer.getEpoch() != model2.optimizer.getEpoch() ||
+            model1.optimizer.getLearningRate() != model2.optimizer.getLearningRate()) {
+            return false;
+        }
+        
+        // Comparer l'état d'entraînement
+        if (model1.isTrained() != model2.isTrained()) {
+            return false;
+        }
+        
+        return true;
+    }
+    
+    private boolean compareParameters(List<INDArray> params1, List<INDArray> params2) {
+        if (params1.size() != params2.size()) {
+            return false;
+        }
+        
+        for (int i = 0; i < params1.size(); i++) {
+            if (!params1.get(i).equalsWithEps(params2.get(i), 1e-5)) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    // Classe mock pour DataGenerator
+    private class MockDataGenerator extends DataGenerator {
+        public MockDataGenerator() throws IOException {
+            super("mock_data.txt", "mock_target.txt", new Tokenizer(Arrays.asList("tutu", "toto")), 1, 100);
+        }
+        
+        @Override
+        public boolean hasNextBatch() {
+            return false; // Pour simplifier, on suppose qu'il n'y a pas de batch à traiter
+        }
+        
+        @Override
+        public Batch nextBatch() {
+            return new Batch(List.of("mock input"), List.of("mock target"));
+        }
+    }
 
     @Test
     public void testTrainingChangesModelToTrained() throws Exception {

@@ -1,10 +1,16 @@
 package RN.transformer;
 
+import java.io.Serializable;
+
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 
-public class Dropout {
-    private double rate;
+public class Dropout implements Serializable {
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = -61325399079678110L;
+	private double rate;
     private INDArray mask;
 
 

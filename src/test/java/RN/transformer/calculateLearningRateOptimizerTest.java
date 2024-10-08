@@ -11,10 +11,11 @@ public class calculateLearningRateOptimizerTest {
     private final double initialLr = 0.001;
     private final int warmupSteps = 1000;
     private final long numberOfParameters = 100; // Supposons un certain nombre de paramètres pour l'initialisation
+    private final int modelSize = 512;
 
     @Before
     public void setUp() {
-        optimizer = new CustomAdamOptimizer(initialLr, warmupSteps, numberOfParameters);
+        optimizer = new CustomAdamOptimizer(initialLr, modelSize, warmupSteps, numberOfParameters);
     }
 
     @Test

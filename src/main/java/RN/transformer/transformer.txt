@@ -2,6 +2,27 @@ package RN.transformer;
 
 import java.util.List;
 
+public class Batch {
+    private List<String> data;
+    private List<String> target;
+
+    public Batch(List<String> data, List<String> target) {
+        this.data = data;
+        this.target = target;
+    }
+
+    public List<String> getData() {
+        return data;
+    }
+
+    public List<String> getTarget() {
+        return target;
+    }
+}
+package RN.transformer;
+
+import java.util.List;
+
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.learning.AdamUpdater;
@@ -94,304 +115,76 @@ public class CustomAdamOptimizer {
 }
 package RN.transformer;
 
-import java.io.File;
+import java.io.BufferedReader;
+import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
-import org.apache.commons.lang3.tuple.Pair;
-import org.deeplearning4j.models.embeddings.loader.WordVectorSerializer;
-import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
-import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.factory.Nd4j;
-import org.nd4j.linalg.ops.transforms.Transforms;
+public class DataGenerator {
+    private BufferedReader dataReader;
+    private BufferedReader targetReader;
+    protected Tokenizer tokenizer;
+    private int batchSize;
+    private int maxTokensPerBatch;
+	private String targetFilePath;
+	private String dataFilePath;
 
-public class TransformerModel {
-    private boolean isTrained = false;
-    public Encoder encoder;
-    public Decoder decoder;
-    public CustomAdamOptimizer optimizer;
-    public Tokenizer tokenizer;
-    private double dropoutRate = 0.1; // Exemple de taux de dropout fixe
-    private static WordVectors wordVectors; // Chargé une fois, accessible statiquement
-    private static int vocabSize = 0;
-    private static INDArray meanVector = null;
-    private static int dModel = 300;
-    private static int numLayers = 6;
-    private static int numHeads = 8;
-    private static int dff = 2048;
+    public DataGenerator(String dataFilePath, String targetFilePath, Tokenizer tokenizer, int batchSize, int maxTokensPerBatch) throws IOException {
+        this.dataReader = new BufferedReader(new FileReader(dataFilePath));
+        this.targetReader = new BufferedReader(new FileReader(targetFilePath));
+        this.targetFilePath = targetFilePath;
+        this.dataFilePath = dataFilePath;
+        this.tokenizer = tokenizer;
+        this.batchSize = batchSize;
+        this.maxTokensPerBatch = maxTokensPerBatch;
+    }
 
-    static {
-        try {
-        	wordVectors = WordVectorSerializer.readWord2VecModel(new File("pretrained-embeddings/mon_model_word2vec.txt"), true);
+    public boolean hasNextBatch() throws IOException {
+        return dataReader.ready() && targetReader.ready();
+    }
 
-            //wordVectors = WordVectorSerializer.loadStaticModel(new File("pretrained-embeddings/word2vec.model"));
-            vocabSize = wordVectors.vocab().numWords(); // Taille du vocabulaire Word2Vec
-         // Calculer le vecteur moyen (à faire une seule fois, idéalement dans le constructeur ou une méthode d'initialisation)
-            INDArray allVectors = Nd4j.create(vocabSize, dModel);
-            for (int i = 0; i < vocabSize; i++) {
-                String word = wordVectors.vocab().wordAtIndex(i);
-                INDArray vector = wordVectors.getWordVectorMatrix(word);
-                allVectors.putRow(i, vector);
+    public Batch nextBatch() throws IOException {
+        List<String> dataBatch = new ArrayList<>();
+        List<String> targetBatch = new ArrayList<>();
+        StringBuilder dataBuffer = new StringBuilder();
+        StringBuilder targetBuffer = new StringBuilder();
+
+        while (dataBatch.size() < batchSize && hasNextBatch()) {
+            int dataChar;
+            while ((dataChar = dataReader.read()) != -1) {
+                dataBuffer.append((char) dataChar);
+                if (dataBuffer.length() >= maxTokensPerBatch) break;
             }
-            meanVector = allVectors.mean(0); // Moyenne sur toutes les lignes pour obtenir un vecteur moyen
 
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-    
+            int targetChar;
+            while ((targetChar = targetReader.read()) != -1) {
+                targetBuffer.append((char) targetChar);
+                if (targetBuffer.length() >= maxTokensPerBatch) break;
+            }
 
-    public TransformerModel() throws IOException {
-        
-        this.tokenizer = new Tokenizer(wordVectors); // Supposé exister pour gérer la tokenisation
-
-        // Créer une matrice d'embeddings pré-entraînée
-        INDArray pretrainedEmbeddings = createPretrainedEmbeddings(dModel);
-        
-        
-        this.encoder = new Encoder(numLayers, dModel, numHeads, dff, dropoutRate, pretrainedEmbeddings, this.tokenizer);
-        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate, vocabSize + 1);
-        
-        // Calcul du nombre total de paramètres
-        long totalParams = encoder.getNumberOfParameters() + decoder.getNumberOfParameters();
-        
-        this.optimizer = new CustomAdamOptimizer(0.001, 1000, totalParams); // Initialisation hypothétique
-    }
-    
- 
-    
-    public INDArray createPretrainedEmbeddings(int dModel) {
-
-        // Créer une matrice pour stocker les embeddings
-    	INDArray embeddings = Nd4j.create(vocabSize + 1, dModel);
-        
-        // Pour chaque mot dans le vocabulaire du tokenizer
-        int tokenId = 0;
-        for (; tokenId < vocabSize; tokenId++) {
-            String word = tokenizer.getToken(tokenId); // Supposons que cette méthode existe
-            if (wordVectors.hasWord(word)) {
-                INDArray wordVector = wordVectors.getWordVectorMatrix(word);
-                embeddings.putRow(tokenId, wordVector);
+            if (dataBuffer.length() > 0 && targetBuffer.length() > 0) {
+                List<String> dataTokens = tokenizer.tokenize(dataBuffer.toString());
+                List<String> targetTokens = tokenizer.tokenize(targetBuffer.toString());
+                dataBatch.add(String.join(" ", dataTokens));
+                targetBatch.add(String.join(" ", targetTokens));
+                dataBuffer = new StringBuilder(); // Réinitialiser les buffers pour le prochain segment
+                targetBuffer = new StringBuilder();
             }
         }
-        
-        // Utiliser le vecteur moyen pour les mots inconnus
-        embeddings.putRow(tokenId, meanVector);
 
-        return embeddings;
+        return new Batch(dataBatch, targetBatch);
     }
 
-    public void train(DataGenerator dataGenerator) throws IOException {
-        
-    	for (int epoch = 0; epoch < 10; epoch++) {
-            int batchNum = 0;
-            
-            optimizer.setEpoch(epoch);
-            
-            // Itération sur les batches générés par le générateur de données
-            while (dataGenerator.hasNextBatch()) {
-                Batch batch = dataGenerator.nextBatch();
-                
-                // Tokenization du texte cible et conversion en IDs
-                List<Integer> targetTokenIds = tokenizer.tokensToIds(tokenizer.tokenize(String.join("", batch.getTarget())));
-                
-                // Tokenization du texte source et conversion en IDs
-                List<Integer> dataTokenIds = tokenizer.tokensToIds(tokenizer.tokenize(String.join("", batch.getData())));
-
-                // Encodage et décodage pour obtenir les logits
-                INDArray encoded = encoder.encode(true, dataTokenIds);
-                List<INDArray> decodedLogits = decoder.decode(encoded); // Assumer que decode retourne désormais List<INDArray>
-                            
-
-                backpropagation(decodedLogits, targetTokenIds);
-                
-                // Mise à jour des paramètres via l'optimiseur
-                List<INDArray> combinedParameters = getCombinedParameters();
-                List<INDArray> combinedGradients = getCombinedGradients();
-                optimizer.update(combinedParameters, combinedGradients);
-                
-                batchNum++;
-            }
-            
-            dataGenerator.init(); // Réinitialiser le générateur de données si nécessaire
-        }
-
-        isTrained = true;
+    public void close() throws IOException {
+        dataReader.close();
+        targetReader.close();
     }
 
-    
-
-    
-    private void backpropagation(List<INDArray> decodedLogits, List<Integer> targetTokenIds) {
-        // Étape 1: Calcul de la perte et des gradients initiaux
-        // Cette fonction est hypothétique et devrait retourner la perte et le gradient initial
-        Pair<Float, INDArray> lossAndGradients = calculateCrossEntropyLossAndGradient(decodedLogits, targetTokenIds);
-        float loss = lossAndGradients.getLeft();
-        INDArray initialGradients = lossAndGradients.getRight();
-        
-        // Afficher la perte pour le monitoring
-        System.out.println("Perte: " + loss);
-
-        // Étape 2: Rétropropagation à travers le Décodeur
-        // Cela ajuste les poids du décodeur basés sur les gradients calculés
-        Map<String, INDArray> decoderGradients = decoder.backward(initialGradients);
-        
-        // Extraire les gradients pertinents pour l'encodeur à partir de decoderGradients
-        Map<String, INDArray> encoderGradients = extractEncoderGradients(decoderGradients);
-        
-
-        // Étape 3: Rétropropagation à travers l'Encodeur
-        // L'encodeur ajuste ses poids basé sur ses propres calculs de gradients
-        // Dans un modèle Transformer, cela pourrait impliquer des gradients venant de la couche d'attention encodeur-décodeur
-        // Pour simplifier, nous allons juste appeler backward sur l'encodeur sans passer de gradients spécifiques
-        // car dans une implémentation réelle, cela dépendrait des détails spécifiques de votre modèle
-        encoder.backward(encoderGradients);
-
-        // Mettre à jour les poids basés sur les gradients calculés, normalement fait par l'optimiseur
-        updateModelWeights();
-    }
-
-
-    private Map<String, INDArray> extractEncoderGradients(Map<String, INDArray> decoderGradients) {
-        // Créez un nouveau Map pour contenir les gradients spécifiquement pour l'encoder.
-        Map<String, INDArray> encoderGradients = new HashMap<>();
-        
-        // Extrayez les gradients par rapport aux entrées K et V de l'attention encoder-décodeur.
-        // Ces gradients sont ceux qui doivent être propagés à travers l'encoder.
-        INDArray gradK = decoderGradients.get("inputK");
-        INDArray gradV = decoderGradients.get("inputV");
-        
-        // Ajoutez ces gradients au Map sous des clés représentant leur rôle dans l'encoder.
-        // Par exemple, vous pouvez simplement les renommer pour correspondre à la nomenclature attendue par l'encoder.
-        encoderGradients.put("gradK", gradK);
-        encoderGradients.put("gradV", gradV);
-        
-        return encoderGradients;
-    }
-
-
-
-
-	private void updateModelWeights() {
-        // Implémentez cette fonction pour mettre à jour les poids du modèle
-        // basé sur les gradients calculés. Normalement, cela est géré par votre optimiseur
-    }
-
-    
-
-
-	private List<INDArray> getCombinedParameters() {
-        List<INDArray> combinedParameters = new ArrayList<>();
-        
-        // Ajoute les paramètres de l'encoder
-        combinedParameters.addAll(encoder.getParameters());
-        
-        // Ajoute les paramètres du decoder
-        combinedParameters.addAll(decoder.getParameters());
-        
-        return combinedParameters;
-    }
-
-    private List<INDArray> getCombinedGradients() {
-        List<INDArray> combinedGradients = new ArrayList<INDArray>();
-        
-        // Ajoute les gradients de l'encoder
-        combinedGradients.addAll(encoder.getGradients());
-        
-        // Ajoute les gradients du decoder
-        combinedGradients.addAll(decoder.getGradients());
-        
-        return combinedGradients;
-    }
-
-
-
-
-    public String infer(String prompt) {
-        if (!isTrained) {
-            throw new IllegalStateException("Le modèle doit être entraîné avant l'inférence.");
-        }
-
-        // Tokenisation et conversion du prompt en IDs
-        List<String> promptTokens = tokenizer.tokenize(prompt);
-        List<Integer> promptTokenIds = tokenizer.tokensToIds(promptTokens);
-
-        // Encodage
-        INDArray encodedPrompt = encoder.encode(false, promptTokenIds); // Supposons que la méthode encode retourne un INDArray
-
-        // Décodeur : Préparation des arguments nécessaires
-        // Supposons que encoderOutput est le même que encodedPrompt pour l'inférence simple
-        // Les masques lookAheadMask et paddingMask sont initialisés à null pour l'exemple
-        INDArray lookAheadMask = null;
-        INDArray paddingMask = null;
-        INDArray logits = decoder.forward(false, encodedPrompt, encodedPrompt, lookAheadMask, paddingMask);
-
-        // Conversion des logits en IDs de tokens
-        INDArray predictedTokenIds = Nd4j.argMax(logits, 2);
-
-        // Conversion de INDArray en List<Integer>
-        long[] shape = predictedTokenIds.shape();
-        List<Integer> tokenIdsList = new ArrayList<>();
-        for(int i = 0; i < shape[0]; i++) { 
-            tokenIdsList.add(predictedTokenIds.getInt(i));
-        }
-
-        // Conversion des IDs de tokens prédits en texte
-        String response = tokenizer.idsToTokens(tokenIdsList);
-
-        return response;
-    }
-
-
-
-
-
-
-    public boolean isTrained() {
-        return isTrained;
-    }
-
-
-    
-    private Pair<Float, INDArray> calculateCrossEntropyLossAndGradient(List<INDArray> decodedLogits, List<Integer> targetTokenIds) {
-        float loss = 0.0f;
-        int N = targetTokenIds.size();
-
-        // Assumons que decodedLogits contient une seule INDArray pour l'ensemble de la séquence
-        INDArray logits = decodedLogits.get(0); // Obtenez les logits pour l'ensemble de la séquence
-        INDArray gradients = Nd4j.zeros(logits.shape()); // Initialiser le gradient de la même forme que les logits
-
-        for (int i = 0; i < N; i++) {
-            int targetId = targetTokenIds.get(i); // L'ID attendu à la position i
-
-            // Extraire les logits pour la position i et toutes les classes (vocabulaire)
-            INDArray logitsForPosition = logits.getRow(i); // Assume une forme [vocabSize] pour chaque position
-            
-            // Utiliser Transforms pour le softmax sur les logits pour la position i
-            INDArray softmaxLogits = Transforms.softmax(logitsForPosition, false); 
-            
-            // Calculer le log softmax spécifiquement pour l'indice de la cible
-            float logSoftmaxForTarget = (float) Math.log(softmaxLogits.getDouble(targetId));
-            
-            // Accumuler la perte négative log softmax pour la cible
-            loss += -logSoftmaxForTarget;
-
-            // Calcul du gradient initial : p - y
-            INDArray targetOneHot = Nd4j.zeros(logitsForPosition.shape());
-            targetOneHot.putScalar(targetId, 1);
-            INDArray gradForPosition = softmaxLogits.sub(targetOneHot);
-            gradients.putRow(i, gradForPosition);
-        }
-        
-        return Pair.of(loss / N, gradients); // Retourner la moyenne de la perte et les gradients accumulés
-    }
-
-
-
-
+    public void init() throws IOException {
+        this.dataReader = new BufferedReader(new FileReader(dataFilePath));
+        this.targetReader = new BufferedReader(new FileReader(targetFilePath));
+    }    
 }
 package RN.transformer;
 
@@ -402,6 +195,8 @@ import java.util.Map;
 
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+
+import RN.transformer.Encoder.EncoderLayer;
 
 /**
  * numLayers: Comme pour l'encodeur.
@@ -415,7 +210,7 @@ public class Decoder {
     private List<DecoderLayer> layers;
     private LayerNorm layerNorm;
     private int numLayers;
-    private int dModel;
+    protected int dModel;
     private int numHeads;
     private double dropoutRate;
     private LinearProjection linearProjection; // Projection linéaire vers la taille du vocabulaire
@@ -434,26 +229,25 @@ public class Decoder {
         }
     }
     
-    public List<INDArray> decode(INDArray encodedData) {
-        // Applique une projection linéaire à l'ensemble du batch d'encodages pour obtenir les logits
-        INDArray logits = linearProjection.project(encodedData);
 
-        // Emballez les logits dans une liste pour maintenir la cohérence avec l'interface attendue
-        List<INDArray> decodedLogits = new ArrayList<>();
-        decodedLogits.add(logits); // Ajoutez directement les logits comme un seul élément de la liste
-
-        return decodedLogits;
-    }
-
-
-    public INDArray forward(boolean isTraining, INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray paddingMask) {
+    
+    public INDArray decode(boolean isTraining, INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray paddingMask) {
+        // Traitement par les couches de décodeur
         for (DecoderLayer layer : layers) {
             x = layer.forward(isTraining, x, encoderOutput, lookAheadMask, paddingMask);
         }
+        
+        // Normalisation finale
         x = layerNorm.forward(x);
-        x = linearProjection.project(x); // Applique une projection linéaire à la sortie du décodeur
+        
+        // Application d'une projection linéaire, si nécessaire
+        if (this.linearProjection != null) {
+            x = linearProjection.project(x); // Transforme la sortie du décodeur pour les logits de vocabulaire
+        }
+        
         return x;
     }
+    
     
     public Map<String, INDArray> backward(INDArray gradOutput) {
         
@@ -653,55 +447,394 @@ public class Decoder {
 }
 package RN.transformer;
 
-import java.util.List;
+import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.factory.Nd4j;
 
-public class Batch {
-    private List<String> data;
-    private List<String> target;
+public class Dropout {
+    private double rate;
+    private INDArray mask;
 
-    public Batch(List<String> data, List<String> target) {
-        this.data = data;
-        this.target = target;
+
+    public Dropout(double rate) {
+        this.rate = rate;
     }
 
-    public List<String> getData() {
-        return data;
+    
+    public INDArray apply(boolean isTraining, INDArray input) {
+        if(isTraining) {
+            // Création du masque d'activation basée sur le taux de dropout
+            this.mask = Nd4j.rand(input.shape()).gt(rate);
+            // Application du masque aux données d'entrée
+            return input.mul(mask);
+        } else {
+            // Pendant l'inférence, dropout n'est pas appliqué mais les activations sont ajustées
+            return input.mul(1.0 - rate);
+        }
     }
-
-    public List<String> getTarget() {
-        return target;
-    }
+    
+    public INDArray backward(INDArray gradOutput) {
+        // Pendant la rétropropagation, simplement passer le gradient à travers le masque
+        return gradOutput.mul(mask);
+    }    
+    
 }
 package RN.transformer;
 
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
-import org.nd4j.linalg.indexing.NDArrayIndex;
-import org.nd4j.linalg.ops.transforms.Transforms;
 
-public class PositionalEncoding {
-    private final int dModel; // Dimensionnalité des embeddings
+
+/**
+ * 	numLayers: Le nombre de couches répétitives dans l'encodeur.
+ *	dModel: La dimensionnalité des embeddings de tokens et des sorties de toutes les couches dans le modèle.
+ *	numHeads: Le nombre de têtes d'attention dans les mécanismes d'attention multi-têtes.
+ *	dff: La dimensionnalité des couches feed-forward internes dans chaque couche d'encodeur.
+ *	vocabSize: La taille du vocabulaire, nécessaire pour les embeddings de tokens.
+ *	maxSeqLength: La longueur maximale de séquence, utilisée pour les embeddings positionnels.
+ */
+
+public class Encoder {
+	
+    private List<EncoderLayer> layers;
+    private PositionalEncoding positionalEncoding;
+    private LayerNorm layerNorm;
+    private INDArray pretrainedEmbeddings; // Matrice d'embeddings pré-entraînée
+    private Tokenizer tokenizer;
+
+    public Encoder() {
+	}
     
-    public PositionalEncoding(int dModel) {
-        this.dModel = dModel;
-    }
-
-    public INDArray getPositionalEncoding(long sequenceLength) {
-        INDArray positions = Nd4j.arange(sequenceLength).reshape(sequenceLength, 1);
-        INDArray i = Nd4j.arange(dModel).reshape(1, dModel);
-        INDArray angleRates = Transforms.pow(i.divi(dModel).muli(-2).divi(2), 10000.0);
-
-        INDArray angles = positions.mmul(angleRates);
-        angles.get(NDArrayIndex.all(), NDArrayIndex.interval(0, 2, dModel)).assign(Transforms.sin(angles.get(NDArrayIndex.all(), NDArrayIndex.interval(0, 2, dModel))));
-        angles.get(NDArrayIndex.all(), NDArrayIndex.interval(1, 2, dModel)).assign(Transforms.cos(angles.get(NDArrayIndex.all(), NDArrayIndex.interval(1, 2, dModel))));
-
-        return angles;
+    public Encoder(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, INDArray pretrainedEmbeddings, Tokenizer tokenizer) {
+        this.positionalEncoding = new PositionalEncoding(dModel);
+        this.layers = new ArrayList<>();
+        this.layerNorm = new LayerNorm(dModel);
+        this.pretrainedEmbeddings = pretrainedEmbeddings; // Initialiser la matrice d'embeddings pré-entraînée
+        this.tokenizer = tokenizer;
+        
+        for (int i = 0; i < numLayers; i++) {
+            this.layers.add(new EncoderLayer(dModel, numHeads, dff, dropoutRate));
+        }
     }
 
 
+
+	public List<List<Float>> encode(boolean isTraining, String text) {
+        // Tokenization du texte
+        List<String> tokens = tokenizer.tokenize(text);
+        // Conversion des tokens en IDs
+        List<Integer> tokenIds = tokenizer.tokensToIds(tokens);
+
+        // Encodage des IDs de tokens à travers les couches de l'encodeur
+        INDArray inputEmbeddings = lookupEmbeddings(tokenIds);
+        INDArray encoded = forward(isTraining, inputEmbeddings, null);
+        
+        // Conversion des embeddings encodés en logits
+        return convertToLogits(encoded);
+    }
+    
+    public INDArray encode(boolean isTraining, List<Integer> tokenIds, INDArray paddingMask) {
+        // Utiliser la matrice d'embeddings pré-entraînée pour récupérer les embeddings correspondants aux IDs de tokens
+        INDArray inputEmbeddings = lookupEmbeddings(tokenIds);
+
+        // Appliquer les transformations de l'encodeur sur les embeddings
+        INDArray encoded = forward(isTraining, inputEmbeddings, paddingMask);
+
+        return encoded;
+    }
+    
+
+    
+   
+
+    private INDArray lookupEmbeddings(List<Integer> tokenIds) {
+        // Utiliser la matrice d'embeddings pré-entraînée pour récupérer les embeddings correspondants aux IDs de tokens
+        int maxSeqLength = tokenIds.size();
+        int dModel = layers.get(0).selfAttention.getdModel();
+        INDArray embeddings = Nd4j.zeros(maxSeqLength, dModel);
+
+        for (int i = 0; i < tokenIds.size(); i++) {
+            int tokenId = tokenIds.get(i);
+            // Récupérer l'embedding correspondant au token ID à partir de la matrice d'embeddings pré-entraînée
+            embeddings.putRow(i, pretrainedEmbeddings.getRow(tokenId));
+        }
+
+        return embeddings;
+    }
+
+    private List<List<Float>> convertToLogits(INDArray encoded) {
+        // Convertir les embeddings encodés en logits
+        List<List<Float>> logits = new ArrayList<>();
+        int seqLength = (int) encoded.size(0);
+        for (int i = 0; i < seqLength; i++) {
+            INDArray row = encoded.getRow(i);
+            List<Float> rowList = new ArrayList<>();
+            for (int j = 0; j < row.length(); j++) {
+                rowList.add(row.getFloat(j)); // Ajouter la valeur de l'élément à la liste des logits
+            }
+            logits.add(rowList);
+        }
+        return logits;
+    }
+
+    private INDArray forward(boolean isTraining, INDArray x, INDArray paddingMask) {
+    	
+        // Appliquer les embeddings positionnels
+        INDArray posEncoding = positionalEncoding.getPositionalEncoding(x.shape()[0]);
+        x = x.add(posEncoding);
+
+        for (EncoderLayer layer : layers) {
+            x = layer.forward(isTraining, x, paddingMask);
+        }
+        
+        return layerNorm.forward(x);
+    }
+    
+
+    public void backward(Map<String, INDArray> gradOutput) {
+    	
+    	INDArray gradK = gradOutput.get("gradK");
+    	INDArray gradV = gradOutput.get("gradV");
+    	
+    	INDArray gradFromDecoder = gradK.add(gradV);  // Cette étape suppose que gradK et gradV sont adaptés pour être sommés ainsi
+        // Backpropagation à travers la normalisation de couche finale
+    	Map<String, INDArray> gradientsFromLayerNorm = layerNorm.backward(gradFromDecoder);
+
+        // Récupération du gradient par rapport aux entrées de LayerNorm qui sera utilisé comme gradient initial pour les couches de l'Encoder
+        INDArray gradInput = gradientsFromLayerNorm.get("input");
+
+        // Propagation des gradients à travers chaque couche d'Encoder en ordre inverse
+        for (int i = layers.size() - 1; i >= 0; i--) {
+            // Chaque couche retourne le gradient par rapport à ses entrées qui est passé à la couche précédente
+            gradInput = layers.get(i).backward(gradInput);
+        }
+
+        // Mettre à jour ou enregistrer les gradients pour gamma et beta si nécessaire
+        // Par exemple, si ces paramètres sont appris :
+        // updateGammaBeta(gradFromLayerNorm.get("gamma"), gradFromLayerNorm.get("beta"));
+    }
+
+    // Méthode hypothétique pour mettre à jour ou enregistrer les gradients de gamma et beta
+    private void updateGammaBeta(INDArray gradGamma, INDArray gradBeta) {
+        // Mettre à jour ou enregistrer les gradients de gamma et beta
+        // Ceci pourrait inclure l'application d'un taux d'apprentissage ou l'enregistrement pour une utilisation dans un pas d'optimisation
+    }
+
+
+
+
+    
+    // Méthode pour calculer les gradients basés sur la perte
+    public INDArray calculateGradients(double loss) {
+        // Dans un cas réel, cette méthode impliquerait le calcul du gradient de la perte par rapport à chaque paramètre
+        // Pour cet exemple, simuler un gradient comme un INDArray de mêmes dimensions que les paramètres
+        INDArray gradients = Nd4j.rand(1, 100); // Assumer les mêmes dimensions hypothétiques que les paramètres
+        return gradients;
+    }
+    
+    
+    public List<INDArray> getParameters() {
+        List<INDArray> params = new ArrayList<>();
+        // Collecter les poids et biais de multiHeadAttention et positionwiseFeedForward
+        for (EncoderLayer layer : layers) {
+            params.addAll(layer.getParameters());
+        }
+
+        // Inclure les paramètres de la normalisation de couche finale
+        if(layerNorm != null) {
+            params.addAll(layerNorm.getParameters());
+        }
+        
+        return params;
+    }
+    
+    public List<INDArray> getGradients() {
+        List<INDArray> grads = new ArrayList<>();
+        // Collecter les poids et biais de multiHeadAttention et positionwiseFeedForward
+        for (EncoderLayer layer : layers) {
+        	grads.addAll(layer.getGradients());
+        }
+
+        // Inclure les gradients de la normalisation de couche finale
+        if(layerNorm != null) {
+        	grads.addAll(layerNorm.getGradients());
+        }
+        
+        return grads;
+    }
+    
+
+    
+    public int getNumberOfParameters() {
+        int numParams = 0;
+
+        // Parcourir toutes les couches d'encodeur pour compter leurs paramètres
+        for (EncoderLayer layer : layers) {
+            numParams += layer.getNumberOfParameters();
+        }
+
+        // Ajouter les paramètres de la normalisation de couche et des embeddings positionnels
+        numParams += layerNorm.getNumberOfParameters();
+
+        return numParams;
+    }
+    
+    
+    public int getNumberOfGradients() {
+        int numGrads = 0;
+
+        // Parcourir toutes les couches d'encodeur pour compter leurs gradients
+        for (EncoderLayer layer : layers) {
+        	numGrads += layer.getNumberOfGradients();
+        }
+
+        // Ajouter les gradients de la normalisation de couche et des embeddings positionnels
+        numGrads += layerNorm.getNumberOfGradients();
+
+        return numGrads;
+    }
+
+
+
+    static class EncoderLayer {
+    	
+        MultiHeadAttention selfAttention;
+        PositionwiseFeedForward feedForward;
+        LayerNorm layerNorm1;
+        LayerNorm layerNorm2;
+        Dropout dropout1;
+        Dropout dropout2;
+
+        public EncoderLayer(int dModel, int numHeads, int dff, double dropoutRate) {
+        	
+            this.selfAttention = new MultiHeadAttention(dModel, numHeads);
+            this.feedForward = new PositionwiseFeedForward(dModel, dff);
+            this.layerNorm1 = new LayerNorm(dModel);
+            this.layerNorm2 = new LayerNorm(dModel);
+            this.dropout1 = new Dropout(dropoutRate);
+            this.dropout2 = new Dropout(dropoutRate);
+        }
+        
+        public INDArray forward(boolean isTraining, INDArray x, INDArray paddingMask) {
+        	
+            INDArray attnOutput = selfAttention.forward(x, x, x, paddingMask);
+            attnOutput = dropout1.apply(isTraining, attnOutput);
+            x = layerNorm1.forward(x.add(attnOutput)); // Add & norm
+
+            INDArray ffOutput = feedForward.forward(x);
+            ffOutput = dropout2.apply(isTraining, ffOutput);
+            return layerNorm2.forward(x.add(ffOutput)); // Add & norm again
+        }
+        
+        public INDArray backward(INDArray gradOutput) {
+        	
+            // Backward à travers la deuxième normalisation de couche
+            Map<String, INDArray> gradLayerNorm2 = layerNorm2.backward(gradOutput);
+            INDArray gradToFeedForward = gradLayerNorm2.get("input");
+
+            // Backward à travers la couche PositionwiseFeedForward
+            Map<String, INDArray> gradFeedForward = feedForward.backward(gradToFeedForward);
+            INDArray gradToLayerNorm1 = gradFeedForward.get("input");
+
+            // Backward à travers la première normalisation de couche
+            Map<String, INDArray> gradLayerNorm1 = layerNorm1.backward(gradToLayerNorm1);
+            INDArray gradToSelfAttention = gradLayerNorm1.get("input");
+
+            // Backward à travers SelfAttention
+            Map<String, INDArray> gradSelfAttention = selfAttention.backward(gradToSelfAttention);
+
+            // Préparer les gradients pour les étapes suivantes si nécessaire
+//            INDArray gradInput = gradSelfAttention.get("inputQ");  // Utilisation de 'inputQ' comme exemple de gradient retourné
+//            INDArray gradK = gradSelfAttention.get("inputK");
+//            INDArray gradV = gradSelfAttention.get("inputV");
+//
+//            Map<String, INDArray> gradInputs = new HashMap<>();
+//            gradInputs.put("input", gradInput);
+//            gradInputs.put("gradK", gradK);
+//            gradInputs.put("gradV", gradV);
+
+            return gradSelfAttention.get("inputQ");
+        }
+
+
+        
+        public List<INDArray> getParameters() {
+            List<INDArray> layerParams = new ArrayList<>();
+            
+            // Collecter les paramètres des composants de la couche d'encodeur
+            layerParams.addAll(selfAttention.getParameters());
+            layerParams.addAll(feedForward.getParameters());
+            layerParams.addAll(layerNorm1.getParameters());
+            layerParams.addAll(layerNorm2.getParameters());
+
+            return layerParams;
+        }
+        
+        public List<INDArray> getGradients() {
+            List<INDArray> layerGrads = new ArrayList<>();
+            
+            // Collecter les paramètres des composants de la couche d'encodeur
+            layerGrads.addAll(selfAttention.getGradients());
+            layerGrads.addAll(feedForward.getGradients());
+            layerGrads.addAll(layerNorm1.getGradients());
+            layerGrads.addAll(layerNorm2.getGradients());
+
+            return layerGrads;
+        }
+        
+
+        public long getNumberOfParameters() {
+            return selfAttention.getNumberOfParameters() +
+                   feedForward.getNumberOfParameters() +
+                   layerNorm1.getNumberOfParameters() +
+                   layerNorm2.getNumberOfParameters();
+        }
+        
+        
+
+        public long getNumberOfGradients() {
+            return selfAttention.getNumberOfGradients() +
+                   feedForward.getNumberOfGradients() +
+                   layerNorm1.getNumberOfGradients() +
+                   layerNorm2.getNumberOfGradients();
+        }
+
+
+
+    }
+    
+    
+    
 }
+package RN.transformer;
 
+import java.util.Map;
 
+import org.nd4j.linalg.api.ndarray.INDArray;
+
+class Layer {
+    // Paramètres de la couche (poids, biais, etc.)
+    INDArray weights;
+    INDArray bias;
+
+    // Méthode pour calculer la passe en avant
+    public INDArray forward(INDArray input) {
+        // Implémentation spécifique de la couche
+        return null;
+    }
+
+    // Méthode pour calculer la rétropropagation
+    public Map<String, INDArray> backward(INDArray incomingGradient) {
+        // Calculer les gradients par rapport aux paramètres de la couche
+        // et propager le gradient de la perte à la couche précédente
+        return null;
+    }
+}
 package RN.transformer;
 
 import java.util.Arrays;
@@ -711,41 +844,170 @@ import java.util.Map;
 
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.ops.transforms.Transforms;
+
+public class LayerNorm extends Layer{
+    private INDArray gamma, beta;
+    private double epsilon = 1e-6;
+    private INDArray inputCache; // Cache pour le forward
+    Map<String, INDArray> gradients = new HashMap<>();
+
+
+    public LayerNorm(int dModel) {
+        gamma = Nd4j.ones(dModel);
+        beta = Nd4j.zeros(dModel);
+    }
+
+    @Override
+    public INDArray forward(INDArray x) {
+        // Check for NaN or Inf in the input
+        if (x.isNaN().any() || x.isInfinite().any()) {
+            throw new RuntimeException("LayerNorm.forward received NaN or Infinite values in input.");
+        }
+        this.inputCache = x.dup();
+
+    	
+
+        // Assuming mean and std are initially vectors of shape [6]
+        INDArray mean = x.mean(1);
+        INDArray std = x.std(1);
+
+        std.addi(epsilon);
+        // Check for NaN or Inf in intermediate results
+        if (mean.isNaN().any() || mean.isInfinite().any()) {
+            throw new RuntimeException("NaN or Infinite values encountered in mean calculation.");
+        }
+        if (std.isNaN().any() || std.isInfinite().any()) {
+            throw new RuntimeException("NaN or Infinite values encountered in standard deviation calculation.");
+        }
+        
+
+        // Broadcast subtraction and division
+        INDArray centered = x.subColumnVector(mean);
+        INDArray normed = centered.divColumnVector(std);
+
+        // Scale and shift
+        INDArray output = normed.mulRowVector(gamma).addRowVector(beta);
+
+
+        // Check for NaN or Inf in the output
+        if (output.isNaN().any() || output.isInfinite().any()) {
+            throw new RuntimeException("NaN or Infinite values produced by LayerNorm normalization.");
+        }
+        
+        return output;
+    }
+    
+    @Override
+    public Map<String, INDArray> backward(INDArray gradOutput) {
+        INDArray input = this.inputCache;
+        long N = input.shape()[1];
+
+        INDArray inputMu = input.sub(input.mean(1));
+        INDArray stdInv = Transforms.pow(input.var(false, 1).add(epsilon), -0.5);
+
+        INDArray gradInput = gradOutput.mul(gamma).mul(stdInv);
+        INDArray gradGamma = gradOutput.mul(inputMu).mul(stdInv).sum(0);
+        INDArray gradBeta = gradOutput.sum(0);
+
+        gradients.put("input", gradInput);
+        gradients.put("gamma", gradGamma);
+        gradients.put("beta", gradBeta);
+
+        return gradients;
+    }
+
+    public List<INDArray> getParameters() {
+        // Retourner une liste contenant les paramètres gamma et beta
+        return Arrays.asList(gamma, beta);
+    }
+    
+    public List<INDArray> getGradients() {
+        return Arrays.asList(gradients.get("gamma"), gradients.get("beta"));
+    }
+    
+    public long getNumberOfParameters() {
+        // Puisque gamma et beta ont chacun une taille de dModel, le total est simplement 2 * dModel
+        return gamma.length() + beta.length();
+    }
+    
+    public long getNumberOfGradients() {
+        return gradients.get("gamma").length() + gradients.get("beta").length();
+    }
+}
+package RN.transformer;
+
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.ops.transforms.Transforms;
 
 public class LinearProjection {
 	
     private INDArray weights, bias;
     private INDArray inputCache; // Cache pour le forward
     private Map<String, INDArray> gradients = new HashMap<>();
-
-
+    private double epsilon = 1e-7; // Small constant to avoid division by zero
+    private INDArray gamma;
+    private INDArray beta;
+    
     public LinearProjection(int inputSize, int outputSize) {
-        // Initialisation des poids avec une distribution normale centrée autour de zéro et une variance de 1/sqrt(inputSize)
+        // Initialize weights with a normal distribution divided by sqrt(inputSize) for He initialization
         this.weights = Nd4j.randn(inputSize, outputSize).divi(Math.sqrt(inputSize));
-        this.bias = Nd4j.rand(1, outputSize);
+        // Initialize biases to zeros for standard practice
+        this.bias = Nd4j.zeros(1, outputSize);
+        // Initialize gamma to ones and beta to zeros for normalization scaling and shifting
+        this.gamma = Nd4j.ones(outputSize); 
+        this.beta = Nd4j.zeros(outputSize); 
     }
+
+
 
     public INDArray project(INDArray input) {
         // Projection linéaire en multipliant l'entrée par les poids
         return input.mmul(weights);
     }
 
+
+    
     public INDArray forward(INDArray input) {
-        this.inputCache = input.dup();
-        return input.mmul(weights).addRowVector(bias);
+        this.inputCache = input.dup(); // Duplicate the input to avoid mutable changes
+        INDArray normalized = normalize(input);
+        INDArray output = normalized.mul(gamma).add(beta); // Scale and shift
+        return output;
+    }
+
+    private INDArray normalize(INDArray input) {
+        INDArray mean = input.mean(1);
+        INDArray variance = input.var(false, 1);
+        return input.sub(mean).div(Transforms.sqrt(variance.add(epsilon)));
     }
     
     public Map<String, INDArray> backward(INDArray gradOutput) {
-        INDArray gradInput = gradOutput.mmul(weights.transpose());
-        INDArray gradWeights = inputCache.transpose().mmul(gradOutput);
-        INDArray gradBias = gradOutput.sum(0);
+        if (inputCache == null) {
+            throw new IllegalStateException("inputCache is not set. Ensure forward pass is called before backward.");
+        }
 
+        long N = inputCache.shape()[1];
+        INDArray inputMu = inputCache.sub(inputCache.mean(1));
+        INDArray stdInv = Transforms.pow(inputCache.var(false, 1).add(epsilon), -0.5);
+
+        INDArray gradInput = gradOutput.mul(gamma).mul(stdInv);
+        INDArray gradGamma = gradOutput.mul(inputMu).mul(stdInv).sum(0);
+        INDArray gradBeta = gradOutput.sum(0);
+
+        Map<String, INDArray> gradients = new HashMap<>();
         gradients.put("input", gradInput);
-        gradients.put("weights", gradWeights);
-        gradients.put("bias", gradBias);
+        gradients.put("gamma", gradGamma);
+        gradients.put("beta", gradBeta);
 
         return gradients;
     }
+
 
     // Méthode pour obtenir les paramètres (poids) de la projection
     public List<INDArray> getParameters() {
@@ -768,90 +1030,6 @@ public class LinearProjection {
 	public long getNumberOfGradients() {
 		return gradients.get("weights").length() + gradients.get("bias").length();
 	}	
-}
-package RN.transformer;
-
-
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
-
-public class Tokenizer {
-    private Map<String, Integer> tokenToIdMap = new HashMap<>();
-    private Map<Integer, String> idToTokenMap = new HashMap<>();
-    private WordVectors wordVectors;
-    private int unkTokenId; // Identifiant pour les tokens inconnus
-
-    public Tokenizer(WordVectors wordVectors) throws IOException {
-    	
-        // Synchroniser le vocabulaire avec Word2Vec
-        synchronizeVocabularyWithWord2Vec(wordVectors);
-    }
-
-    private void synchronizeVocabularyWithWord2Vec(WordVectors wordVectors) {
-        int index = 0;
-        Collection<String> workds = wordVectors.vocab().words();
-        for (String word : workds) {
-            tokenToIdMap.put(word, index);
-            idToTokenMap.put(index, word);
-            index++;
-        }
-
-        // Gérer le token inconnu
-        String unkToken = "[UNK]";
-        unkTokenId = index; // Attribuer l'identifiant suivant au token inconnu
-        tokenToIdMap.put(unkToken, unkTokenId);
-        idToTokenMap.put(unkTokenId, unkToken);
-    }
-
-    public String getToken(int tokenId) {
-        return idToTokenMap.getOrDefault(tokenId, "[UNK]");
-    }
-    
-    public List<String> tokenize(String text) {
-        // Cette regex simple sépare les mots et la ponctuation, ce qui est une amélioration par rapport à la séparation par espace.
-        // Pour des règles plus complexes, envisagez d'utiliser une librairie de tokenisation spécialisée.
-        String[] tokens = text.split("\\s+|(?=\\p{Punct})|(?<=\\p{Punct})");
-        List<String> tokenList = new ArrayList<>();
-        for (String token : tokens) {
-            if (!token.trim().isEmpty()) { // Ignorer les chaînes vides
-                tokenList.add(token.toLowerCase()); // Convertir en minuscule pour la simplicité
-            }
-        }
-        return tokenList;
-    }
-
-
-    public List<Integer> tokensToIds(List<String> tokens) {
-        List<Integer> ids = new ArrayList<>();
-        for (String token : tokens) {
-            ids.add(tokenToIdMap.getOrDefault(token, unkTokenId));
-        }
-        return ids;
-    }
-
-    
-    public String idsToTokens(List<Integer> ids) {
-        StringBuilder text = new StringBuilder();
-        for (int id : ids) {
-            String token = idToTokenMap.getOrDefault(id, "[UNK]");
-            if (text.length() > 0) text.append(" ");
-            text.append(token);
-        }
-        return text.toString().trim();
-    }
-
-
-    private boolean isPunctuation(String token) {
-        // Une vérification simple de la ponctuation basée sur regex; ajustez selon vos besoins
-        return token.matches("\\p{Punct}");
-    }
-
 }
 package RN.transformer;
 
@@ -1024,6 +1202,36 @@ public class MultiHeadAttention {
 }
 package RN.transformer;
 
+import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.indexing.NDArrayIndex;
+import org.nd4j.linalg.ops.transforms.Transforms;
+
+public class PositionalEncoding {
+    private final int dModel; // Dimensionnalité des embeddings
+    
+    public PositionalEncoding(int dModel) {
+        this.dModel = dModel;
+    }
+
+    public INDArray getPositionalEncoding(long sequenceLength) {
+        INDArray positions = Nd4j.arange(sequenceLength).reshape(sequenceLength, 1);
+        INDArray i = Nd4j.arange(dModel).reshape(1, dModel);
+        INDArray angleRates = Transforms.pow(i.divi(dModel).muli(-2).divi(2), 10000.0);
+
+        INDArray angles = positions.mmul(angleRates);
+        angles.get(NDArrayIndex.all(), NDArrayIndex.interval(0, 2, dModel)).assign(Transforms.sin(angles.get(NDArrayIndex.all(), NDArrayIndex.interval(0, 2, dModel))));
+        angles.get(NDArrayIndex.all(), NDArrayIndex.interval(1, 2, dModel)).assign(Transforms.cos(angles.get(NDArrayIndex.all(), NDArrayIndex.interval(1, 2, dModel))));
+
+        return angles;
+    }
+
+
+}
+
+
+package RN.transformer;
+
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -1106,556 +1314,437 @@ package RN.transformer;
 
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
+
+public class Tokenizer {
+    private WordVectors wordVectors;
+    private Map<String, Integer> tokenToId;
+    private Map<Integer, String> idToToken;
+    private int vocabSize;
+
+    // Tokens spéciaux
+    private static final String PAD_TOKEN = "<PAD>";
+    private static final String UNK_TOKEN = "<UNK>";
+    private static final String START_TOKEN = "<START>";
+    private static final String END_TOKEN = "<END>";
+
+    public Tokenizer(WordVectors wordVectors) {
+        this.wordVectors = wordVectors;
+        this.tokenToId = new HashMap<>();
+        this.idToToken = new HashMap<>();
+        
+        // Initialiser les tokens spéciaux
+        addSpecialToken(PAD_TOKEN);
+        addSpecialToken(UNK_TOKEN);
+        addSpecialToken(START_TOKEN);
+        addSpecialToken(END_TOKEN);
+
+        Collection<String> words = wordVectors.vocab().words();
+
+        // Ajouter tous les mots du modèle Word2Vec
+        for (String word :words) {
+            addToken(word);
+        }
+
+        this.vocabSize = tokenToId.size();
+    }
+
+    private void addSpecialToken(String token) {
+        int id = tokenToId.size();
+        tokenToId.put(token, id);
+        idToToken.put(id, token);
+    }
+
+    private void addToken(String token) {
+        if (!tokenToId.containsKey(token)) {
+            int id = tokenToId.size();
+            tokenToId.put(token, id);
+            idToToken.put(id, token);
+        }
+    }
+
+    public List<String> tokenize(String text) {
+        // Cette regex simple sépare les mots et la ponctuation, ce qui est une amélioration par rapport à la séparation par espace.
+        // Pour des règles plus complexes, envisagez d'utiliser une librairie de tokenisation spécialisée.
+        String[] tokens = text.split("\\s+|(?=\\p{Punct})|(?<=\\p{Punct})");
+        List<String> tokenList = new ArrayList<>();
+        for (String token : tokens) {
+            if (!token.trim().isEmpty()) { // Ignorer les chaînes vides
+                tokenList.add(token.toLowerCase()); // Convertir en minuscule pour la simplicité
+            }
+        }
+        return tokenList;
+    }
+
+
+    private boolean isPunctuation(String token) {
+        // Une vérification simple de la ponctuation basée sur regex; ajustez selon vos besoins
+        return token.matches("\\p{Punct}");
+    }
+
+    public List<Integer> tokensToIds(List<String> tokens) {
+        return tokens.stream()
+                .map(token -> tokenToId.getOrDefault(token, tokenToId.get(UNK_TOKEN)))
+                .collect(Collectors.toList());
+    }
+
+    public String idsToTokens(List<Integer> ids) {
+        return ids.stream()
+                .map(id -> idToToken.getOrDefault(id, UNK_TOKEN))
+                .collect(Collectors.joining(" "));
+    }
+
+    // Nouvelles méthodes pour gérer les tokens spéciaux
+    public int getPadTokenId() {
+        return tokenToId.get(PAD_TOKEN);
+    }
+
+    public int getUnkTokenId() {
+        return tokenToId.get(UNK_TOKEN);
+    }
+
+    public int getStartTokenId() {
+        return tokenToId.get(START_TOKEN);
+    }
+
+    public int getEndTokenId() {
+        return tokenToId.get(END_TOKEN);
+    }
+
+    public int getVocabSize() {
+        return vocabSize;
+    }
+
+    public String getToken(int id) {
+        return idToToken.getOrDefault(id, UNK_TOKEN);
+    }
+}
+
+
+
+package RN.transformer;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.commons.lang3.tuple.Pair;
+import org.deeplearning4j.models.embeddings.loader.WordVectorSerializer;
+import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.indexing.NDArrayIndex;
+import org.nd4j.linalg.ops.transforms.Transforms;
 
+public class TransformerModel {
+    private boolean isTrained = false;
+    public Encoder encoder;
+    public Decoder decoder;
+    public CustomAdamOptimizer optimizer;
+    public Tokenizer tokenizer;
+    private double dropoutRate = 0.1; // Exemple de taux de dropout fixe
+    private static WordVectors wordVectors; // Chargé une fois, accessible statiquement
+    protected static int vocabSize = 0;
+    private static INDArray meanVector = null;
+    private static int dModel = 300;
+    private static int numLayers = 6;
+    private static int numHeads = 8;
+    private static int dff = 2048;
 
-/**
- * 	numLayers: Le nombre de couches répétitives dans l'encodeur.
- *	dModel: La dimensionnalité des embeddings de tokens et des sorties de toutes les couches dans le modèle.
- *	numHeads: Le nombre de têtes d'attention dans les mécanismes d'attention multi-têtes.
- *	dff: La dimensionnalité des couches feed-forward internes dans chaque couche d'encodeur.
- *	vocabSize: La taille du vocabulaire, nécessaire pour les embeddings de tokens.
- *	maxSeqLength: La longueur maximale de séquence, utilisée pour les embeddings positionnels.
- */
+    static {
+        try {
+        	wordVectors = WordVectorSerializer.readWord2VecModel(new File("pretrained-embeddings/mon_model_word2vec.txt"), true);
 
-public class Encoder {
-	
-    private List<EncoderLayer> layers;
-    private PositionalEncoding positionalEncoding;
-    private LayerNorm layerNorm;
-    private INDArray pretrainedEmbeddings; // Matrice d'embeddings pré-entraînée
-    private Tokenizer tokenizer;
+            //wordVectors = WordVectorSerializer.loadStaticModel(new File("pretrained-embeddings/word2vec.model"));
+            vocabSize = wordVectors.vocab().numWords(); // Taille du vocabulaire Word2Vec
+         // Calculer le vecteur moyen (à faire une seule fois, idéalement dans le constructeur ou une méthode d'initialisation)
+            INDArray allVectors = Nd4j.create(vocabSize, dModel);
+            for (int i = 0; i < vocabSize; i++) {
+                String word = wordVectors.vocab().wordAtIndex(i);
+                INDArray vector = wordVectors.getWordVectorMatrix(word);
+                allVectors.putRow(i, vector);
+            }
+            meanVector = allVectors.mean(0); // Moyenne sur toutes les lignes pour obtenir un vecteur moyen
 
-    public Encoder(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, INDArray pretrainedEmbeddings, Tokenizer tokenizer) {
-        this.positionalEncoding = new PositionalEncoding(dModel);
-        this.layers = new ArrayList<>();
-        this.layerNorm = new LayerNorm(dModel);
-        this.pretrainedEmbeddings = pretrainedEmbeddings; // Initialiser la matrice d'embeddings pré-entraînée
-        this.tokenizer = tokenizer;
-        
-        for (int i = 0; i < numLayers; i++) {
-            this.layers.add(new EncoderLayer(dModel, numHeads, dff, dropoutRate));
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
+    
 
-    public List<List<Float>> encode(boolean isTraining, String text) {
-        // Tokenization du texte
-        List<String> tokens = tokenizer.tokenize(text);
-        // Conversion des tokens en IDs
-        List<Integer> tokenIds = tokenizer.tokensToIds(tokens);
-
-        // Encodage des IDs de tokens à travers les couches de l'encodeur
-        INDArray inputEmbeddings = lookupEmbeddings(tokenIds);
-        INDArray encoded = forward(isTraining, inputEmbeddings);
+    public TransformerModel() throws IOException {
         
-        // Conversion des embeddings encodés en logits
-        return convertToLogits(encoded);
+        this.tokenizer = new Tokenizer(wordVectors); // Supposé exister pour gérer la tokenisation
+
+        // Créer une matrice d'embeddings pré-entraînée
+        INDArray pretrainedEmbeddings = createPretrainedEmbeddings(dModel);
+        
+        
+        this.encoder = new Encoder(numLayers, dModel, numHeads, dff, dropoutRate, pretrainedEmbeddings, this.tokenizer);
+        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate, vocabSize + 1);
+        
+        // Calcul du nombre total de paramètres
+        long totalParams = encoder.getNumberOfParameters() + decoder.getNumberOfParameters();
+        
+        this.optimizer = new CustomAdamOptimizer(0.001, 1000, totalParams); // Initialisation hypothétique
     }
     
-    public INDArray encode(boolean isTraining, List<Integer> tokenIds) {
-        // Utiliser la matrice d'embeddings pré-entraînée pour récupérer les embeddings correspondants aux IDs de tokens
-        INDArray inputEmbeddings = lookupEmbeddings(tokenIds);
-
-        // Appliquer les transformations de l'encodeur sur les embeddings
-        INDArray encoded = forward(isTraining, inputEmbeddings);
-
-        return encoded;
-    }
-
+ 
     
-   
+    public INDArray createPretrainedEmbeddings(int dModel) {
 
-    private INDArray lookupEmbeddings(List<Integer> tokenIds) {
-        // Utiliser la matrice d'embeddings pré-entraînée pour récupérer les embeddings correspondants aux IDs de tokens
-        int maxSeqLength = tokenIds.size();
-        int dModel = layers.get(0).selfAttention.getdModel();
-        INDArray embeddings = Nd4j.zeros(maxSeqLength, dModel);
-
-        for (int i = 0; i < tokenIds.size(); i++) {
-            int tokenId = tokenIds.get(i);
-            // Récupérer l'embedding correspondant au token ID à partir de la matrice d'embeddings pré-entraînée
-            embeddings.putRow(i, pretrainedEmbeddings.getRow(tokenId));
+        // Créer une matrice pour stocker les embeddings
+    	INDArray embeddings = Nd4j.create(vocabSize + 1, dModel);
+        
+        // Pour chaque mot dans le vocabulaire du tokenizer
+        int tokenId = 0;
+        for (; tokenId < vocabSize; tokenId++) {
+            String word = tokenizer.getToken(tokenId); // Supposons que cette méthode existe
+            if (wordVectors.hasWord(word)) {
+                INDArray wordVector = wordVectors.getWordVectorMatrix(word);
+                embeddings.putRow(tokenId, wordVector);
+            }
         }
+        
+        // Utiliser le vecteur moyen pour les mots inconnus
+        embeddings.putRow(tokenId, meanVector);
 
         return embeddings;
     }
 
-    private List<List<Float>> convertToLogits(INDArray encoded) {
-        // Convertir les embeddings encodés en logits
-        List<List<Float>> logits = new ArrayList<>();
-        int seqLength = (int) encoded.size(0);
-        for (int i = 0; i < seqLength; i++) {
-            INDArray row = encoded.getRow(i);
-            List<Float> rowList = new ArrayList<>();
-            for (int j = 0; j < row.length(); j++) {
-                rowList.add(row.getFloat(j)); // Ajouter la valeur de l'élément à la liste des logits
+
+    
+    public void train(DataGenerator dataGenerator) throws IOException {
+        for (int epoch = 0; epoch < 10; epoch++) {
+            optimizer.setEpoch(epoch);
+
+            while (dataGenerator.hasNextBatch()) {
+                Batch batch = dataGenerator.nextBatch();
+
+                List<Integer> targetTokenIds = tokenizer.tokensToIds(tokenizer.tokenize(String.join("", batch.getTarget())));
+                List<Integer> dataTokenIds = tokenizer.tokensToIds(tokenizer.tokenize(String.join("", batch.getData())));
+
+                // Créer les masques
+                INDArray encoderPaddingMask = createPaddingMask(dataTokenIds);
+                INDArray decoderPaddingMask = createPaddingMask(targetTokenIds);
+                INDArray lookAheadMask = createLookAheadMask(targetTokenIds.size());
+
+                INDArray encoded = encoder.encode(true, dataTokenIds, encoderPaddingMask);
+                INDArray decodedOutput = decoder.decode(true, encoded, encoded, lookAheadMask, decoderPaddingMask);
+
+                List<INDArray> decodedLogits = new ArrayList<>();
+                decodedLogits.add(decodedOutput);
+
+                backpropagation(decodedLogits, targetTokenIds);
+                List<INDArray> combinedParameters = getCombinedParameters();
+                List<INDArray> combinedGradients = getCombinedGradients();
+                optimizer.update(combinedParameters, combinedGradients);
             }
-            logits.add(rowList);
+
+            dataGenerator.init();
         }
-        return logits;
+
+        isTrained = true;
     }
-
-    private INDArray forward(boolean isTraining, INDArray x) {
-    	
-        // Appliquer les embeddings positionnels
-        INDArray posEncoding = positionalEncoding.getPositionalEncoding(x.shape()[0]);
-        x = x.add(posEncoding);
-
-        for (EncoderLayer layer : layers) {
-            x = layer.forward(isTraining, x);
+    
+    public INDArray createLookAheadMask(int size) {
+        // Création d'une matrice où les éléments au-dessus de la diagonale sont 1 (ce qui signifie masqués)
+        INDArray mask = Nd4j.ones(size, size);
+        INDArray lowerTriangle = Nd4j.tri(size, size, 0); // Crée une matrice triangulaire inférieure
+        mask.subi(lowerTriangle).muli(Double.POSITIVE_INFINITY); // Appliquer le masquage infini pour softmax
+        return mask;
+    }
+    
+    public INDArray createPaddingMask(List<Integer> tokenIds) {
+        // Génération d'un masque où chaque emplacement de padding est marqué par 1 (infinité après le masquage)
+        long size = tokenIds.size();
+        INDArray mask = Nd4j.zeros(1, size);
+        for (int i = 0; i < size; i++) {
+            if (tokenIds.get(i) == tokenizer.getPadTokenId()) { 
+                mask.putScalar(i, Double.POSITIVE_INFINITY);
+            }
         }
+        return mask;
+    }
+    
+
+
+
+    
+    private void backpropagation(List<INDArray> decodedLogits, List<Integer> targetTokenIds) {
+        // Étape 1: Calcul de la perte et des gradients initiaux
+        // Cette fonction est hypothétique et devrait retourner la perte et le gradient initial
+        Pair<Float, INDArray> lossAndGradients = calculateCrossEntropyLossAndGradient(decodedLogits, targetTokenIds);
+        float loss = lossAndGradients.getLeft();
+        INDArray initialGradients = lossAndGradients.getRight();
         
-        return layerNorm.forward(x);
-    }
-    
+        // Afficher la perte pour le monitoring
+        System.out.println("Perte: " + loss);
 
-    public void backward(Map<String, INDArray> gradOutput) {
-    	
-    	INDArray gradK = gradOutput.get("gradK");
-    	INDArray gradV = gradOutput.get("gradV");
-    	
-    	INDArray gradFromDecoder = gradK.add(gradV);  // Cette étape suppose que gradK et gradV sont adaptés pour être sommés ainsi
-        // Backpropagation à travers la normalisation de couche finale
-    	Map<String, INDArray> gradientsFromLayerNorm = layerNorm.backward(gradFromDecoder);
-
-        // Récupération du gradient par rapport aux entrées de LayerNorm qui sera utilisé comme gradient initial pour les couches de l'Encoder
-        INDArray gradInput = gradientsFromLayerNorm.get("input");
-
-        // Propagation des gradients à travers chaque couche d'Encoder en ordre inverse
-        for (int i = layers.size() - 1; i >= 0; i--) {
-            // Chaque couche retourne le gradient par rapport à ses entrées qui est passé à la couche précédente
-            gradInput = layers.get(i).backward(gradInput);
-        }
-
-        // Mettre à jour ou enregistrer les gradients pour gamma et beta si nécessaire
-        // Par exemple, si ces paramètres sont appris :
-        // updateGammaBeta(gradFromLayerNorm.get("gamma"), gradFromLayerNorm.get("beta"));
-    }
-
-    // Méthode hypothétique pour mettre à jour ou enregistrer les gradients de gamma et beta
-    private void updateGammaBeta(INDArray gradGamma, INDArray gradBeta) {
-        // Mettre à jour ou enregistrer les gradients de gamma et beta
-        // Ceci pourrait inclure l'application d'un taux d'apprentissage ou l'enregistrement pour une utilisation dans un pas d'optimisation
-    }
-
-
-
-
-    
-    // Méthode pour calculer les gradients basés sur la perte
-    public INDArray calculateGradients(double loss) {
-        // Dans un cas réel, cette méthode impliquerait le calcul du gradient de la perte par rapport à chaque paramètre
-        // Pour cet exemple, simuler un gradient comme un INDArray de mêmes dimensions que les paramètres
-        INDArray gradients = Nd4j.rand(1, 100); // Assumer les mêmes dimensions hypothétiques que les paramètres
-        return gradients;
-    }
-    
-    
-    public List<INDArray> getParameters() {
-        List<INDArray> params = new ArrayList<>();
-        // Collecter les poids et biais de multiHeadAttention et positionwiseFeedForward
-        for (EncoderLayer layer : layers) {
-            params.addAll(layer.getParameters());
-        }
-
-        // Inclure les paramètres de la normalisation de couche finale
-        if(layerNorm != null) {
-            params.addAll(layerNorm.getParameters());
-        }
+        // Étape 2: Rétropropagation à travers le Décodeur
+        // Cela ajuste les poids du décodeur basés sur les gradients calculés
+        Map<String, INDArray> decoderGradients = decoder.backward(initialGradients);
         
-        return params;
-    }
-    
-    public List<INDArray> getGradients() {
-        List<INDArray> grads = new ArrayList<>();
-        // Collecter les poids et biais de multiHeadAttention et positionwiseFeedForward
-        for (EncoderLayer layer : layers) {
-        	grads.addAll(layer.getGradients());
-        }
-
-        // Inclure les gradients de la normalisation de couche finale
-        if(layerNorm != null) {
-        	grads.addAll(layerNorm.getGradients());
-        }
+        // Extraire les gradients pertinents pour l'encodeur à partir de decoderGradients
+        Map<String, INDArray> encoderGradients = extractEncoderGradients(decoderGradients);
         
-        return grads;
+
+        // Étape 3: Rétropropagation à travers l'Encodeur
+        // L'encodeur ajuste ses poids basé sur ses propres calculs de gradients
+        // Dans un modèle Transformer, cela pourrait impliquer des gradients venant de la couche d'attention encodeur-décodeur
+        // Pour simplifier, nous allons juste appeler backward sur l'encodeur sans passer de gradients spécifiques
+        // car dans une implémentation réelle, cela dépendrait des détails spécifiques de votre modèle
+        encoder.backward(encoderGradients);
+
+        // Mettre à jour les poids basés sur les gradients calculés, normalement fait par l'optimiseur
+        updateModelWeights();
     }
-    
 
-    
-    public int getNumberOfParameters() {
-        int numParams = 0;
 
-        // Parcourir toutes les couches d'encodeur pour compter leurs paramètres
-        for (EncoderLayer layer : layers) {
-            numParams += layer.getNumberOfParameters();
-        }
-
-        // Ajouter les paramètres de la normalisation de couche et des embeddings positionnels
-        numParams += layerNorm.getNumberOfParameters();
-
-        return numParams;
-    }
-    
-    
-    public int getNumberOfGradients() {
-        int numGrads = 0;
-
-        // Parcourir toutes les couches d'encodeur pour compter leurs gradients
-        for (EncoderLayer layer : layers) {
-        	numGrads += layer.getNumberOfGradients();
-        }
-
-        // Ajouter les gradients de la normalisation de couche et des embeddings positionnels
-        numGrads += layerNorm.getNumberOfGradients();
-
-        return numGrads;
+    private Map<String, INDArray> extractEncoderGradients(Map<String, INDArray> decoderGradients) {
+        // Créez un nouveau Map pour contenir les gradients spécifiquement pour l'encoder.
+        Map<String, INDArray> encoderGradients = new HashMap<>();
+        
+        // Extrayez les gradients par rapport aux entrées K et V de l'attention encoder-décodeur.
+        // Ces gradients sont ceux qui doivent être propagés à travers l'encoder.
+        INDArray gradK = decoderGradients.get("inputK");
+        INDArray gradV = decoderGradients.get("inputV");
+        
+        // Ajoutez ces gradients au Map sous des clés représentant leur rôle dans l'encoder.
+        // Par exemple, vous pouvez simplement les renommer pour correspondre à la nomenclature attendue par l'encoder.
+        encoderGradients.put("gradK", gradK);
+        encoderGradients.put("gradV", gradV);
+        
+        return encoderGradients;
     }
 
 
 
-    static class EncoderLayer {
-    	
-        MultiHeadAttention selfAttention;
-        PositionwiseFeedForward feedForward;
-        LayerNorm layerNorm1;
-        LayerNorm layerNorm2;
-        Dropout dropout1;
-        Dropout dropout2;
 
-        public EncoderLayer(int dModel, int numHeads, int dff, double dropoutRate) {
-        	
-            this.selfAttention = new MultiHeadAttention(dModel, numHeads);
-            this.feedForward = new PositionwiseFeedForward(dModel, dff);
-            this.layerNorm1 = new LayerNorm(dModel);
-            this.layerNorm2 = new LayerNorm(dModel);
-            this.dropout1 = new Dropout(dropoutRate);
-            this.dropout2 = new Dropout(dropoutRate);
-        }
+	private void updateModelWeights() {
+        // Implémentez cette fonction pour mettre à jour les poids du modèle
+        // basé sur les gradients calculés. Normalement, cela est géré par votre optimiseur
+    }
+
+
+	private List<INDArray> getCombinedParameters() {
+        List<INDArray> combinedParameters = new ArrayList<>();
         
-        public INDArray forward(boolean isTraining, INDArray x) {
-        	
-            INDArray attnOutput = selfAttention.forward(x, x, x, null); // Assume no need for mask here
-            attnOutput = dropout1.apply(isTraining, attnOutput);
-            x = layerNorm1.forward(x.add(attnOutput)); // Add & norm
-
-            INDArray ffOutput = feedForward.forward(x);
-            ffOutput = dropout2.apply(isTraining, ffOutput);
-            return layerNorm2.forward(x.add(ffOutput)); // Add & norm again
-        }
+        // Ajoute les paramètres de l'encoder
+        combinedParameters.addAll(encoder.getParameters());
         
-        public INDArray backward(INDArray gradOutput) {
-        	
-            // Backward à travers la deuxième normalisation de couche
-            Map<String, INDArray> gradLayerNorm2 = layerNorm2.backward(gradOutput);
-            INDArray gradToFeedForward = gradLayerNorm2.get("input");
+        // Ajoute les paramètres du decoder
+        combinedParameters.addAll(decoder.getParameters());
+        
+        return combinedParameters;
+    }
 
-            // Backward à travers la couche PositionwiseFeedForward
-            Map<String, INDArray> gradFeedForward = feedForward.backward(gradToFeedForward);
-            INDArray gradToLayerNorm1 = gradFeedForward.get("input");
+    private List<INDArray> getCombinedGradients() {
+        List<INDArray> combinedGradients = new ArrayList<INDArray>();
+        
+        // Ajoute les gradients de l'encoder
+        combinedGradients.addAll(encoder.getGradients());
+        
+        // Ajoute les gradients du decoder
+        combinedGradients.addAll(decoder.getGradients());
+        
+        return combinedGradients;
+    }
 
-            // Backward à travers la première normalisation de couche
-            Map<String, INDArray> gradLayerNorm1 = layerNorm1.backward(gradToLayerNorm1);
-            INDArray gradToSelfAttention = gradLayerNorm1.get("input");
 
-            // Backward à travers SelfAttention
-            Map<String, INDArray> gradSelfAttention = selfAttention.backward(gradToSelfAttention);
 
-            // Préparer les gradients pour les étapes suivantes si nécessaire
-//            INDArray gradInput = gradSelfAttention.get("inputQ");  // Utilisation de 'inputQ' comme exemple de gradient retourné
-//            INDArray gradK = gradSelfAttention.get("inputK");
-//            INDArray gradV = gradSelfAttention.get("inputV");
-//
-//            Map<String, INDArray> gradInputs = new HashMap<>();
-//            gradInputs.put("input", gradInput);
-//            gradInputs.put("gradK", gradK);
-//            gradInputs.put("gradV", gradV);
 
-            return gradSelfAttention.get("inputQ");
+    public String infer(String prompt) {
+        if (!isTrained) {
+            throw new IllegalStateException("Le modèle doit être entraîné avant l'inférence.");
         }
 
+        List<String> promptTokens = tokenizer.tokenize(prompt);
+        List<Integer> promptTokenIds = tokenizer.tokensToIds(promptTokens);
 
-        
-        public List<INDArray> getParameters() {
-            List<INDArray> layerParams = new ArrayList<>();
+        INDArray encoderPaddingMask = createPaddingMask(promptTokenIds);
+        INDArray encodedPrompt = encoder.encode(false, promptTokenIds, encoderPaddingMask);
+
+        List<Integer> outputIds = new ArrayList<>();
+        int maxLength = 100; // Définissez une longueur maximale pour la sortie
+
+        for (int i = 0; i < maxLength; i++) {
+            List<Integer> currentOutput = new ArrayList<>(promptTokenIds);
+            currentOutput.addAll(outputIds);
+
+            INDArray decoderPaddingMask = createPaddingMask(currentOutput);
+            INDArray lookAheadMask = createLookAheadMask(currentOutput.size());
+
+            INDArray logits = decoder.decode(false, encodedPrompt, encodedPrompt, lookAheadMask, decoderPaddingMask);
+
+            // Prendre le dernier token prédit
+            INDArray lastTokenLogits = logits.get(NDArrayIndex.point(logits.rows() - 1), NDArrayIndex.all());
+            int predictedTokenId = Nd4j.argMax(lastTokenLogits).getInt(0);
+
+            outputIds.add(predictedTokenId);
+
+            if (predictedTokenId == tokenizer.getEndTokenId()) {
+                break;
+            }
+        }
+
+        return tokenizer.idsToTokens(outputIds);
+    }
+
+
+
+
+
+
+    public boolean isTrained() {
+        return isTrained;
+    }
+
+
+    
+    protected Pair<Float, INDArray> calculateCrossEntropyLossAndGradient(List<INDArray> decodedLogits, List<Integer> targetTokenIds) {
+        float loss = 0.0f;
+        int N = targetTokenIds.size();
+
+        // Assumons que decodedLogits contient une seule INDArray pour l'ensemble de la séquence
+        INDArray logits = decodedLogits.get(0); // Obtenez les logits pour l'ensemble de la séquence
+        INDArray gradients = Nd4j.zeros(logits.shape()); // Initialiser le gradient de la même forme que les logits
+
+        for (int i = 0; i < N; i++) {
+            int targetId = targetTokenIds.get(i); // L'ID attendu à la position i
+
+            // Extraire les logits pour la position i et toutes les classes (vocabulaire)
+            INDArray logitsForPosition = logits.getRow(i); // Assume une forme [vocabSize] pour chaque position
             
-            // Collecter les paramètres des composants de la couche d'encodeur
-            layerParams.addAll(selfAttention.getParameters());
-            layerParams.addAll(feedForward.getParameters());
-            layerParams.addAll(layerNorm1.getParameters());
-            layerParams.addAll(layerNorm2.getParameters());
-
-            return layerParams;
-        }
-        
-        public List<INDArray> getGradients() {
-            List<INDArray> layerGrads = new ArrayList<>();
+            // Utiliser Transforms pour le softmax sur les logits pour la position i
+            INDArray softmaxLogits = Transforms.softmax(logitsForPosition, false); 
             
-            // Collecter les paramètres des composants de la couche d'encodeur
-            layerGrads.addAll(selfAttention.getGradients());
-            layerGrads.addAll(feedForward.getGradients());
-            layerGrads.addAll(layerNorm1.getGradients());
-            layerGrads.addAll(layerNorm2.getGradients());
+            // Calculer le log softmax spécifiquement pour l'indice de la cible
+            float logSoftmaxForTarget = (float) Math.log(softmaxLogits.getDouble(targetId));
+            
+            // Accumuler la perte négative log softmax pour la cible
+            loss += -logSoftmaxForTarget;
 
-            return layerGrads;
+            // Calcul du gradient initial : p - y
+            INDArray targetOneHot = Nd4j.zeros(logitsForPosition.shape());
+            targetOneHot.putScalar(targetId, 1);
+            INDArray gradForPosition = softmaxLogits.sub(targetOneHot);
+            gradients.putRow(i, gradForPosition);
         }
         
-
-        public long getNumberOfParameters() {
-            return selfAttention.getNumberOfParameters() +
-                   feedForward.getNumberOfParameters() +
-                   layerNorm1.getNumberOfParameters() +
-                   layerNorm2.getNumberOfParameters();
-        }
-        
-        
-
-        public long getNumberOfGradients() {
-            return selfAttention.getNumberOfGradients() +
-                   feedForward.getNumberOfGradients() +
-                   layerNorm1.getNumberOfGradients() +
-                   layerNorm2.getNumberOfGradients();
-        }
-
-
-
-    }
-    
-    
-    
-}
-package RN.transformer;
-
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.factory.Nd4j;
-import org.nd4j.linalg.ops.transforms.Transforms;
-
-public class LayerNorm extends Layer{
-    private INDArray gamma, beta;
-    private double epsilon = 1e-6;
-    private INDArray inputCache; // Cache pour le forward
-    Map<String, INDArray> gradients = new HashMap<>();
-
-
-    public LayerNorm(int dModel) {
-        gamma = Nd4j.ones(dModel);
-        beta = Nd4j.zeros(dModel);
+        return Pair.of(loss / N, gradients); // Retourner la moyenne de la perte et les gradients accumulés
     }
 
-    @Override
-    public INDArray forward(INDArray x) {
-        // Check for NaN or Inf in the input
-        if (x.isNaN().any() || x.isInfinite().any()) {
-            throw new RuntimeException("LayerNorm.forward received NaN or Infinite values in input.");
-        }
-        this.inputCache = x.dup();
-
-    	
-
-        // Assuming mean and std are initially vectors of shape [6]
-        INDArray mean = x.mean(1);
-        INDArray std = x.std(1);
-
-        std.addi(epsilon);
-        // Check for NaN or Inf in intermediate results
-        if (mean.isNaN().any() || mean.isInfinite().any()) {
-            throw new RuntimeException("NaN or Infinite values encountered in mean calculation.");
-        }
-        if (std.isNaN().any() || std.isInfinite().any()) {
-            throw new RuntimeException("NaN or Infinite values encountered in standard deviation calculation.");
-        }
-        
-
-        // Broadcast subtraction and division
-        INDArray centered = x.subColumnVector(mean);
-        INDArray normed = centered.divColumnVector(std);
-
-        // Scale and shift
-        INDArray output = normed.mulRowVector(gamma).addRowVector(beta);
 
 
-        // Check for NaN or Inf in the output
-        if (output.isNaN().any() || output.isInfinite().any()) {
-            throw new RuntimeException("NaN or Infinite values produced by LayerNorm normalization.");
-        }
-        
-        return output;
-    }
-    
-    @Override
-    public Map<String, INDArray> backward(INDArray gradOutput) {
-        INDArray input = this.inputCache;
-        long N = input.shape()[1];
 
-        INDArray inputMu = input.sub(input.mean(1));
-        INDArray stdInv = Transforms.pow(input.var(false, 1).add(epsilon), -0.5);
-
-        INDArray gradInput = gradOutput.mul(gamma).mul(stdInv);
-        INDArray gradGamma = gradOutput.mul(inputMu).mul(stdInv).sum(0);
-        INDArray gradBeta = gradOutput.sum(0);
-
-        gradients.put("input", gradInput);
-        gradients.put("gamma", gradGamma);
-        gradients.put("beta", gradBeta);
-
-        return gradients;
-    }
-
-    public List<INDArray> getParameters() {
-        // Retourner une liste contenant les paramètres gamma et beta
-        return Arrays.asList(gamma, beta);
-    }
-    
-    public List<INDArray> getGradients() {
-        return Arrays.asList(gradients.get("gamma"), gradients.get("beta"));
-    }
-    
-    public long getNumberOfParameters() {
-        // Puisque gamma et beta ont chacun une taille de dModel, le total est simplement 2 * dModel
-        return gamma.length() + beta.length();
-    }
-    
-    public long getNumberOfGradients() {
-        return gradients.get("gamma").length() + gradients.get("beta").length();
-    }
-}
-package RN.transformer;
-
-import java.io.BufferedReader;
-import java.io.FileReader;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-
-public class DataGenerator {
-    private BufferedReader dataReader;
-    private BufferedReader targetReader;
-    protected Tokenizer tokenizer;
-    private int batchSize;
-    private int maxTokensPerBatch;
-	private String targetFilePath;
-	private String dataFilePath;
-
-    public DataGenerator(String dataFilePath, String targetFilePath, Tokenizer tokenizer, int batchSize, int maxTokensPerBatch) throws IOException {
-        this.dataReader = new BufferedReader(new FileReader(dataFilePath));
-        this.targetReader = new BufferedReader(new FileReader(targetFilePath));
-        this.targetFilePath = targetFilePath;
-        this.dataFilePath = dataFilePath;
-        this.tokenizer = tokenizer;
-        this.batchSize = batchSize;
-        this.maxTokensPerBatch = maxTokensPerBatch;
-    }
-
-    public boolean hasNextBatch() throws IOException {
-        return dataReader.ready() && targetReader.ready();
-    }
-
-    public Batch nextBatch() throws IOException {
-        List<String> dataBatch = new ArrayList<>();
-        List<String> targetBatch = new ArrayList<>();
-        StringBuilder dataBuffer = new StringBuilder();
-        StringBuilder targetBuffer = new StringBuilder();
-
-        while (dataBatch.size() < batchSize && hasNextBatch()) {
-            int dataChar;
-            while ((dataChar = dataReader.read()) != -1) {
-                dataBuffer.append((char) dataChar);
-                if (dataBuffer.length() >= maxTokensPerBatch) break;
-            }
-
-            int targetChar;
-            while ((targetChar = targetReader.read()) != -1) {
-                targetBuffer.append((char) targetChar);
-                if (targetBuffer.length() >= maxTokensPerBatch) break;
-            }
-
-            if (dataBuffer.length() > 0 && targetBuffer.length() > 0) {
-                List<String> dataTokens = tokenizer.tokenize(dataBuffer.toString());
-                List<String> targetTokens = tokenizer.tokenize(targetBuffer.toString());
-                dataBatch.add(String.join(" ", dataTokens));
-                targetBatch.add(String.join(" ", targetTokens));
-                dataBuffer = new StringBuilder(); // Réinitialiser les buffers pour le prochain segment
-                targetBuffer = new StringBuilder();
-            }
-        }
-
-        return new Batch(dataBatch, targetBatch);
-    }
-
-    public void close() throws IOException {
-        dataReader.close();
-        targetReader.close();
-    }
-
-    public void init() throws IOException {
-        this.dataReader = new BufferedReader(new FileReader(dataFilePath));
-        this.targetReader = new BufferedReader(new FileReader(targetFilePath));
-    }    
-}
-package RN.transformer;
-
-import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.factory.Nd4j;
-
-public class Dropout {
-    private double rate;
-    private INDArray mask;
-
-
-    public Dropout(double rate) {
-        this.rate = rate;
-    }
-
-    
-    public INDArray apply(boolean isTraining, INDArray input) {
-        if(isTraining) {
-            // Création du masque d'activation basée sur le taux de dropout
-            this.mask = Nd4j.rand(input.shape()).gt(rate);
-            // Application du masque aux données d'entrée
-            return input.mul(mask);
-        } else {
-            // Pendant l'inférence, dropout n'est pas appliqué mais les activations sont ajustées
-            return input.mul(1.0 - rate);
-        }
-    }
-    
-    public INDArray backward(INDArray gradOutput) {
-        // Pendant la rétropropagation, simplement passer le gradient à travers le masque
-        return gradOutput.mul(mask);
-    }    
-    
-}
-package RN.transformer;
-
-import java.util.Map;
-
-import org.nd4j.linalg.api.ndarray.INDArray;
-
-class Layer {
-    // Paramètres de la couche (poids, biais, etc.)
-    INDArray weights;
-    INDArray bias;
-
-    // Méthode pour calculer la passe en avant
-    public INDArray forward(INDArray input) {
-        // Implémentation spécifique de la couche
-        return null;
-    }
-
-    // Méthode pour calculer la rétropropagation
-    public Map<String, INDArray> backward(INDArray incomingGradient) {
-        // Calculer les gradients par rapport aux paramètres de la couche
-        // et propager le gradient de la perte à la couche précédente
-        return null;
-    }
 }

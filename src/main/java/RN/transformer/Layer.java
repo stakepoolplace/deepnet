@@ -1,11 +1,16 @@
 package RN.transformer;
 
+import java.io.Serializable;
 import java.util.Map;
 
 import org.nd4j.linalg.api.ndarray.INDArray;
 
-class Layer {
-    // Paramètres de la couche (poids, biais, etc.)
+class Layer implements Serializable {
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = 6248679804921861953L;
+	// Paramètres de la couche (poids, biais, etc.)
     INDArray weights;
     INDArray bias;
 

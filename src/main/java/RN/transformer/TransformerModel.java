@@ -1,8 +1,14 @@
 package RN.transformer;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,111 +18,120 @@ import org.deeplearning4j.models.embeddings.loader.WordVectorSerializer;
 import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.indexing.NDArrayIndex;
 import org.nd4j.linalg.ops.transforms.Transforms;
 
-public class TransformerModel {
-    private boolean isTrained = false;
+public class TransformerModel  implements Serializable {
+	
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = -4799769434788429831L;
+	
+	private static String W2VECPATH = "pretrained-embeddings/mon_model_word2vec.txt";
+	private boolean isTrained = false;
     public Encoder encoder;
     public Decoder decoder;
     public CustomAdamOptimizer optimizer;
     public Tokenizer tokenizer;
     private double dropoutRate = 0.1; // Exemple de taux de dropout fixe
-    private static WordVectors wordVectors; // Chargé une fois, accessible statiquement
-    protected static int vocabSize = 0;
-    private static INDArray meanVector = null;
-    private static int dModel = 300;
+    private transient static WordVectors wordVectors; // Chargé une fois, accessible statiquement
+    private static int dModel = 300; // dmodel must be divisible by numHeads
     private static int numLayers = 6;
-    private static int numHeads = 8;
+    private static int numHeads = 6; 
     private static int dff = 2048;
-
+    private static INDArray pretrainedEmbeddings = null;
+    private List<INDArray> combinedParameters = new ArrayList<>();
+    private List<INDArray> combinedGradients = new ArrayList<INDArray>();
+    
     static {
         try {
-        	wordVectors = WordVectorSerializer.readWord2VecModel(new File("pretrained-embeddings/mon_model_word2vec.txt"), true);
-
-            //wordVectors = WordVectorSerializer.loadStaticModel(new File("pretrained-embeddings/word2vec.model"));
-            vocabSize = wordVectors.vocab().numWords(); // Taille du vocabulaire Word2Vec
-         // Calculer le vecteur moyen (à faire une seule fois, idéalement dans le constructeur ou une méthode d'initialisation)
-            INDArray allVectors = Nd4j.create(vocabSize, dModel);
-            for (int i = 0; i < vocabSize; i++) {
-                String word = wordVectors.vocab().wordAtIndex(i);
-                INDArray vector = wordVectors.getWordVectorMatrix(word);
-                allVectors.putRow(i, vector);
-            }
-            meanVector = allVectors.mean(0); // Moyenne sur toutes les lignes pour obtenir un vecteur moyen
-
+        	wordVectors = WordVectorSerializer.readWord2VecModel(new File(W2VECPATH), true);
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
     
-
-    public TransformerModel() throws IOException {
+    
+    public TransformerModel(int numLayers, int dModel, int numHeads, int dff, double dropoutRate) {
+    	this.numLayers = numLayers;
+    	this.dModel = dModel;
+    	this.numHeads = numHeads;
+    	this.dff = dff;
+    	this.dropoutRate = dropoutRate;
+    	
+        // Charger Word2Vec
+        WordVectors wordVectors = WordVectorSerializer.readWord2VecModel(new File(W2VECPATH));
         
-        this.tokenizer = new Tokenizer(wordVectors); // Supposé exister pour gérer la tokenisation
-
-        // Créer une matrice d'embeddings pré-entraînée
-        INDArray pretrainedEmbeddings = createPretrainedEmbeddings(dModel);
+        // Créer le tokenizer qui gère maintenant aussi les embeddings
+        this.tokenizer = new Tokenizer(wordVectors);
         
+        // Utiliser les embeddings du tokenizer
+        pretrainedEmbeddings = tokenizer.getPretrainedEmbeddings();
         
-        this.encoder = new Encoder(numLayers, dModel, numHeads, dff, dropoutRate, pretrainedEmbeddings, this.tokenizer);
-        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate, vocabSize + 1);
+        this.encoder = new Encoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer);
+        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate);
         
         // Calcul du nombre total de paramètres
         long totalParams = encoder.getNumberOfParameters() + decoder.getNumberOfParameters();
         
-        this.optimizer = new CustomAdamOptimizer(0.001, 1000, totalParams); // Initialisation hypothétique
+        this.optimizer = new CustomAdamOptimizer(0.001, dModel, 1000, totalParams); // Initialisation hypothétique
+    }
+    
+
+    public TransformerModel() throws IOException {
+        
+        // Charger Word2Vec
+        WordVectors wordVectors = WordVectorSerializer.readWord2VecModel(new File(W2VECPATH));
+        
+        // Créer le tokenizer qui gère maintenant aussi les embeddings
+        this.tokenizer = new Tokenizer(wordVectors);
+        
+        // Utiliser les embeddings du tokenizer
+        pretrainedEmbeddings = tokenizer.getPretrainedEmbeddings();
+        
+        this.encoder = new Encoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer);
+        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate);
+        
+        // Calcul du nombre total de paramètres
+        long totalParams = encoder.getNumberOfParameters() + decoder.getNumberOfParameters();
+        
+        this.optimizer = new CustomAdamOptimizer(0.001, dModel, 1000, totalParams); // Initialisation hypothétique
     }
     
  
-    
-    public INDArray createPretrainedEmbeddings(int dModel) {
-
-        // Créer une matrice pour stocker les embeddings
-    	INDArray embeddings = Nd4j.create(vocabSize + 1, dModel);
-        
-        // Pour chaque mot dans le vocabulaire du tokenizer
-        int tokenId = 0;
-        for (; tokenId < vocabSize; tokenId++) {
-            String word = tokenizer.getToken(tokenId); // Supposons que cette méthode existe
-            if (wordVectors.hasWord(word)) {
-                INDArray wordVector = wordVectors.getWordVectorMatrix(word);
-                embeddings.putRow(tokenId, wordVector);
-            }
-        }
-        
-        // Utiliser le vecteur moyen pour les mots inconnus
-        embeddings.putRow(tokenId, meanVector);
-
-        return embeddings;
-    }
-
     public void train(DataGenerator dataGenerator) throws IOException {
         for (int epoch = 0; epoch < 10; epoch++) {
             optimizer.setEpoch(epoch);
 
             while (dataGenerator.hasNextBatch()) {
+            	
+            	// at start because it keeps gradients loaded for the last loop and we can save the state on the disk if needed
+            	cleanGradients();
+            	
                 Batch batch = dataGenerator.nextBatch();
 
                 List<Integer> targetTokenIds = tokenizer.tokensToIds(tokenizer.tokenize(String.join("", batch.getTarget())));
                 List<Integer> dataTokenIds = tokenizer.tokensToIds(tokenizer.tokenize(String.join("", batch.getData())));
 
-                INDArray encoded = encoder.encode(true, dataTokenIds);
-                // Assume that masks are created or fetched appropriately here
-                INDArray lookAheadMask = createLookAheadMask(dataTokenIds.size()); // You need to implement createLookAheadMask
-                INDArray paddingMask = createPaddingMask(dataTokenIds); // You need to implement createPaddingMask
+                // Créer les masques
+                INDArray encoderPaddingMask = createPaddingMask(dataTokenIds);
+                INDArray decoderPaddingMask = createPaddingMask(targetTokenIds);
+                INDArray lookAheadMask = createLookAheadMask(targetTokenIds.size());
 
-                INDArray decodedOutput = decoder.decode(true, encoded, encoded, lookAheadMask, paddingMask); // Assumes encoder outputs are used for encoder-decoder attention
+                INDArray encoded = encoder.encode(true, dataTokenIds, encoderPaddingMask);
+                INDArray decodedOutput = decoder.decode(true, encoded, encoded, lookAheadMask, decoderPaddingMask);
 
                 List<INDArray> decodedLogits = new ArrayList<>();
                 decodedLogits.add(decodedOutput);
 
                 backpropagation(decodedLogits, targetTokenIds);
-                List<INDArray> combinedParameters = getCombinedParameters();
-                List<INDArray> combinedGradients = getCombinedGradients();
+                addCombinedParameters();
+                addCombinedGradients();
                 optimizer.update(combinedParameters, combinedGradients);
             }
 
-            dataGenerator.init(); // Reset data generator if needed
+            dataGenerator.init();
         }
 
         isTrained = true;
@@ -126,14 +141,22 @@ public class TransformerModel {
         // Création d'une matrice où les éléments au-dessus de la diagonale sont 1 (ce qui signifie masqués)
         INDArray mask = Nd4j.ones(size, size);
         INDArray lowerTriangle = Nd4j.tri(size, size, 0); // Crée une matrice triangulaire inférieure
-        mask.subi(lowerTriangle).muli(Double.POSITIVE_INFINITY); // Appliquer le masquage infini pour softmax
+        mask.subi(lowerTriangle); 
+        // Appliquer dessous le masquage infini pour softmax
+        for (int i = 0; i < size; i++) {
+            for (int j = i + 1; j < size; j++) {
+                mask.putScalar(i, j, Double.NEGATIVE_INFINITY);
+            }
+        }        
         return mask;
     }
+    
+
     
     public INDArray createPaddingMask(List<Integer> tokenIds) {
         // Génération d'un masque où chaque emplacement de padding est marqué par 1 (infinité après le masquage)
         long size = tokenIds.size();
-        INDArray mask = Nd4j.zeros(1, size);
+        INDArray mask = Nd4j.zeros(size);
         for (int i = 0; i < size; i++) {
             if (tokenIds.get(i) == tokenizer.getPadTokenId()) { 
                 mask.putScalar(i, Double.POSITIVE_INFINITY);
@@ -141,6 +164,8 @@ public class TransformerModel {
         }
         return mask;
     }
+    
+
 
 
     
@@ -200,8 +225,8 @@ public class TransformerModel {
     }
 
 
-	private List<INDArray> getCombinedParameters() {
-        List<INDArray> combinedParameters = new ArrayList<>();
+
+	public void addCombinedParameters() {
         
         // Ajoute les paramètres de l'encoder
         combinedParameters.addAll(encoder.getParameters());
@@ -209,11 +234,9 @@ public class TransformerModel {
         // Ajoute les paramètres du decoder
         combinedParameters.addAll(decoder.getParameters());
         
-        return combinedParameters;
     }
 
-    private List<INDArray> getCombinedGradients() {
-        List<INDArray> combinedGradients = new ArrayList<INDArray>();
+    private void addCombinedGradients() {
         
         // Ajoute les gradients de l'encoder
         combinedGradients.addAll(encoder.getGradients());
@@ -221,7 +244,11 @@ public class TransformerModel {
         // Ajoute les gradients du decoder
         combinedGradients.addAll(decoder.getGradients());
         
-        return combinedGradients;
+    }
+    
+    public void cleanGradients() {
+    	combinedParameters.clear();
+    	combinedGradients.clear();
     }
 
 
@@ -232,34 +259,36 @@ public class TransformerModel {
             throw new IllegalStateException("Le modèle doit être entraîné avant l'inférence.");
         }
 
-        // Tokenisation et conversion du prompt en IDs
         List<String> promptTokens = tokenizer.tokenize(prompt);
         List<Integer> promptTokenIds = tokenizer.tokensToIds(promptTokens);
 
-        // Encodage
-        INDArray encodedPrompt = encoder.encode(false, promptTokenIds); // Supposons que la méthode encode retourne un INDArray
+        INDArray encoderPaddingMask = createPaddingMask(promptTokenIds);
+        INDArray encodedPrompt = encoder.encode(false, promptTokenIds, encoderPaddingMask);
 
-        // Décodeur : Préparation des arguments nécessaires
-        // Supposons que encoderOutput est le même que encodedPrompt pour l'inférence simple
-        // Les masques lookAheadMask et paddingMask sont initialisés à null pour l'exemple
-        INDArray lookAheadMask = null;
-        INDArray paddingMask = null;
-        INDArray logits = decoder.decode(false, encodedPrompt, encodedPrompt, lookAheadMask, paddingMask);
+        List<Integer> outputIds = new ArrayList<>();
+        int maxLength = 100; // Définissez une longueur maximale pour la sortie
 
-        // Conversion des logits en IDs de tokens
-        INDArray predictedTokenIds = Nd4j.argMax(logits, 2);
+        for (int i = 0; i < maxLength; i++) {
+            List<Integer> currentOutput = new ArrayList<>(promptTokenIds);
+            currentOutput.addAll(outputIds);
 
-        // Conversion de INDArray en List<Integer>
-        long[] shape = predictedTokenIds.shape();
-        List<Integer> tokenIdsList = new ArrayList<>();
-        for(int i = 0; i < shape[0]; i++) { 
-            tokenIdsList.add(predictedTokenIds.getInt(i));
+            INDArray decoderPaddingMask = createPaddingMask(currentOutput);
+            INDArray lookAheadMask = createLookAheadMask(currentOutput.size());
+
+            INDArray logits = decoder.decode(false, encodedPrompt, encodedPrompt, lookAheadMask, decoderPaddingMask);
+
+            // Prendre le dernier token prédit
+            INDArray lastTokenLogits = logits.get(NDArrayIndex.point(logits.rows() - 1), NDArrayIndex.all());
+            int predictedTokenId = Nd4j.argMax(lastTokenLogits).getInt(0);
+
+            outputIds.add(predictedTokenId);
+
+            if (predictedTokenId == tokenizer.getEndTokenId()) {
+                break;
+            }
         }
 
-        // Conversion des IDs de tokens prédits en texte
-        String response = tokenizer.idsToTokens(tokenIdsList);
-
-        return response;
+        return tokenizer.idsToTokens(outputIds);
     }
 
 
@@ -276,11 +305,14 @@ public class TransformerModel {
     protected Pair<Float, INDArray> calculateCrossEntropyLossAndGradient(List<INDArray> decodedLogits, List<Integer> targetTokenIds) {
         float loss = 0.0f;
         int N = targetTokenIds.size();
+        
 
         // Assumons que decodedLogits contient une seule INDArray pour l'ensemble de la séquence
         INDArray logits = decodedLogits.get(0); // Obtenez les logits pour l'ensemble de la séquence
         INDArray gradients = Nd4j.zeros(logits.shape()); // Initialiser le gradient de la même forme que les logits
 
+        System.out.println("logits.shape()"  + Arrays.toString(logits.shape()));
+        
         for (int i = 0; i < N; i++) {
             int targetId = targetTokenIds.get(i); // L'ID attendu à la position i
 
@@ -305,8 +337,105 @@ public class TransformerModel {
         
         return Pair.of(loss / N, gradients); // Retourner la moyenne de la perte et les gradients accumulés
     }
+    
+    
+    public void saveState(String filePath) throws IOException {
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(filePath))) {
+            // Sauvegarder l'état de l'encodeur et du décodeur
+            oos.writeObject(encoder);
+            oos.writeObject(decoder);
+            
+            // Sauvegarder l'état de l'optimiseur
+            oos.writeObject(optimizer.getCurrentStep());
+            oos.writeObject(optimizer.getEpoch());
+            oos.writeObject(optimizer.getLearningRate());
+            
+            // Sauvegarder les paramètres du modèle
+            oos.writeObject(combinedParameters.size());
+            for (INDArray param : combinedParameters) {
+                oos.writeObject(param);
+            }
+            
+            // Sauvegarder l'état d'entraînement
+            oos.writeBoolean(isTrained);
+        }
+    }
+
+    public void loadState(String filePath) throws IOException, ClassNotFoundException {
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(filePath))) {
+        	
+        	this.readObject(ois);
+        	
+            // Charger l'état de l'encodeur et du décodeur
+            this.encoder = (Encoder) ois.readObject();
+            this.decoder = (Decoder) ois.readObject();
+            
+            // Charger l'état de l'optimiseur
+            int currentStep = (int) ois.readObject();
+            int epoch = (int) ois.readObject();
+            double learningRate = (double) ois.readObject();
+            optimizer.setCurrentStep(currentStep);
+            optimizer.setEpoch(epoch);
+            optimizer.setLearningRate(learningRate);
+            
+            // Charger les paramètres du modèle
+            int numParams = (int) ois.readObject();
+            for (int i = 0; i < numParams; i++) {
+                INDArray param = (INDArray) ois.readObject();
+                combinedParameters.get(i).assign(param);
+            }
+            
+            // Charger l'état d'entraînement
+            this.isTrained = ois.readBoolean();
+        }
+    }
+
+    
+    private void writeObject(ObjectOutputStream oos) throws IOException {
+        oos.defaultWriteObject();
+        // Vous pouvez sauvegarder le chemin du fichier Word2Vec si nécessaire
+        oos.writeObject(W2VECPATH);
+    }
+
+    private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
+        ois.defaultReadObject();
+        String word2vecPath = (String) ois.readObject();
+        // Réinitialiser wordVectors
+        this.wordVectors = WordVectorSerializer.loadStaticModel(new File(word2vecPath));
+    }
 
 
+
+	public void setTrained(boolean isTrained) {
+		this.isTrained = isTrained;
+	}
+
+
+
+	public int getDModel() {
+		return dModel;
+	}
+
+
+
+	public static int getVocabSize() {
+		return pretrainedEmbeddings.rows();
+	}
+
+
+	public static INDArray getPretrainedEmbeddings() {
+		return pretrainedEmbeddings;
+	}
+
+
+	public List<INDArray> getCombinedParameters() {
+		return combinedParameters;
+	}
+
+
+	public List<INDArray> getCombinedGradients() {
+		return combinedGradients;
+	}
 
 
 }

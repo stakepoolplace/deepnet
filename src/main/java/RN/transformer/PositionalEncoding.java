@@ -1,12 +1,18 @@
 package RN.transformer;
 
+import java.io.Serializable;
+
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.indexing.NDArrayIndex;
 import org.nd4j.linalg.ops.transforms.Transforms;
 
-public class PositionalEncoding {
-    private final int dModel; // Dimensionnalité des embeddings
+public class PositionalEncoding implements Serializable {
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = 7621854975948659411L;
+	private final int dModel; // Dimensionnalité des embeddings
     
     public PositionalEncoding(int dModel) {
         this.dModel = dModel;
