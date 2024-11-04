@@ -112,7 +112,7 @@ public class TransformerTest {
         List<Integer> tokenIds = tokenizer.tokensToIds(tokens);
         String reconstructedText = tokenizer.idsToTokens(tokenIds);
         
-        org.junit.Assert.assertEquals(originalText, reconstructedText, "Text should be preserved after tokenization and detokenization");
+        org.junit.Assert.assertEquals("Text should be preserved after tokenization and detokenization", originalText, reconstructedText);
     }
 
     @Test
