@@ -63,6 +63,9 @@ public class CustomAdamOptimizer implements Serializable {
         
         currentStep++; // Incrémentation du nombre de pas après la mise à jour.
     }
+    
+
+
 
 
     // Calcul du taux d'apprentissage en fonction du pas actuel.

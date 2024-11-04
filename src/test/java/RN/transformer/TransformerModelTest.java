@@ -127,7 +127,7 @@ public class TransformerModelTest {
     @Test(expected = IllegalStateException.class)
     public void testInferenceBeforeTrainingThrowsException() {
         // Tentative d'inférence avant l'entraînement devrait lancer une exception
-        model.infer("Some input text");
+        model.infer("Some input text", 30);
     }
     
 
@@ -138,10 +138,10 @@ public class TransformerModelTest {
         DataGenerator dummyDataGenerator = new DummyDataGenerator("src/test/resources/dummy-data.txt", "src/test/resources/dummy-data-target.txt", model.tokenizer, 32, 512);
         model.train(dummyDataGenerator);
         
-        String response = model.infer("Some input text");
+        String response = model.infer("Some input text", 45);
         assertNotNull("L'inférence devrait retourner une réponse non-null", response);
         // Ici, vous pouvez ajouter d'autres assertions pour vérifier la plausibilité de la réponse.
-        response = model.infer("This is a dummy sentence");
+        response = model.infer("This is a dummy sentence", 32);
         assertNotNull("L'inférence devrait retourner une réponse non-null", response);
 
     }

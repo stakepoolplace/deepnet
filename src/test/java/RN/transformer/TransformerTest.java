@@ -253,18 +253,28 @@ public class TransformerTest {
     public void testLossCalculation() {
         int batchSize = 2;
         int seqLength = 5;
-        List<INDArray> logits = Arrays.asList(Nd4j.rand(new int[]{batchSize, seqLength, model.getVocabSize()}));
-        List<Integer> targetTokenIds = Arrays.asList(0, 1, 2, 3, 4, 0, 1, 2, 3, 4); // 2 séquences de 5 tokens
+
+        // Création des logits : batchSize x seqLength x vocabSize
+        List<INDArray> logits = Arrays.asList(Nd4j.rand(new int[]{batchSize * seqLength, TransformerModel.getVocabSize()}));
+
+        // Création des targetTokenIds : 2 séquences concaténées de 5 tokens (10 tokens au total)
+        List<Integer> targetTokenIds = Arrays.asList(0, 1, 2, 3, 4, 0, 1, 2, 3, 4);
+
+        // Calcul de la perte
         float loss = model.calculateCrossEntropyLossAndGradient(logits, targetTokenIds).getLeft();
-        assertTrue(loss >= 0, "Loss should be non-negative.");
+
+        // Vérification que la perte est non négative
+        assertTrue(loss >= 0, "La perte doit être non-négative.");
     }
+
+
 
     @Test
     public void testInference() {
         // D'abord, simulez un entraînement pour que le modèle soit considéré comme entraîné
         model.setTrained(true); // Assurez-vous d'avoir un setter pour cette variable si elle est privée
         
-        String response = model.infer("Hello world");
+        String response = model.infer("Hello world", 100);
         assertFalse(response.isEmpty(), "Response should not be empty.");
     }
     

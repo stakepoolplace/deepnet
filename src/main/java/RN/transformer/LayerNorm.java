@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.ops.transforms.Transforms;
@@ -28,8 +29,8 @@ public class LayerNorm extends Layer implements Serializable {
      */
     public LayerNorm(int dModel) {
         // Initialisation de gamma à des uns et de beta à des zéros avec la forme [1, dModel]
-        gamma = Nd4j.ones(1, dModel); // [1, dModel]
-        beta = Nd4j.zeros(1, dModel); // [1, dModel]
+        gamma = Nd4j.ones(DataType.DOUBLE, 1, dModel); // [1, dModel]
+        beta = Nd4j.zeros(DataType.DOUBLE, 1, dModel); // [1, dModel]
     }
 
     /**

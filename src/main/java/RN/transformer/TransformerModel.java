@@ -254,46 +254,60 @@ public class TransformerModel  implements Serializable {
 
 
 
-    public String infer(String prompt) {
+    public String infer(String prompt, int maxLength) {
         if (!isTrained) {
             throw new IllegalStateException("Le modèle doit être entraîné avant l'inférence.");
         }
 
+        // Tokenisation du prompt
         List<String> promptTokens = tokenizer.tokenize(prompt);
         List<Integer> promptTokenIds = tokenizer.tokensToIds(promptTokens);
 
+        // Création du masque de padding pour l'encodeur
         INDArray encoderPaddingMask = createPaddingMask(promptTokenIds);
         INDArray encodedPrompt = encoder.encode(false, promptTokenIds, encoderPaddingMask);
 
+        // Initialisation des IDs de sortie avec le token de début
         List<Integer> outputIds = new ArrayList<>();
-        int maxLength = 100; // Définissez une longueur maximale pour la sortie
+        outputIds.add(tokenizer.getStartTokenId());
+
+        // Préparation des masques et du cache du décodeur
+        INDArray decoderPaddingMask = createPaddingMask(outputIds);
+        INDArray lookAheadMask = createLookAheadMask(outputIds.size());
+
 
         for (int i = 0; i < maxLength; i++) {
-            List<Integer> currentOutput = new ArrayList<>(promptTokenIds);
-            currentOutput.addAll(outputIds);
+            // Encodage des tokens générés jusqu'à présent
+        	INDArray encodedDecoderInput = encoder.encode(false, outputIds, decoderPaddingMask);
 
-            INDArray decoderPaddingMask = createPaddingMask(currentOutput);
-            INDArray lookAheadMask = createLookAheadMask(currentOutput.size());
+            // Mise à jour des masques pour le décodeur
+            decoderPaddingMask = createPaddingMask(outputIds);
+            lookAheadMask = createLookAheadMask(outputIds.size());
 
-            INDArray logits = decoder.decode(false, encodedPrompt, encodedPrompt, lookAheadMask, decoderPaddingMask);
+            // Décodage
+            INDArray logits = decoder.decode(false, encodedPrompt, encodedDecoderInput, lookAheadMask, decoderPaddingMask);
 
-            // Prendre le dernier token prédit
-            INDArray lastTokenLogits = logits.get(NDArrayIndex.point(logits.rows() - 1), NDArrayIndex.all());
+            // Extraction des logits du dernier token généré
+            INDArray lastTokenLogits = logits.getRow(logits.rows() - 1);
             int predictedTokenId = Nd4j.argMax(lastTokenLogits).getInt(0);
 
+            // Ajout du token prédit à la séquence de sortie
             outputIds.add(predictedTokenId);
 
+            // Vérification du token de fin
             if (predictedTokenId == tokenizer.getEndTokenId()) {
                 break;
             }
+
+            // (Optionnel) Implémentation d'une stratégie de décodage plus sophistiquée
+            // Par exemple, beam search, échantillonnage avec température, etc.
+            // Ceci nécessiterait une refonte plus approfondie de la boucle de génération.
         }
 
-        return tokenizer.idsToTokens(outputIds);
+        // Conversion des IDs en tokens
+        // Construction de la séquence finale
+        return tokenizer.idsToTokens(outputIds.subList(1, outputIds.size())); // Exclut le token de début
     }
-
-
-
-
 
 
     public boolean isTrained() {
@@ -304,39 +318,40 @@ public class TransformerModel  implements Serializable {
     
     protected Pair<Float, INDArray> calculateCrossEntropyLossAndGradient(List<INDArray> decodedLogits, List<Integer> targetTokenIds) {
         float loss = 0.0f;
-        int N = targetTokenIds.size();
-        
+        int N = targetTokenIds.size(); // Nombre total de tokens dans la séquence
 
-        // Assumons que decodedLogits contient une seule INDArray pour l'ensemble de la séquence
-        INDArray logits = decodedLogits.get(0); // Obtenez les logits pour l'ensemble de la séquence
-        INDArray gradients = Nd4j.zeros(logits.shape()); // Initialiser le gradient de la même forme que les logits
+        // Assumons que decodedLogits contient une seule INDArray pour tout le batch
+        INDArray logits = decodedLogits.get(0); // Obtenez les logits
+        INDArray gradients = Nd4j.zeros(logits.shape()); // Initialiser le gradient
 
-        System.out.println("logits.shape()"  + Arrays.toString(logits.shape()));
-        
         for (int i = 0; i < N; i++) {
             int targetId = targetTokenIds.get(i); // L'ID attendu à la position i
 
-            // Extraire les logits pour la position i et toutes les classes (vocabulaire)
-            INDArray logitsForPosition = logits.getRow(i); // Assume une forme [vocabSize] pour chaque position
+            // Extraire les logits pour la position i
+            INDArray logitsForPosition = logits.getRow(i); // Obtention des logits pour cette position
             
-            // Utiliser Transforms pour le softmax sur les logits pour la position i
+            // Appliquer softmax
             INDArray softmaxLogits = Transforms.softmax(logitsForPosition, false); 
-            
-            // Calculer le log softmax spécifiquement pour l'indice de la cible
+
+            // Calculer le log softmax pour l'ID cible
             float logSoftmaxForTarget = (float) Math.log(softmaxLogits.getDouble(targetId));
-            
-            // Accumuler la perte négative log softmax pour la cible
+
+            // Accumuler la perte négative log softmax
             loss += -logSoftmaxForTarget;
 
-            // Calcul du gradient initial : p - y
+            // Calculer le gradient (p - y)
             INDArray targetOneHot = Nd4j.zeros(logitsForPosition.shape());
             targetOneHot.putScalar(targetId, 1);
             INDArray gradForPosition = softmaxLogits.sub(targetOneHot);
+
+            // Mise à jour du gradient
             gradients.putRow(i, gradForPosition);
         }
-        
-        return Pair.of(loss / N, gradients); // Retourner la moyenne de la perte et les gradients accumulés
+
+        return Pair.of(loss / N, gradients); // Moyenne de la perte et gradients accumulés
     }
+
+
     
     
     public void saveState(String filePath) throws IOException {
