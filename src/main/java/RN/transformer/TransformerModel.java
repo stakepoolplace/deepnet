@@ -8,7 +8,6 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,9 +15,9 @@ import java.util.Map;
 import org.apache.commons.lang3.tuple.Pair;
 import org.deeplearning4j.models.embeddings.loader.WordVectorSerializer;
 import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
+import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
-import org.nd4j.linalg.indexing.NDArrayIndex;
 import org.nd4j.linalg.ops.transforms.Transforms;
 
 public class TransformerModel  implements Serializable {
@@ -36,10 +35,10 @@ public class TransformerModel  implements Serializable {
     public Tokenizer tokenizer;
     private double dropoutRate = 0.1; // Exemple de taux de dropout fixe
     private transient static WordVectors wordVectors; // Chargé une fois, accessible statiquement
-    private static int dModel = 300; // dmodel must be divisible by numHeads
-    private static int numLayers = 6;
-    private static int numHeads = 6; 
-    private static int dff = 2048;
+    private int dModel = 300; // dmodel must be divisible by numHeads
+    private int numLayers = 6;
+    private int numHeads = 6; 
+    private int dff = 2048;
     private static INDArray pretrainedEmbeddings = null;
     private List<INDArray> combinedParameters = new ArrayList<>();
     private List<INDArray> combinedGradients = new ArrayList<INDArray>();
@@ -51,14 +50,35 @@ public class TransformerModel  implements Serializable {
             e.printStackTrace();
         }
     }
+
+    /**
+     * Méthode par défaut pour le constructeur.
+     *
+     * @throws IOException en cas d'erreur de chargement des embeddings.
+     */
+    public TransformerModel() throws IOException {
+        this(6, 300, 6, 2048, 0.1);
+    }
     
-    
+    /**
+     * Constructeur principal du modèle Transformer.
+     *
+     * @param numLayers    Nombre de couches dans l'encodeur et le décodeur.
+     * @param dModel       Dimension du modèle.
+     * @param numHeads     Nombre de têtes dans l'attention multi-têtes.
+     * @param dff          Dimension de la couche Feed-Forward.
+     * @param dropoutRate  Taux de dropout.
+     */
     public TransformerModel(int numLayers, int dModel, int numHeads, int dff, double dropoutRate) {
+
     	this.numLayers = numLayers;
     	this.dModel = dModel;
     	this.numHeads = numHeads;
     	this.dff = dff;
     	this.dropoutRate = dropoutRate;
+
+        // Garantit la compatibilité et les performances optimales
+        Nd4j.setDefaultDataTypes(DataType.FLOAT, DataType.FLOAT);
     	
         // Charger Word2Vec
         WordVectors wordVectors = WordVectorSerializer.readWord2VecModel(new File(W2VECPATH));
@@ -70,36 +90,15 @@ public class TransformerModel  implements Serializable {
         pretrainedEmbeddings = tokenizer.getPretrainedEmbeddings();
         
         this.encoder = new Encoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer);
-        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate);
-        
-        // Calcul du nombre total de paramètres
-        long totalParams = encoder.getNumberOfParameters() + decoder.getNumberOfParameters();
-        
-        this.optimizer = new CustomAdamOptimizer(0.001, dModel, 1000, totalParams); // Initialisation hypothétique
-    }
-    
+        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate);   
 
-    public TransformerModel() throws IOException {
-        
-        // Charger Word2Vec
-        WordVectors wordVectors = WordVectorSerializer.readWord2VecModel(new File(W2VECPATH));
-        
-        // Créer le tokenizer qui gère maintenant aussi les embeddings
-        this.tokenizer = new Tokenizer(wordVectors);
-        
-        // Utiliser les embeddings du tokenizer
-        pretrainedEmbeddings = tokenizer.getPretrainedEmbeddings();
-        
-        this.encoder = new Encoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer);
-        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate);
-        
-        // Calcul du nombre total de paramètres
-        long totalParams = encoder.getNumberOfParameters() + decoder.getNumberOfParameters();
-        
-        this.optimizer = new CustomAdamOptimizer(0.001, dModel, 1000, totalParams); // Initialisation hypothétique
+        addCombinedParameters();
+        addCombinedGradients();
+
+        this.optimizer = new CustomAdamOptimizer(0.001, dModel, 1000, combinedParameters); // Initialisation hypothétique
     }
-    
- 
+
+
     public void train(DataGenerator dataGenerator) throws IOException {
         for (int epoch = 0; epoch < 10; epoch++) {
             optimizer.setEpoch(epoch);
@@ -126,8 +125,7 @@ public class TransformerModel  implements Serializable {
                 decodedLogits.add(decodedOutput);
 
                 backpropagation(decodedLogits, targetTokenIds);
-                addCombinedParameters();
-                addCombinedGradients();
+
                 optimizer.update(combinedParameters, combinedGradients);
             }
 
@@ -356,6 +354,9 @@ public class TransformerModel  implements Serializable {
     
     public void saveState(String filePath) throws IOException {
         try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(filePath))) {
+            
+            this.writeObject(oos);
+            
             // Sauvegarder l'état de l'encodeur et du décodeur
             oos.writeObject(encoder);
             oos.writeObject(decoder);
@@ -407,13 +408,13 @@ public class TransformerModel  implements Serializable {
 
     
     private void writeObject(ObjectOutputStream oos) throws IOException {
-        oos.defaultWriteObject();
+        // oos.defaultWriteObject();
         // Vous pouvez sauvegarder le chemin du fichier Word2Vec si nécessaire
         oos.writeObject(W2VECPATH);
     }
 
     private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
-        ois.defaultReadObject();
+        // ois.defaultReadObject();
         String word2vecPath = (String) ois.readObject();
         // Réinitialiser wordVectors
         this.wordVectors = WordVectorSerializer.loadStaticModel(new File(word2vecPath));

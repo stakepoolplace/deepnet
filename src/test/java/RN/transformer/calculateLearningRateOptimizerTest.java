@@ -3,19 +3,31 @@ package RN.transformer;
 
 import org.junit.Before;
 import org.junit.Test;
+import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.factory.Nd4j;
+
 import static org.junit.Assert.*;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class calculateLearningRateOptimizerTest {
 
     private CustomAdamOptimizer optimizer;
     private final double initialLr = 0.001;
     private final int warmupSteps = 1000;
-    private final long numberOfParameters = 100; // Supposons un certain nombre de paramètres pour l'initialisation
     private final int modelSize = 512;
+    private List<INDArray> parameters;
+    private List<INDArray> gradients;
 
     @Before
     public void setUp() {
-        optimizer = new CustomAdamOptimizer(initialLr, modelSize, warmupSteps, numberOfParameters);
+        parameters = new ArrayList<>();
+        parameters.add(Nd4j.create(new float[]{0.1f, -0.2f}, new int[]{1, 2}));
+        gradients = new ArrayList<>();
+        gradients.add(Nd4j.create(new float[]{0.01f, -0.01f}, new int[]{1, 2}));
+        
+        optimizer = new CustomAdamOptimizer(initialLr, modelSize, warmupSteps, parameters);
     }
 
     @Test
@@ -48,7 +60,7 @@ public class calculateLearningRateOptimizerTest {
     @Test
     public void testCalculateLearningRateJustAfterWarmup() {
         // Juste après la période de warmup
-        optimizer.setCurrentStep(warmupSteps);
+        optimizer.setCurrentStep(warmupSteps + 1);
         double lrJustAfterWarmup = optimizer.calculateLearningRate();
         assertTrue("Just after warmup, learning rate should start to decrease", lrJustAfterWarmup < initialLr);
     }

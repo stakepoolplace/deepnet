@@ -9,6 +9,7 @@ import java.util.Map;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.ops.transforms.Transforms;
+import org.nd4j.linalg.api.buffer.DataType;
 
 /**
  * Classe représentant une projection linéaire avec normalisation de couche (LayerNorm).
@@ -34,12 +35,12 @@ public class LinearProjection implements Serializable {
      */
     public LinearProjection(int inputSize, int outputSize) {
         // Initialisation des poids avec une distribution normale divisée par sqrt(inputSize) pour l'initialisation de He
-        this.weights = Nd4j.randn(inputSize, outputSize).div(Math.sqrt(inputSize));
+        this.weights = Nd4j.randn(DataType.FLOAT, inputSize, outputSize).div(Math.sqrt(inputSize));
         // Initialisation des biais à zéro
-        this.bias = Nd4j.zeros(1, outputSize);
+        this.bias = Nd4j.zeros(DataType.FLOAT,1, outputSize);
         // Initialisation de gamma à un et beta à zéro pour la normalisation de couche
-        this.gamma = Nd4j.ones(1, inputSize); // [1, dModel]
-        this.beta = Nd4j.zeros(1, inputSize); // [1, dModel]
+        this.gamma = Nd4j.ones(DataType.FLOAT,1, inputSize); // [1, dModel]
+        this.beta = Nd4j.zeros(DataType.FLOAT,1, inputSize); // [1, dModel]
     }
 
     /**

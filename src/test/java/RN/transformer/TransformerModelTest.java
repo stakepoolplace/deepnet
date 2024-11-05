@@ -6,6 +6,8 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 
@@ -38,7 +40,7 @@ public class TransformerModelTest {
     public void testSaveAndLoadState() throws IOException, ClassNotFoundException {
         // Créer une instance du modèle
         TransformerModel originalModel = new TransformerModel();
-        
+
         // Simuler un entraînement en modifiant quelques paramètres
         originalModel.train(new MockDataGenerator()); // Supposons que vous avez une implémentation mock de DataGenerator pour les tests
         
@@ -102,7 +104,7 @@ public class TransformerModelTest {
     // Classe mock pour DataGenerator
     private class MockDataGenerator extends DataGenerator {
         public MockDataGenerator() throws IOException {
-            super("mock_data.txt", "mock_target.txt", new Tokenizer(Arrays.asList("tutu", "toto")), 1, 100);
+            super("src/test/resources/mock_data.txt", "src/test/resources/mock_target.txt", new Tokenizer(Arrays.asList("tutu", "toto")), 1, 100);
         }
         
         @Override

@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 
@@ -81,7 +82,7 @@ public class Encoder implements Serializable  {
         // Utiliser la matrice d'embeddings pré-entraînée pour récupérer les embeddings correspondants aux IDs de tokens
         int maxSeqLength = tokenIds.size();
         int dModel = layers.get(0).selfAttention.getdModel();
-        INDArray embeddings = Nd4j.zeros(maxSeqLength, dModel);
+        INDArray embeddings = Nd4j.zeros(DataType.FLOAT, maxSeqLength, dModel);
 
         for (int i = 0; i < tokenIds.size(); i++) {
             int tokenId = tokenIds.get(i) - 1;

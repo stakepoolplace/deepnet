@@ -29,8 +29,8 @@ public class LayerNorm extends Layer implements Serializable {
      */
     public LayerNorm(int dModel) {
         // Initialisation de gamma à des uns et de beta à des zéros avec la forme [1, dModel]
-        gamma = Nd4j.ones(DataType.DOUBLE, 1, dModel); // [1, dModel]
-        beta = Nd4j.zeros(DataType.DOUBLE, 1, dModel); // [1, dModel]
+        gamma = Nd4j.ones(DataType.FLOAT, 1, dModel); // [1, dModel]
+        beta = Nd4j.zeros(DataType.FLOAT, 1, dModel); // [1, dModel]
     }
 
     /**

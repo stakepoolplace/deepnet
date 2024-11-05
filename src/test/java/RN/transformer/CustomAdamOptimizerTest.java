@@ -2,10 +2,12 @@ package RN.transformer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 
@@ -16,22 +18,21 @@ public class CustomAdamOptimizerTest {
     private List<INDArray> gradients;
     private final double initialLr = 0.001;
     private final int warmupSteps = 1000;
-    private final int modelSize = 512;
-    
+    private final int dModel = 512;
     
 
     @Before
     public void setUp() {
-        // Initialiser directement le nombre total de paramètres basé sur ce que vous allez ajouter à 'parameters'
-        int numberOfParameters = 2; // Par exemple, si vous savez que vous ajouterez un INDArray avec 2 éléments
 
-        optimizer = new CustomAdamOptimizer(initialLr, modelSize, warmupSteps, numberOfParameters);
         
         // Ensuite, initialiser 'parameters' avec les valeurs de test
         parameters = new ArrayList<>();
         parameters.add(Nd4j.create(new float[]{0.1f, -0.2f}, new int[]{1, 2}));
         gradients = new ArrayList<>();
         gradients.add(Nd4j.create(new float[]{0.01f, -0.01f}, new int[]{1, 2}));
+        
+        optimizer = new CustomAdamOptimizer(initialLr, dModel, warmupSteps, parameters);
+
     }
 
 

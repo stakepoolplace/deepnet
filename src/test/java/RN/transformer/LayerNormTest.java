@@ -18,18 +18,18 @@ public class LayerNormTest {
         LayerNorm layerNorm = new LayerNorm(dModel);
 
         // Entrée fictive
-        INDArray input = Nd4j.create(new double[][]{
-            {1.0, 2.0, 3.0},
-            {4.0, 5.0, 6.0}
+        INDArray input = Nd4j.create(new float[][]{
+            {1.0f, 2.0f, 3.0f},
+            {4.0f, 5.0f, 6.0f}
         });
 
         // Passe forward
         INDArray output = layerNorm.forward(input);
 
         // Création d'un gradOutput fictif
-        INDArray gradOutput = Nd4j.create(new double[][]{
-            {0.1, 0.2, 0.3},
-            {0.4, 0.5, 0.6}
+        INDArray gradOutput = Nd4j.create(new float[][]{
+            {0.1f, 0.2f, 0.3f},
+            {0.4f, 0.5f, 0.6f}
         });
 
         // Passe backward

@@ -6,335 +6,385 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.indexing.NDArrayIndex;
 import org.nd4j.linalg.ops.transforms.Transforms;
+
+import RN.utils.NDArrayUtils;
 
 public class MultiHeadAttention implements Serializable {
 
-	/**
-	 * 
-	 */
-	private static final long serialVersionUID = -7153801764592720027L;
-	private int dModel;
-	private int numHeads;
-	private int depth;
-	private INDArray inputQ, inputK, inputV; // Inputs cachés pour le backward
-	private INDArray Wq, Wk, Wv, Wo; // Poids pour les requêtes, clés, valeurs et sortie
-	private INDArray attentionWeights; // Poids d'attention cachés pour le backward
-	private INDArray attentionOutput;
-	private Map<String, INDArray> gradients = new HashMap<>();
-
-	public MultiHeadAttention(int dModel, int numHeads) {
-		if (dModel % numHeads != 0) {
-			throw new IllegalArgumentException("dModel must be divisible by numHeads");
-		}
-		this.dModel = dModel;
-		this.numHeads = numHeads;
-		this.depth = dModel / numHeads;
-		// Initialisation des poids. Les dimensions réelles dépendent de l'architecture
-		// spécifique.
-		Wq = Nd4j.rand(dModel, numHeads * depth);
-		Wk = Nd4j.rand(dModel, numHeads * depth);
-		Wv = Nd4j.rand(dModel, numHeads * depth);
-		Wo = Nd4j.rand(dModel, dModel);
-	}
-
-	public INDArray forward(INDArray query, INDArray key, INDArray value, INDArray mask) {
-		// Cacher les inputs pour une utilisation dans backward
-		this.inputQ = query.dup();
-		this.inputK = key.dup();
-		this.inputV = value.dup();
-
-		// Trouver la longueur maximale des séquences dans le lot
-		int sequenceLength = (int) Math.max(query.shape()[0], Math.max(key.shape()[0], value.shape()[0]));
-
-		// Remplir (padding) les séquences plus courtes avec des zéros (si nécessaire)
-		query = padSequence(query, sequenceLength);
-		key = padSequence(key, sequenceLength);
-		value = padSequence(value, sequenceLength);
-
-		// Projection linéaire des requêtes, clés et valeurs
-		INDArray q = query.mmul(Wq).reshape(sequenceLength, numHeads, depth).permute(1, 0, 2); // [numHeads, seqLength,
-																								// depth]
-		INDArray k = key.mmul(Wk).reshape(sequenceLength, numHeads, depth).permute(1, 0, 2); // [numHeads, seqLength,
-																								// depth]
-		INDArray v = value.mmul(Wv).reshape(sequenceLength, numHeads, depth).permute(1, 0, 2); // [numHeads, seqLength,
-																								// depth]
-
-		// Transposer k pour obtenir [numHeads, depth, seqLength]
-		k = k.permute(0, 2, 1);
-
-		// Calcul des scores d'attention (produit matriciel Q x K^T)
-		INDArray attentionScores = Nd4j.matmul(q, k).div(Math.sqrt(depth)); // [numHeads, seqLength, seqLength]
-
-		// Application du masque, si fourni
-		if (mask != null) {
-			attentionScores.addi(mask); // Masque les scores non pertinents
-		}
-
-		// Calcul des poids d'attention avec softmax
-		INDArray attentionWeights = Transforms.softmax(attentionScores);
-		this.attentionWeights = attentionWeights;
-
-		// Calcul de l'output avec V
-		INDArray attentionOutput = Nd4j.matmul(attentionWeights, v); // [numHeads, seqLength, depth]
-
-		// Permutation et reshape pour combiner les têtes
-		this.attentionOutput = attentionOutput.permute(1, 0, 2) // [seqLength, numHeads, depth]
-				.reshape(sequenceLength, numHeads * depth); // [seqLength, numHeads * depth]
-
-		// Appliquer Wo pour la transformation linéaire finale
-		return this.attentionOutput.mmul(Wo); // [seqLength, dModel]
-	}
-
-	private INDArray padSequence(INDArray sequence, int maxSeqLength) {
-		int batchSize = (int) sequence.shape()[0];
-		int seqLength = (int) sequence.shape()[1];
-
-		if (seqLength < maxSeqLength) {
-			INDArray paddingTensor = Nd4j.zeros(batchSize, maxSeqLength - seqLength, dModel);
-			sequence = Nd4j.hstack(sequence, paddingTensor);
-		}
-
-		return sequence;
-	}
-
-	public Map<String, INDArray> backward(INDArray gradOutput) {
-	    if (this.attentionOutput == null) {
-	        throw new IllegalStateException("attentionOutput est null. Assurez-vous d'appeler la méthode forward avant backward.");
-	    }
-
-	    // 1. Définir les variables nécessaires
-	    int seqLength = (int) attentionOutput.shape()[0];
-	    int numHeads = this.numHeads;
-	    int depth = this.depth;
-
-	    // 2. Calcul du gradient par rapport à Wo
-	    INDArray gradWo = attentionOutput.transpose().mmul(gradOutput); // [numHeads * depth, dModel]
-	    gradients.put("Wo", gradWo);
-
-	    // 3. Calcul du gradient par rapport à attentionOutput
-	    INDArray gradAttentionOutput = gradOutput.mmul(Wo.transpose()); // [seqLength, numHeads * depth]
-
-	    // 4. Reshape gradAttentionOutput de [seqLength, numHeads * depth] à [numHeads, seqLength, depth]
-	    INDArray gradAttentionOutputReshaped = gradAttentionOutput.reshape(numHeads, seqLength, depth); // [numHeads, seqLength, depth]
-
-	    // 5. Calcul de gradV = attentionWeights [numHeads, seqLength, seqLength] mmul gradAttentionOutputReshaped [numHeads, seqLength, depth] = [numHeads, seqLength, depth]
-	    INDArray gradV = Nd4j.create(numHeads, seqLength, depth); // [numHeads, seqLength, depth]
-	    for (int h = 0; h < numHeads; h++) {
-	        // Remplacer getRow par slice
-	        INDArray attentionWeightsHead = attentionWeights.slice(h); // [seqLength, seqLength]
-	        
-	        // Remplacer getRow par slice
-	        INDArray gradAttentionOutputHead = gradAttentionOutputReshaped.slice(h); // [seqLength, depth]
-	        
-	        // Multiplication matricielle : [seqLength, seqLength] mmul [seqLength, depth] = [seqLength, depth]
-	        INDArray gradVHead = attentionWeightsHead.mmul(gradAttentionOutputHead); // [seqLength, depth]
-	        
-	        // Remplacer putRow par putSlice
-	        gradV.putSlice(h, gradVHead); // Assigner gradVHead à gradV[h]
-	    }
-
-	    // 6. Reshape gradV de [numHeads, seqLength, depth] à [seqLength, numHeads * depth]
-	    INDArray gradVReshaped = gradV.reshape(seqLength, numHeads * depth); // [seqLength, numHeads * depth]
-
-	    // 7. Calcul de gradWv
-	    INDArray gradWv = inputV.transpose().mmul(gradVReshaped); // [dModel, numHeads * depth]
-	    gradients.put("Wv", gradWv);
-
-	    // 8. Reshape V de [seqLength, numHeads * depth] à [numHeads, seqLength, depth]
-	    INDArray V = inputV.mmul(Wv); // [seqLength, numHeads * depth]
-	    INDArray VReshaped = V.reshape(numHeads, seqLength, depth); // [numHeads, seqLength, depth]
-
-	    // 9. Calcul de gradScores = gradAttentionOutputReshaped [numHeads, seqLength, depth] mmul VReshaped.transpose() [numHeads, depth, seqLength] = [numHeads, seqLength, seqLength]
-	    INDArray gradScores = Nd4j.create(numHeads, seqLength, seqLength); // [numHeads, seqLength, seqLength]
-	    for (int h = 0; h < numHeads; h++) {
-	        // VReshaped[h].transpose() : [depth, seqLength]
-	        INDArray VhT = VReshaped.slice(h).transpose(); // [depth, seqLength]
-
-	        // gradAttentionOutputReshaped[h] : [seqLength, depth]
-	        INDArray gradAttentionOutputHead = gradAttentionOutputReshaped.slice(h); // [seqLength, depth]
-
-	        // Calcul de gradScores[h] : [seqLength, depth] mmul [depth, seqLength] = [seqLength, seqLength]
-	        INDArray gradScoresHead = gradAttentionOutputHead.mmul(VhT); // [seqLength, seqLength]
-
-	        // Remplacer putRow par putSlice
-	        gradScores.putSlice(h, gradScoresHead); // Assigner gradScoresHead à gradScores[h]
-	    }
-
-	    // 10. Calcul du gradient de la softmax
-	    INDArray gradAttentionScoresFinal = softmaxGrad(attentionWeights, gradScores); // [numHeads, seqLength, seqLength]
-
-	    // 11. Calcul de Q : [seqLength, numHeads * depth] = [seqLength, numHeads * depth]
-	    INDArray Q = inputQ.mmul(Wq); // [seqLength, numHeads * depth]
-	    INDArray QReshaped = Q.reshape(numHeads, seqLength, depth); // [numHeads, seqLength, depth]
-
-	    // 12. Calcul de gradQ = gradScoresFinal [numHeads, seqLength, seqLength] mmul (inputK * Wk) [numHeads, seqLength, depth] = [numHeads, seqLength, depth]
-	    INDArray inputK_proj = inputK.mmul(Wk); // [seqLength, numHeads * depth]
-	    INDArray inputK_projReshaped = inputK_proj.reshape(numHeads, seqLength, depth); // [numHeads, seqLength, depth]
-	    INDArray gradQ_full = Nd4j.create(numHeads, seqLength, depth); // [numHeads, seqLength, depth]
-	    for (int h = 0; h < numHeads; h++) {
-	        // gradAttentionScoresFinal[h] : [seqLength, seqLength]
-	        INDArray gradScoresHead = gradAttentionScoresFinal.slice(h); // [seqLength, seqLength]
-	        
-	        // inputK_projReshaped[h] : [seqLength, depth]
-	        INDArray inputK_projHead = inputK_projReshaped.slice(h); // [seqLength, depth]
-	        
-	        // Calcul de gradQ_full[h] : [seqLength, depth] = [seqLength, seqLength] mmul [seqLength, depth]
-	        INDArray gradQHead = gradScoresHead.mmul(inputK_projHead); // [seqLength, depth]
-	        
-	        // Remplacer putRow par putSlice
-	        gradQ_full.putSlice(h, gradQHead); // Assigner gradQHead à gradQ_full[h]
-	    }
-
-	    // Reshape gradQ_full de [numHeads, seqLength, depth] à [seqLength, numHeads * depth]
-	    INDArray gradQReshaped = gradQ_full.reshape(seqLength, numHeads * depth); // [seqLength, numHeads * depth]
-
-	    // 13. Calcul de gradK = gradScoresFinal.transpose() [numHeads, seqLength, seqLength] mmul Q [numHeads, seqLength, depth] = [numHeads, seqLength, depth]
-	    INDArray gradK_full = Nd4j.create(numHeads, seqLength, depth); // [numHeads, seqLength, depth]
-	    for (int h = 0; h < numHeads; h++) {
-	        // gradAttentionScoresFinal[h].transpose() : [seqLength, seqLength]
-	        INDArray gradScoresHeadTrans = gradAttentionScoresFinal.slice(h).transpose(); // [seqLength, seqLength]
-	        
-	        // QReshaped[h] : [seqLength, depth]
-	        INDArray QHead = QReshaped.slice(h); // [seqLength, depth]
-	        
-	        // Calcul de gradK_full[h] : [seqLength, depth] = [seqLength, seqLength] mmul [seqLength, depth]
-	        INDArray gradKHead = gradScoresHeadTrans.mmul(QHead); // [seqLength, depth]
-	        
-	        // Remplacer putRow par putSlice
-	        gradK_full.putSlice(h, gradKHead); // Assigner gradKHead à gradK_full[h]
-	    }
-
-	    // Reshape gradK_full de [numHeads, seqLength, depth] à [seqLength, numHeads * depth]
-	    INDArray gradKReshaped = gradK_full.reshape(seqLength, numHeads * depth); // [seqLength, numHeads * depth]
-
-	    // 14. Calcul de gradWq et gradWk
-	    INDArray gradWq = inputQ.transpose().mmul(gradQReshaped); // [dModel, numHeads * depth]
-	    INDArray gradWk = inputK.transpose().mmul(gradKReshaped); // [dModel, numHeads * depth]
-	    gradients.put("Wq", gradWq);
-	    gradients.put("Wk", gradWk);
-
-	    // 15. Calcul des gradients par rapport aux entrées Q, K, V
-	    INDArray gradInputQ = gradQReshaped.mmul(Wq.transpose()); // [seqLength, dModel]
-	    INDArray gradInputK = gradKReshaped.mmul(Wk.transpose()); // [seqLength, dModel]
-	    INDArray gradInputV = gradVReshaped.mmul(Wv.transpose()); // [seqLength, dModel]
-
-	    // Ajouter les gradients spécifiques
-	    gradients.put("inputQ", gradInputQ);
-	    gradients.put("inputK", gradInputK);
-	    gradients.put("inputV", gradInputV);
-
-	    // 16. Calcul du gradient à propager vers les couches précédentes
-	    INDArray gradInput = gradInputQ.add(gradInputK).add(gradInputV); // [seqLength, dModel]
-	    gradients.put("input", gradInput);
-
-	    return gradients;
-	}
-
-
-	/**
-	 * Calcule le gradient de la softmax.
-	 *
-	 * @param softmax Résultats de la softmax de forme [numHeads, seqLength, seqLength]
-	 * @param gradA   Gradients provenant de la couche suivante de la même forme que softmax
-	 * @return Gradient par rapport aux scores d'attention de la même forme que softmax
-	 */
-	private INDArray softmaxGrad(INDArray softmax, INDArray gradA) {
-	    // softmax: [numHeads, seqLength, seqLength]
-	    // gradA: [numHeads, seqLength, seqLength]
-
-	    // Calcul de dL/dS = softmax * (gradA - sum(gradA * softmax, axis=2, keepdims=true))
-	    // ND4J M2.1 ne supporte pas directement les opérations sur les axes multiples, donc effectuer itération manuelle
-
-	    INDArray gradS = Nd4j.create(softmax.shape());
-
-	    int numHeads = (int) softmax.shape()[0];
-	    int seqLength = (int) softmax.shape()[1];
-	    int seqLength2 = (int) softmax.shape()[2];
-
-	    for (int h = 0; h < numHeads; h++) {
-	        for (int i = 0; i < seqLength; i++) {
-	            double sum = 0.0;
-	            for (int j = 0; j < seqLength2; j++) {
-	                sum += softmax.getDouble(h, i, j) * gradA.getDouble(h, i, j);
-	            }
-	            for (int j = 0; j < seqLength2; j++) {
-	                double grad = softmax.getDouble(h, i, j) * (gradA.getDouble(h, i, j) - sum);
-	                gradS.putScalar(new int[]{h, i, j}, grad);
-	            }
-	        }
-	    }
-
-	    return gradS;
-	}
-
-
-	public List<INDArray> getParameters() {
-		// Retourner les matrices de poids comme une liste d'INDArray
-		return Arrays.asList(Wq, Wk, Wv, Wo);
-	}
-
-	public List<INDArray> getGradients() {
-		return Arrays.asList(gradients.get("Wq"), gradients.get("Wk"), gradients.get("Wv"), gradients.get("Wo"));
-	}
-
-	public long getNumberOfParameters() {
-		return Wq.length() + Wk.length() + Wv.length() + Wo.length();
-	}
-
-	public long getNumberOfGradients() {
-		return gradients.get("Wq").length() + gradients.get("Wk").length() + gradients.get("Wv").length()
-				+ gradients.get("Wo").length();
-	}
-
-	public int getdModel() {
-		return dModel;
-	}
-
-	public void setdModel(int dModel) {
-		this.dModel = dModel;
-	}
-
-	public int getNumHeads() {
-		return numHeads;
-	}
-
-	public void setNumHeads(int numHeads) {
-		this.numHeads = numHeads;
-	}
-
-	public INDArray getWq() {
-		return Wq;
-	}
-
-	public void setWq(INDArray wq) {
-		Wq = wq;
-	}
-
-	public INDArray getWk() {
-		return Wk;
-	}
-
-	public void setWk(INDArray wk) {
-		Wk = wk;
-	}
-
-	public INDArray getWv() {
-		return Wv;
-	}
-
-	public void setWv(INDArray wv) {
-		Wv = wv;
-	}
-
-	public INDArray getWo() {
-		return Wo;
-	}
-
-	public void setWo(INDArray wo) {
-		Wo = wo;
-	}
-
+    private static final long serialVersionUID = -7153801764592720027L;
+    private int dModel;
+    private int numHeads;
+    private int depth;
+    private INDArray inputQ, inputK, inputV; // Cached inputs for backward
+    private INDArray Q, K, V; // Intermediate projections
+    private INDArray Wq, Wk, Wv, Wo; // Weights for queries, keys, values, and output
+    private INDArray attentionWeights; // Cached attention weights for backward
+    private INDArray attentionOutput; // [batchSize * seqLength, numHeads * depth]
+    private Map<String, INDArray> gradients = new HashMap<>();
+
+    public MultiHeadAttention(int dModel, int numHeads) {
+        if (dModel % numHeads != 0) {
+            throw new IllegalArgumentException("dModel must be divisible by numHeads");
+        }
+        this.dModel = dModel;
+        this.numHeads = numHeads;
+        this.depth = dModel / numHeads;
+        // Initialize weights with appropriate normalization
+        Wq = Nd4j.randn(DataType.FLOAT, dModel, numHeads * depth).div(Math.sqrt(dModel));
+        Wk = Nd4j.randn(DataType.FLOAT, dModel, numHeads * depth).div(Math.sqrt(dModel));
+        Wv = Nd4j.randn(DataType.FLOAT, dModel, numHeads * depth).div(Math.sqrt(dModel));
+        Wo = Nd4j.randn(DataType.FLOAT, numHeads * depth, dModel).div(Math.sqrt(numHeads * depth));
+    }
+
+    /**
+     * Forward pass of multi-head attention.
+     *
+     * @param query Input queries of shape [batchSize, seqLength, dModel]
+     * @param key   Input keys of shape [batchSize, seqLength, dModel]
+     * @param value Input values of shape [batchSize, seqLength, dModel]
+     * @param mask  Padding mask of shape [batchSize, 1, 1, seqLength]
+     * @return Output of shape [batchSize, seqLength, dModel]
+     */
+    public INDArray forward(INDArray query, INDArray key, INDArray value, INDArray mask) {
+        // Cache inputs for backward
+        this.inputQ = query.dup();
+        this.inputK = key.dup();
+        this.inputV = value.dup();
+
+        // Determine batch size and sequence length
+        int batchSize = (int) query.shape()[0];
+        int seqLength = (int) query.shape()[1];
+
+        // Linear projections
+        Q = query.reshape(batchSize * seqLength, dModel).mmul(Wq) // [batchSize * seqLength, numHeads * depth]
+                 .reshape(batchSize, seqLength, numHeads, depth) // [batchSize, seqLength, numHeads, depth]
+                 .permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength, depth]
+
+        K = key.reshape(batchSize * seqLength, dModel).mmul(Wk) // [batchSize * seqLength, numHeads * depth]
+               .reshape(batchSize, seqLength, numHeads, depth) // [batchSize, seqLength, numHeads, depth]
+               .permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength, depth]
+
+        V = value.reshape(batchSize * seqLength, dModel).mmul(Wv) // [batchSize * seqLength, numHeads * depth]
+                 .reshape(batchSize, seqLength, numHeads, depth) // [batchSize, seqLength, numHeads, depth]
+                 .permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength, depth]
+
+        // Transpose K for attention score computation
+        INDArray kTranspose = K.permute(0, 1, 3, 2); // [batchSize, numHeads, depth, seqLength]
+
+        // Compute attention scores
+        INDArray attentionScores = Nd4j.matmul(Q, kTranspose).div(Math.sqrt(depth)); // [batchSize, numHeads, seqLength, seqLength]
+
+        // Apply mask if provided
+        if (mask != null) {
+            attentionScores.addi(mask); // Mask irrelevant scores
+        }
+
+        // Compute attention weights using softmax on the last dimension
+        attentionWeights = NDArrayUtils.softmax(attentionScores, -1); // [batchSize, numHeads, seqLength, seqLength]
+
+        // Compute attention output
+        INDArray attentionOutputND = Nd4j.matmul(attentionWeights, V); // [batchSize, numHeads, seqLength, depth]
+
+        // Permute and reshape to combine heads
+        INDArray reshapedAttentionOutput = attentionOutputND.permute(0, 2, 1, 3) // [batchSize, seqLength, numHeads, depth]
+                                                      .reshape(batchSize * seqLength, numHeads * depth); // [batchSize * seqLength, numHeads * depth]
+        this.attentionOutput = reshapedAttentionOutput; // Cache for backward
+
+        // Final linear projection
+        INDArray finalOutput = reshapedAttentionOutput.mmul(Wo).reshape(batchSize, seqLength, dModel); // [batchSize, seqLength, dModel]
+        System.out.println("Shape of Final Output: " + finalOutput.shapeInfoToString());
+
+        return finalOutput; // [batchSize, seqLength, dModel]
+    }
+
+    /**
+     * Backward pass of multi-head attention.
+     *
+     * @param gradOutput Gradient of the loss with respect to the output [batchSize, seqLength, dModel]
+     * @return Gradients with respect to parameters and inputs
+     */
+    public Map<String, INDArray> backward(INDArray gradOutput) {
+        if (this.attentionOutput == null || this.Q == null || this.K == null || this.V == null) {
+            throw new IllegalStateException("Necessary variables (attentionOutput, Q, K, V) are not initialized. Ensure forward pass is called before backward.");
+        }
+
+        Map<String, INDArray> gradients = new HashMap<>();
+
+        // Dimensions
+        int batchSize = (int) gradOutput.shape()[0];
+        int seqLength = (int) gradOutput.shape()[1];
+        int dModel = this.dModel;
+        int numHeads = this.numHeads;
+        int depth = this.depth;
+
+        // Step 1: Reshape gradOutput from [batchSize, seqLength, dModel] to [batchSize * seqLength, dModel]
+        INDArray gradOutputReshaped = gradOutput.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength, dModel]
+        System.out.println("gradOutputReshaped shape: " + gradOutputReshaped.shapeInfoToString());
+
+        // Step 2: Compute gradWo = attentionOutput^T [numHeads * depth, batchSize * seqLength] mmul gradOutputReshaped [batchSize * seqLength, dModel] = [numHeads * depth, dModel]
+        INDArray gradWo = this.attentionOutput.transpose().mmul(gradOutputReshaped); // [numHeads * depth, dModel]
+        gradients.put("Wo", gradWo);
+        System.out.println("Gradient Wo shape: " + gradWo.shapeInfoToString());
+
+        // Step 3: Compute gradAttentionOutputReshaped = gradOutputReshaped [batchSize * seqLength, dModel] mmul Wo^T [dModel, numHeads * depth] = [batchSize * seqLength, numHeads * depth]
+        INDArray gradAttentionOutputReshaped = gradOutputReshaped.mmul(Wo.transpose()); // [batchSize * seqLength, numHeads * depth]
+        System.out.println("gradAttentionOutputReshaped shape: " + gradAttentionOutputReshaped.shapeInfoToString());
+
+        // Step 4: Reshape gradAttentionOutputReshaped from [batchSize * seqLength, numHeads * depth] to [batchSize, seqLength, numHeads, depth]
+        INDArray gradAttentionOutput = gradAttentionOutputReshaped.reshape(batchSize, seqLength, numHeads, depth); // [batchSize, seqLength, numHeads, depth]
+        System.out.println("gradAttentionOutput shape: " + gradAttentionOutput.shapeInfoToString());
+
+        // Step 5: Permute to [batchSize, numHeads, seqLength, depth]
+        gradAttentionOutput = gradAttentionOutput.permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength, depth]
+        System.out.println("gradAttentionOutput permuted shape: " + gradAttentionOutput.shapeInfoToString());
+
+        // Step 6: Compute gradV = attentionWeights [batchSize, numHeads, seqLength, seqLength] mmul gradAttentionOutput [batchSize, numHeads, seqLength, depth] = [batchSize, numHeads, seqLength, depth]
+        INDArray gradV = Nd4j.create(DataType.FLOAT, batchSize, numHeads, seqLength, depth); // [batchSize, numHeads, seqLength, depth]
+        for (int b = 0; b < batchSize; b++) {
+            for (int h = 0; h < numHeads; h++) {
+                INDArray attentionWeightsHead = this.attentionWeights.get(
+                    NDArrayIndex.point(b),
+                    NDArrayIndex.point(h),
+                    NDArrayIndex.all(),
+                    NDArrayIndex.all()
+                ).reshape(seqLength, seqLength); // [seqLength, seqLength]
+                INDArray gradAttentionOutputHead = gradAttentionOutput.get(
+                    NDArrayIndex.point(b),
+                    NDArrayIndex.point(h),
+                    NDArrayIndex.all(),
+                    NDArrayIndex.all()
+                ).reshape(seqLength, depth); // [seqLength, depth]
+                INDArray gradVHead = attentionWeightsHead.mmul(gradAttentionOutputHead); // [seqLength, depth]
+                // Use assign instead of put to assign the entire sub-array
+                gradV.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all()).assign(gradVHead); // [b, h, :, :]
+            }
+        }
+        System.out.println("gradV shape: " + gradV.shapeInfoToString());
+
+        // Step 7: Reshape gradV from [batchSize, numHeads, seqLength, depth] to [batchSize * seqLength, numHeads * depth]
+        INDArray gradVReshaped = gradV.permute(0, 2, 1, 3).reshape(batchSize * seqLength, numHeads * depth); // [batchSize * seqLength, numHeads * depth]
+        System.out.println("gradVReshaped shape: " + gradVReshaped.shapeInfoToString());
+
+        // Step 8: Compute gradWv = inputV^T [dModel, batchSize * seqLength] mmul gradVReshaped [batchSize * seqLength, numHeads * depth] = [dModel, numHeads * depth]
+        INDArray inputVReshaped = this.inputV.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength, dModel]
+        INDArray gradWv = inputVReshaped.transpose().mmul(gradVReshaped); // [dModel, numHeads * depth]
+        gradients.put("Wv", gradWv);
+        System.out.println("Gradient Wv shape: " + gradWv.shapeInfoToString());
+
+        // Step 9: Compute gradScores = gradAttentionOutput [batchSize, numHeads, seqLength, depth] mmul V^T [batchSize, numHeads, depth, seqLength] = [batchSize, numHeads, seqLength, seqLength]
+        INDArray gradScores = Nd4j.create(DataType.FLOAT, batchSize, numHeads, seqLength, seqLength); // [batchSize, numHeads, seqLength, seqLength]
+        for (int b = 0; b < batchSize; b++) {
+            for (int h = 0; h < numHeads; h++) {
+                INDArray gradAttentionOutputHead = gradAttentionOutput.get(
+                    NDArrayIndex.point(b),
+                    NDArrayIndex.point(h),
+                    NDArrayIndex.all(),
+                    NDArrayIndex.all()
+                ).reshape(seqLength, depth); // [seqLength, depth]
+                // Correctly transpose VHeadT to [depth, seqLength]
+                INDArray VHeadT = this.V.get(
+                    NDArrayIndex.point(b),
+                    NDArrayIndex.point(h),
+                    NDArrayIndex.all(),
+                    NDArrayIndex.all()
+                ).reshape(depth, seqLength); // [depth, seqLength]
+                INDArray gradScoresHead = gradAttentionOutputHead.mmul(VHeadT).div(Math.sqrt(depth)); // [seqLength, seqLength]
+                // Use assign instead of put to assign the entire sub-array
+                gradScores.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all()).assign(gradScoresHead); // [b, h, :, :]
+            }
+        }
+        System.out.println("gradScores shape: " + gradScores.shapeInfoToString());
+
+        // Step 10: Compute gradAttentionScoresFinal = softmaxGrad(attentionWeights, gradScores)
+        INDArray gradAttentionScoresFinal = softmaxGrad(this.attentionWeights, gradScores); // [batchSize, numHeads, seqLength, seqLength]
+        gradients.put("attentionScores", gradAttentionScoresFinal);
+        System.out.println("gradAttentionScoresFinal shape: " + gradAttentionScoresFinal.shapeInfoToString());
+
+        // Step 11: Compute gradQ = gradAttentionScoresFinal [batchSize, numHeads, seqLength, seqLength] mmul K [batchSize, numHeads, seqLength, depth] = [batchSize, numHeads, seqLength, depth]
+        INDArray gradQ = Nd4j.create(DataType.FLOAT, batchSize, numHeads, seqLength, depth); // [batchSize, numHeads, seqLength, depth]
+        for (int b = 0; b < batchSize; b++) {
+            for (int h = 0; h < numHeads; h++) {
+                INDArray gradScoresHead = gradAttentionScoresFinal.get(
+                    NDArrayIndex.point(b),
+                    NDArrayIndex.point(h),
+                    NDArrayIndex.all(),
+                    NDArrayIndex.all()
+                ).reshape(seqLength, seqLength); // [seqLength, seqLength]
+                INDArray KHead = this.K.get(
+                    NDArrayIndex.point(b),
+                    NDArrayIndex.point(h),
+                    NDArrayIndex.all(),
+                    NDArrayIndex.all()
+                ).reshape(seqLength, depth); // [seqLength, depth]
+                INDArray gradQHead = gradScoresHead.mmul(KHead); // [seqLength, depth]
+                // Use assign instead of put to assign the entire sub-array
+                gradQ.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all()).assign(gradQHead); // [b, h, :, :]
+            }
+        }
+        System.out.println("gradQ shape: " + gradQ.shapeInfoToString());
+
+        // Step 12: Reshape gradQ from [batchSize, numHeads, seqLength, depth] to [batchSize * seqLength, numHeads * depth]
+        INDArray gradQReshaped = gradQ.permute(0, 2, 1, 3).reshape(batchSize * seqLength, numHeads * depth); // [batchSize * seqLength, numHeads * depth]
+        System.out.println("gradQReshaped shape: " + gradQReshaped.shapeInfoToString());
+
+        // Step 13: Compute gradWq = inputQ^T [dModel, batchSize * seqLength] mmul gradQReshaped [batchSize * seqLength, numHeads * depth] = [dModel, numHeads * depth]
+        INDArray inputQReshaped = this.inputQ.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength, dModel]
+        INDArray gradWq = inputQReshaped.transpose().mmul(gradQReshaped); // [dModel, numHeads * depth]
+        gradients.put("Wq", gradWq);
+        System.out.println("Gradient Wq shape: " + gradWq.shapeInfoToString());
+
+        // Step 14: Compute gradK = gradAttentionScoresFinal [batchSize, numHeads, seqLength, seqLength] mmul Q [batchSize, numHeads, seqLength, depth] = [batchSize, numHeads, seqLength, depth]
+        INDArray gradK = Nd4j.create(DataType.FLOAT, batchSize, numHeads, seqLength, depth); // [batchSize, numHeads, seqLength, depth]
+        for (int b = 0; b < batchSize; b++) {
+            for (int h = 0; h < numHeads; h++) {
+                INDArray gradScoresHeadTrans = gradAttentionScoresFinal.get(
+                    NDArrayIndex.point(b),
+                    NDArrayIndex.point(h),
+                    NDArrayIndex.all(),
+                    NDArrayIndex.all()
+                ).reshape(seqLength, seqLength).transpose(); // [seqLength, seqLength]
+                INDArray QHead = this.Q.get(
+                    NDArrayIndex.point(b),
+                    NDArrayIndex.point(h),
+                    NDArrayIndex.all(),
+                    NDArrayIndex.all()
+                ).reshape(seqLength, depth); // [seqLength, depth]
+                INDArray gradKHead = gradScoresHeadTrans.mmul(QHead); // [seqLength, depth]
+                // Use assign instead of put to assign the entire sub-array
+                gradK.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all()).assign(gradKHead); // [b, h, :, :]
+            }
+        }
+        System.out.println("gradK shape: " + gradK.shapeInfoToString());
+
+        // Step 15: Reshape gradK from [batchSize, numHeads, seqLength, depth] to [batchSize * seqLength, numHeads * depth]
+        INDArray gradKReshaped = gradK.permute(0, 2, 1, 3).reshape(batchSize * seqLength, numHeads * depth); // [batchSize * seqLength, numHeads * depth]
+        System.out.println("gradKReshaped shape: " + gradKReshaped.shapeInfoToString());
+
+        // Step 16: Compute gradWk = inputK^T [dModel, batchSize * seqLength] mmul gradKReshaped [batchSize * seqLength, numHeads * depth] = [dModel, numHeads * depth]
+        INDArray inputKReshaped = this.inputK.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength, dModel]
+        INDArray gradWk = inputKReshaped.transpose().mmul(gradKReshaped); // [dModel, numHeads * depth]
+        gradients.put("Wk", gradWk);
+        System.out.println("Gradient Wk shape: " + gradWk.shapeInfoToString());
+
+        // Step 17: Compute gradInputQ = gradQReshaped [batchSize * seqLength, numHeads * depth] mmul Wq^T [numHeads * depth, dModel] = [batchSize * seqLength, dModel]
+        INDArray gradInputQ = gradQReshaped.mmul(Wq.transpose()); // [batchSize * seqLength, dModel]
+        gradInputQ = gradInputQ.reshape(batchSize, seqLength, dModel); // [batchSize, seqLength, dModel]
+        gradients.put("inputQ", gradInputQ);
+        System.out.println("gradInputQ shape: " + gradInputQ.shapeInfoToString());
+
+        // Step 18: Compute gradInputK = gradKReshaped [batchSize * seqLength, numHeads * depth] mmul Wk^T [numHeads * depth, dModel] = [batchSize * seqLength, dModel]
+        INDArray gradInputK = gradKReshaped.mmul(Wk.transpose()); // [batchSize * seqLength, dModel]
+        gradInputK = gradInputK.reshape(batchSize, seqLength, dModel); // [batchSize, seqLength, dModel]
+        gradients.put("inputK", gradInputK);
+        System.out.println("gradInputK shape: " + gradInputK.shapeInfoToString());
+
+        // Step 19: Compute gradInputV = gradVReshaped [batchSize * seqLength, numHeads * depth] mmul Wv^T [numHeads * depth, dModel] = [batchSize * seqLength, dModel]
+        INDArray gradInputV = gradVReshaped.mmul(Wv.transpose()); // [batchSize * seqLength, dModel]
+        gradInputV = gradInputV.reshape(batchSize, seqLength, dModel); // [batchSize, seqLength, dModel]
+        gradients.put("inputV", gradInputV);
+        System.out.println("gradInputV shape: " + gradInputV.shapeInfoToString());
+
+        // Step 20: Compute gradInput = gradInputQ + gradInputK + gradInputV
+        INDArray gradInput = gradInputQ.add(gradInputK).add(gradInputV); // [batchSize, seqLength, dModel]
+        gradients.put("input", gradInput);
+        System.out.println("gradInput shape: " + gradInput.shapeInfoToString());
+
+        return gradients;
+    }
+
+    /**
+     * Computes the gradient of the softmax.
+     *
+     * @param softmax Softmax results of shape [batchSize, numHeads, seqLength, seqLength]
+     * @param gradA   Gradients from the next layer of the same shape as softmax
+     * @return Gradient with respect to the attention scores of the same shape as softmax
+     */
+    private INDArray softmaxGrad(INDArray softmax, INDArray gradA) {
+        // softmax: [batchSize, numHeads, seqLength, seqLength]
+        // gradA: [batchSize, numHeads, seqLength, seqLength]
+
+        // Compute dL/dS = softmax * (gradA - sum(gradA * softmax, axis=3, keepdims=true))
+        // ND4J does not support keepdims directly, so handle it manually
+
+        // Compute sum(gradA * softmax, axis=3, keepdims=true)
+        INDArray sum = softmax.mul(gradA).sum(3).reshape(softmax.shape()[0], softmax.shape()[1], softmax.shape()[2], 1); // [batchSize, numHeads, seqLength, 1]
+
+        // Compute gradS = softmax * (gradA - sum)
+        INDArray gradS = softmax.mul(gradA.sub(sum)); // [batchSize, numHeads, seqLength, seqLength]
+
+        return gradS;
+    }
+
+    public List<INDArray> getParameters() {
+        // Return weight matrices as a list of INDArrays
+        return Arrays.asList(Wq, Wk, Wv, Wo);
+    }
+
+    public List<INDArray> getGradients() {
+        // Return gradients as a list of INDArrays
+        return Arrays.asList(gradients.get("Wq"), gradients.get("Wk"), gradients.get("Wv"), gradients.get("Wo"));
+    }
+
+    public long getNumberOfParameters() {
+        return Wq.length() + Wk.length() + Wv.length() + Wo.length();
+    }
+
+    public long getNumberOfGradients() {
+        return gradients.get("Wq").length() + gradients.get("Wk").length() + gradients.get("Wv").length()
+                + gradients.get("Wo").length();
+    }
+
+    // Getters and Setters
+    public int getdModel() {
+        return dModel;
+    }
+
+    public void setdModel(int dModel) {
+        this.dModel = dModel;
+    }
+
+    public int getNumHeads() {
+        return numHeads;
+    }
+
+    public void setNumHeads(int numHeads) {
+        this.numHeads = numHeads;
+    }
+
+    public INDArray getWq() {
+        return Wq;
+    }
+
+    public void setWq(INDArray wq) {
+        Wq = wq;
+    }
+
+    public INDArray getWk() {
+        return Wk;
+    }
+
+    public void setWk(INDArray wk) {
+        Wk = wk;
+    }
+
+    public INDArray getWv() {
+        return Wv;
+    }
+
+    public void setWv(INDArray wv) {
+        Wv = wv;
+    }
+
+    public INDArray getWo() {
+        return Wo;
+    }
+
+    public void setWo(INDArray wo) {
+        Wo = wo;
+    }
 }
