@@ -20,6 +20,7 @@ public class PositionwiseFeedForward implements Serializable {
     private INDArray W1, b1, W2, b2;
     private INDArray inputCache, reluCache; // Cache pour le forward
     private Map<String, INDArray> gradients = new HashMap<>();
+    private int dModel;
 
     /**
      * Constructeur de la classe PositionwiseFeedForward.
@@ -28,6 +29,7 @@ public class PositionwiseFeedForward implements Serializable {
      * @param ffSize    Taille de la couche Feed-Forward (ffSize)
      */
     public PositionwiseFeedForward(int modelSize, int ffSize) {
+        this.dModel = modelSize;
         // Initialisation des poids avec une distribution uniforme ou normale selon le choix
         this.W1 = Nd4j.randn(modelSize, ffSize).div(Math.sqrt(modelSize)); // He Initialization
         this.b1 = Nd4j.zeros(1, ffSize);
@@ -38,21 +40,31 @@ public class PositionwiseFeedForward implements Serializable {
     /**
      * Passe forward du réseau Feed-Forward positionnel.
      * 
-     * @param input Entrée de forme [seqLength, dModel]
-     * @return Sortie de forme [seqLength, dModel]
+     * @param input Entrée de forme [batchSize, seqLength, dModel]
+     * @return Sortie de forme [batchSize, seqLength, dModel]
      */
     public INDArray forward(INDArray input) {
         // Stockage de l'entrée pour la rétropropagation
         this.inputCache = input.dup();
-
-        // Première couche linéaire suivie de ReLU
-        INDArray hidden = input.mmul(W1).addRowVector(b1); // [seqLength, ffSize]
+        
+        long batchSize = input.shape()[0];
+        long seqLength = input.shape()[1];
+        
+        // Reshape input pour la multiplication matricielle
+        INDArray inputReshaped = input.reshape(batchSize * seqLength, dModel);
+        
+        // Première couche linéaire
+        INDArray hidden = inputReshaped.mmul(W1).addiRowVector(b1); // [(batchSize * seqLength), ffSize]
         this.reluCache = hidden.dup();
-        INDArray reluOutput = Transforms.relu(hidden); // [seqLength, ffSize]
-
+        
+        // Activation ReLU
+        INDArray reluOutput = Transforms.relu(hidden);
+        
         // Deuxième couche linéaire
-        INDArray output = reluOutput.mmul(W2).addRowVector(b2); // [seqLength, dModel]
-        return output;
+        INDArray output = reluOutput.mmul(W2).addiRowVector(b2); // [(batchSize * seqLength), dModel]
+        
+        // Reshape back to original dimensions
+        return output.reshape(batchSize, seqLength, dModel);
     }
 
     /**

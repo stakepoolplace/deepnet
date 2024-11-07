@@ -48,27 +48,28 @@ public class Decoder implements Serializable {
         }
     }
 
-    public INDArray decode(boolean isTraining, INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray paddingMask) {
+    public INDArray decode(boolean isTraining, INDArray encoderOutput, INDArray encodedDecoderInput, INDArray lookAheadMask, INDArray paddingMask) {
         // Réinitialiser le cache avant une nouvelle passe forward
         resetCache();
-
+    
         // Traitement par les couches de décodeur
         for (int i = 0; i < layers.size(); i++) {
             DecoderLayer layer = layers.get(i);
-            x = layer.forward(isTraining, x, encoderOutput, lookAheadMask, paddingMask, forwardCache.get(i));
-            forwardCache.set(i, x.dup()); // Stocker l'entrée actuelle dans le cache
+            encodedDecoderInput = layer.forward(isTraining, encodedDecoderInput, encoderOutput, lookAheadMask, paddingMask, forwardCache.get(i));
+            forwardCache.set(i, encodedDecoderInput.dup()); // Stocker l'entrée actuelle dans le cache
         }
-
+    
         // Normalisation finale
-        x = layerNorm.forward(x);
-
-        // Application d'une projection linéaire, si nécessaire
-        if (this.linearProjection != null) {
-            x = linearProjection.project(x); // Transforme la sortie du décodeur pour les logits de vocabulaire
-        }
-
-        return x;
+        encodedDecoderInput = layerNorm.forward(encodedDecoderInput);
+    
+        // Projection linéaire vers le vocabulaire
+        INDArray logits = linearProjection.project(encodedDecoderInput); // [batchSize, targetSeqLength, vocabSize]
+        System.out.println("Logits shape: " + Arrays.toString(logits.shape()));
+    
+        return logits;
     }
+    
+    
 
     public Map<String, INDArray> backward(INDArray gradOutput) {
         // Récupérer l'entrée de la dernière couche à partir du cache

@@ -1,6 +1,7 @@
 package RN.transformer;
 
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -20,6 +21,7 @@ import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 
@@ -40,37 +42,64 @@ public class TransformerTest {
     
     @Test
     public void testMaskCreation() {
-        List<Integer> tokens = Arrays.asList(1, 2, 3, 0, 0); // 0 est supposé être le token de padding
-        INDArray paddingMask = model.createPaddingMask(tokens);
-        INDArray expectedMask = Nd4j.create(new double[]{0, 0, 0, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY});
-        
-        paddingMask = paddingMask.castTo(expectedMask.dataType());
-
-        // Utiliser equalsWithEps pour comparer les valeurs des tableaux
-//        System.out.println(compareWithInfinity(paddingMask,expectedMask, 1e-5));
-        
-        // Utiliser equalsWithEps pour comparer les valeurs des tableaux
-        assertTrue(
-            paddingMask.equalsWithEps(expectedMask, 1e-5) || 
-            paddingMask.equals(expectedMask),  // Ajout d'une comparaison stricte en cas d'infini
-            String.format("Expected mask %s but got %s", expectedMask, paddingMask)
+        // Créer un batch de tokens (List<List<Integer>>)
+        List<List<Integer>> tokensBatch = Arrays.asList(
+            Arrays.asList(1, 2, 3, 0, 0) // 0 est supposé être le token de padding
         );
         
+        // Appeler createPaddingMask avec le batch de tokens
+        INDArray paddingMask = model.createPaddingMask(tokensBatch);
+        
+        // Afficher le masque généré pour le débogage
+        System.out.println("paddingMask: " + paddingMask);
+        
+        // Créer le masque attendu
+        // Comme le masque a la forme [batchSize, 1, 1, seqLength], nous devons créer un tableau 4D
+        INDArray expectedMask = Nd4j.create(new float[][][][]{
+            { { { 0.0f, 0.0f, 0.0f, Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY } } }
+        });
+        
+        // S'assurer que les types de données correspondent
+        paddingMask = paddingMask.castTo(expectedMask.dataType());
+        
+        // Comparer les masques élément par élément
+        long[] shape = paddingMask.shape();
+        for (int i = 0; i < shape[0]; i++) {
+            for (int j = 0; j < shape[1]; j++) {
+                for (int k = 0; k < shape[2]; k++) {
+                    for (int l = 0; l < shape[3]; l++) {
+                        float actualValue = paddingMask.getFloat(i, j, k, l);
+                        float expectedValue = expectedMask.getFloat(i, j, k, l);
+                        if (Float.isInfinite(expectedValue)) {
+                            assertTrue(Float.isInfinite(actualValue),
+                                    String.format("Position (%d,%d,%d,%d) expected Infinite but got %f", i, j, k, l, actualValue));
+                        } else {
+                            assertEquals(expectedValue, actualValue, 1e-5f,
+                                    String.format("Position (%d,%d,%d,%d) values don't match", i, j, k, l));
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Tester le lookAheadMask si nécessaire
         INDArray lookAheadMask = model.createLookAheadMask(5);
         for (int i = 0; i < 5; i++) {
             for (int j = 0; j < 5; j++) {
-                double expectedValue = j > i ? Double.POSITIVE_INFINITY : 0.0;
-                double actualValue = lookAheadMask.getDouble(i, j);
-                if (Double.isInfinite(expectedValue)) {
-                    assertTrue(Double.isInfinite(actualValue),
+                float expectedValue = j > i ? Float.NEGATIVE_INFINITY : 0.0f;
+                float actualValue = lookAheadMask.getFloat(i, j);
+                if (Float.isInfinite(expectedValue)) {
+                    assertTrue(Float.isInfinite(actualValue),
                             String.format("Position (%d,%d) expected Infinite but got %f", i, j, actualValue));
                 } else {
-                    assertEquals(expectedValue, actualValue, 1e-5,
+                    assertEquals(expectedValue, actualValue, 1e-5f,
                             String.format("Position (%d,%d) values don't match", i, j));
                 }
             }
         }
     }
+    
+    
     
     public static boolean compareWithInfinity(INDArray matrix1, INDArray matrix2, double epsilon) {
         
@@ -117,51 +146,87 @@ public class TransformerTest {
 
     @Test
     public void testEncodeDecode() {
-        // Initialiser le Tokenizer avec un vocabulaire de mots connus
-//        Collection<String> vocabulary = List.of("le", "chat", "est", "sur", "tapis", "les", "chiens", "dans", "jardin", "aiment", "manger");
-//        model.tokenizer = new Tokenizer(vocabulary);
-
+        // Initialize the Tokenizer with a known vocabulary
+        List<String> vocabulary = Arrays.asList("le", "chat", "est", "sur", "tapis", "les", "chiens", "dans", "jardin", "aiment", "manger");
+        Tokenizer tokenizer = new Tokenizer(vocabulary);
+    
+        // Initialize the model with appropriate parameters
+        int numLayers = 2;
+        int dModel = 300;
+        int numHeads = 6;
+        int dff = 512;
+        int vocabSize = vocabulary.size();
+        TransformerModel model = new TransformerModel(numLayers, dModel, numHeads, dff, vocabSize);
+        model.tokenizer = tokenizer; // Associate the tokenizer with the model
+    
         String testInput = "le chat est sur le tapis les chiens dans le jardin";
         System.out.println("Test input: " + testInput);
         List<String> tokens = model.tokenizer.tokenize(testInput);
         System.out.println("Tokens: " + tokens);
-        
-        // Vérification du vocabulaire
-        int vocabSize = TransformerModel.getVocabSize();
-        System.out.println("Tokenizer Vocabulary Size: " + vocabSize);
-        tokens.forEach(token -> {
-            Integer tokenId = model.tokenizer.tokensToIds(List.of(token)).get(0);
-            System.out.println("Token: \"" + token + "\" -> Token ID: " + tokenId);
-        });
-        
+    
+        // Token IDs
         List<Integer> inputTokenIds = model.tokenizer.tokensToIds(tokens);
         System.out.println("Input Token IDs: " + inputTokenIds);
-        
-        List<Integer> targetTokenIds = model.tokenizer.tokensToIds(tokens);
-
-        
-        INDArray encoderPaddingMask = model.createPaddingMask(inputTokenIds);
-        INDArray decoderPaddingMask = model.createPaddingMask(targetTokenIds);
-        INDArray lookAheadMask = model.createLookAheadMask(targetTokenIds.size());
-        
-        
+    
+        // Prepare inputTokenIdsBatch as List<List<Integer>>
+        List<List<Integer>> inputTokenIdsBatch = Arrays.asList(inputTokenIds);
+    
+        // Convert inputTokenIdsBatch to INDArray for encoder input
+        int batchSize = inputTokenIdsBatch.size();
+        int seqLength = inputTokenIds.size();
+    
+        // Create an INDArray for encoder input
+        INDArray encoderInput = Nd4j.create(DataType.INT32, batchSize, seqLength);
+        for (int i = 0; i < batchSize; i++) {
+            List<Integer> sequence = inputTokenIdsBatch.get(i);
+            for (int j = 0; j < sequence.size(); j++) {
+                encoderInput.putScalar(new int[]{i, j}, sequence.get(j));
+            }
+        }
+    
+        // Create padding masks
+        INDArray encoderPaddingMask = model.createPaddingMask(inputTokenIdsBatch);
+        INDArray decoderPaddingMask = model.createPaddingMask(inputTokenIdsBatch);
+        INDArray lookAheadMask = model.createLookAheadMask(seqLength);
+    
         System.out.println("Encoder Padding Mask shape: " + Arrays.toString(encoderPaddingMask.shape()));
         System.out.println("Encoder Padding Mask: " + encoderPaddingMask);
-        
-        // Encoder l'entrée
-        INDArray encoded = model.encoder.encode(false, inputTokenIds, encoderPaddingMask);
+    
+
+        List<List<Integer>> inputTokenIdsBatchFromArray = new ArrayList<>();
+        List<Integer> sequence = new ArrayList<>();
+        for (int j = 0; j < seqLength; j++) {
+            sequence.add(encoderInput.getInt(0, j));
+        }
+        inputTokenIdsBatchFromArray.add(sequence);
+
+        // Encode the input
+        INDArray encoded = model.encoder.encode(false, inputTokenIdsBatchFromArray, encoderPaddingMask);
+
         assertNotNull(encoded, "Encoded output should not be null.");
         System.out.println("Encoded output shape: " + Arrays.toString(encoded.shape()));
-
-        // Décoder la sortie
-        INDArray decoded = model.decoder.decode(false, encoded, encoded, lookAheadMask, decoderPaddingMask);
+    
+        // Verify the shape of the encoding
+        assertEquals(1, (int) encoded.shape()[0], "Batch size should be 1");
+        assertEquals(seqLength, (int) encoded.shape()[1], "Sequence length should match the input tokens size");
+        assertEquals(dModel, (int) encoded.shape()[2], "dModel should be " + dModel);
+    
+        // Prepare decoder input as INDArray
+        INDArray decoderInput = encoderInput.dup(); // Using the same input for simplicity
+    
+        // Decode the output
+        INDArray decoded = model.decoder.decode(false, decoderInput, encoded, lookAheadMask, decoderPaddingMask);
         assertNotNull(decoded, "Decoded output should not be null.");
         System.out.println("Decoded output shape: " + Arrays.toString(decoded.shape()));
         System.out.println("Decoded output: " + decoded);
-        
-        assertEquals(model.tokenizer.getVocabSize(), decoded.shape()[1], "Decoded output should have logits for each token in vocabulary");
+    
+        // Verify the shape of the decoder output
+        assertEquals(1, (int) decoded.shape()[0], "Batch size should be 1");
+        assertEquals(seqLength, (int) decoded.shape()[1], "Sequence length should match the input tokens size");
+        assertEquals(dModel, (int) decoded.shape()[2], "dModel should be " + dModel);
     }
-
+    
+        
     @Test
     public void testBackwardPropagation() {
         // D'abord, effectuez un passage avant pour initialiser les caches

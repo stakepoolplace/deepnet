@@ -33,30 +33,32 @@ public class LayerNorm extends Layer implements Serializable {
         beta = Nd4j.zeros(DataType.FLOAT, 1, dModel); // [1, dModel]
     }
 
+
     /**
      * Passe forward de la normalisation de couche.
      * 
-     * @param x Entrée de forme [seqLength, dModel]
-     * @return Sortie normalisée de forme [seqLength, dModel]
+     * @param x Entrée de forme [batchSize, seqLength, dModel]
+     * @return Sortie normalisée de même forme
      */
     @Override
     public INDArray forward(INDArray x) {
-        // Vérification des valeurs NaN ou Inf dans l'entrée
         if (x.isNaN().any() || x.isInfinite().any()) {
             throw new RuntimeException("LayerNorm.forward received NaN or Infinite values in input.");
         }
 
-        // Stockage de l'entrée pour la rétropropagation
         this.inputCache = x.dup();
 
-        // Calcul de la moyenne et de la variance sur la dimension dModel (axis=1)
-        INDArray mean = x.mean(1).reshape(x.rows(), 1); // [seqLength, 1]
-        INDArray variance = x.var(false, 1).reshape(x.rows(), 1); // [seqLength, 1]
+        // Calcul de la moyenne et de la variance sur la dernière dimension (dModel)
+        INDArray mean = x.mean(true, 2);     // [batchSize, seqLength, 1]
+        INDArray variance = x.var(true, 2);  // [batchSize, seqLength, 1]
 
-        // Ajout de epsilon pour éviter la division par zéro
-        INDArray std = Transforms.sqrt(variance.add(epsilon)); // [seqLength, 1]
+        // Reshape pour assurer le bon broadcasting
+        mean = mean.reshape(x.shape()[0], x.shape()[1], 1);
+        variance = variance.reshape(x.shape()[0], x.shape()[1], 1);
 
-        // Vérification des valeurs NaN ou Inf dans les résultats intermédiaires
+        // Ajout de epsilon et calcul de l'écart-type
+        INDArray std = Transforms.sqrt(variance.add(epsilon));
+
         if (mean.isNaN().any() || mean.isInfinite().any()) {
             throw new RuntimeException("NaN or Infinite values encountered in mean calculation.");
         }
@@ -64,13 +66,17 @@ public class LayerNorm extends Layer implements Serializable {
             throw new RuntimeException("NaN or Infinite values encountered in standard deviation calculation.");
         }
 
-        // Normalisation : (x - mean) / std
-        INDArray normalized = x.sub(mean).div(std); // [seqLength, dModel]
+        // Normalisation avec broadcast explicite
+        INDArray xMinusMean = x.sub(mean);
+        INDArray normalized = xMinusMean.div(std);
 
-        // Mise à l'échelle et décalage : normalized * gamma + beta
-        INDArray output = normalized.mulRowVector(gamma).addRowVector(beta); // [seqLength, dModel]
+        // Reshape gamma et beta pour le broadcasting
+        INDArray gammaBroadcast = gamma.reshape(1, 1, -1);  // [1, 1, dModel]
+        INDArray betaBroadcast = beta.reshape(1, 1, -1);    // [1, 1, dModel]
 
-        // Vérification des valeurs NaN ou Inf dans la sortie
+        // Mise à l'échelle et décalage
+        INDArray output = normalized.mul(gammaBroadcast).add(betaBroadcast);
+
         if (output.isNaN().any() || output.isInfinite().any()) {
             throw new RuntimeException("NaN or Infinite values produced by LayerNorm normalization.");
         }

@@ -11,6 +11,7 @@ import java.util.Map;
 import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.indexing.NDArrayIndex;
 
 
 /**
@@ -29,6 +30,7 @@ public class Encoder implements Serializable  {
 	 */
 	private static final long serialVersionUID = -5716799542280937448L;
 	private List<EncoderLayer> layers;
+    private int dModel;
     private PositionalEncoding positionalEncoding;
     private LayerNorm layerNorm;
     private Tokenizer tokenizer;
@@ -37,7 +39,8 @@ public class Encoder implements Serializable  {
 	}
     
     public Encoder(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, Tokenizer tokenizer) {
-    	this.positionalEncoding = new PositionalEncoding(dModel);
+    	this.dModel = dModel;
+        this.positionalEncoding = new PositionalEncoding(dModel);
         this.layers = new ArrayList<>();
         this.layerNorm = new LayerNorm(dModel);
         this.tokenizer = tokenizer;
@@ -56,49 +59,61 @@ public class Encoder implements Serializable  {
         List<Integer> tokenIds = tokenizer.tokensToIds(tokens);
 
         // Encodage des IDs de tokens à travers les couches de l'encodeur
-        INDArray inputEmbeddings = lookupEmbeddings(tokenIds);
+        INDArray inputEmbeddings = lookupEmbeddings(Arrays.asList(tokenIds));
         INDArray encoded = forward(isTraining, inputEmbeddings, null);
         
         // Conversion des embeddings encodés en logits
         return convertToLogits(encoded);
     }
     
-    public INDArray encode(boolean isTraining, List<Integer> tokenIds, INDArray paddingMask) {
-    	
-        // Utiliser la matrice d'embeddings pré-entraînée pour récupérer les embeddings correspondants aux IDs de tokens
-        INDArray inputEmbeddings = lookupEmbeddings(tokenIds);
+    public INDArray encode(boolean isTraining, List<List<Integer>> tokenIdsBatch, INDArray paddingMask) {
+        int batchSize = tokenIdsBatch.size();
+        int seqLength = tokenIdsBatch.get(0).size();
+        INDArray inputEmbeddings = Nd4j.zeros(DataType.FLOAT, batchSize, seqLength, dModel);
 
-        // Appliquer les transformations de l'encodeur sur les embeddings
+        for (int i = 0; i < batchSize; i++) {
+            for (int j = 0; j < seqLength; j++) {
+                int tokenId = tokenIdsBatch.get(i).get(j);
+                INDArray tokenEmbedding = TransformerModel.getPretrainedEmbeddings().getRow(tokenId);
+                // Utilisez slice pour accéder à la position correcte et assign pour copier les valeurs
+                inputEmbeddings.get(NDArrayIndex.point(i), NDArrayIndex.point(j), NDArrayIndex.all())
+                            .assign(tokenEmbedding);
+            }
+        }
+        System.out.println("Embedded input shape: " + Arrays.toString(inputEmbeddings.shape()));
+
+        // Appliquer le MultiHeadAttention et les couches de l'encodeur
         INDArray encoded = forward(isTraining, inputEmbeddings, paddingMask);
-
         return encoded;
     }
     
-
     
-   
-
-    private INDArray lookupEmbeddings(List<Integer> tokenIds) {
-        // Utiliser la matrice d'embeddings pré-entraînée pour récupérer les embeddings correspondants aux IDs de tokens
-        int maxSeqLength = tokenIds.size();
-        int dModel = layers.get(0).selfAttention.getdModel();
-        INDArray embeddings = Nd4j.zeros(DataType.FLOAT, maxSeqLength, dModel);
-
-        for (int i = 0; i < tokenIds.size(); i++) {
-            int tokenId = tokenIds.get(i) - 1;
-            
-            // Vérifier que tokenId est valide
-            if (tokenId >= TransformerModel.getPretrainedEmbeddings().rows()) {
-                throw new IllegalArgumentException("Token ID " + tokenId + " est hors des limites de la matrice d'embeddings qui a " + TransformerModel.getPretrainedEmbeddings().rows() + " lignes.");
+    public INDArray lookupEmbeddings(List<List<Integer>> tokenIdsBatch) {
+        int batchSize = tokenIdsBatch.size();
+        int seqLength = tokenIdsBatch.get(0).size();
+    
+        // Étape 1: Aplatir la liste de listes en un tableau 1D d'entiers (int[])
+        int[] flattenedTokenIds = new int[batchSize * seqLength];
+        for (int i = 0; i < batchSize; i++) {
+            List<Integer> tokenIds = tokenIdsBatch.get(i);
+            for (int j = 0; j < seqLength; j++) {
+                flattenedTokenIds[i * seqLength + j] = tokenIds.get(j); // Pas besoin de convertir en long
             }
-            
-            
-            // Récupérer l'embedding correspondant au token ID à partir de la matrice d'embeddings pré-entraînée
-            embeddings.putRow(i, TransformerModel.getPretrainedEmbeddings().getRow(tokenId));
         }
-
-        return embeddings;
+    
+        // Étape 2: Récupérer les embeddings correspondants
+        // TransformerModel.getPretrainedEmbeddings() doit être de forme [vocabSize, dModel]
+        INDArray batchEmbeddings = TransformerModel.getPretrainedEmbeddings().getRows(flattenedTokenIds); // [batchSize * seqLength, dModel]
+    
+        // Étape 3: Reshaper en [batchSize, seqLength, dModel]
+        batchEmbeddings = batchEmbeddings.reshape(batchSize, seqLength, dModel); // Utilisation correcte de dModel
+    
+        return batchEmbeddings;
     }
+    
+    
+    
+    
 
     private List<List<Float>> convertToLogits(INDArray encoded) {
         // Convertir les embeddings encodés en logits
@@ -115,20 +130,24 @@ public class Encoder implements Serializable  {
         return logits;
     }
 
-    private INDArray forward(boolean isTraining, INDArray x, INDArray paddingMask) {
-    	
+    public INDArray forward(boolean isTraining, INDArray x, INDArray paddingMask) {
+        
         // Appliquer les embeddings positionnels
-        INDArray posEncoding = positionalEncoding.getPositionalEncoding(x.shape()[0]);
+        INDArray posEncoding = positionalEncoding.getPositionalEncoding(x.shape()[1]);
         x = x.add(posEncoding);
-
+        System.out.println("After positional encoding: " + Arrays.toString(x.shape()));
+    
         for (EncoderLayer layer : layers) {
             x = layer.forward(isTraining, x, paddingMask);
+            System.out.println("After encoder layer: " + Arrays.toString(x.shape()));
         }
         
-        x =  layerNorm.forward(x);
-
+        x = layerNorm.forward(x);
+        System.out.println("After layer normalization: " + Arrays.toString(x.shape()));
+    
         return x;
     }
+    
     
 
     public void backward(Map<String, INDArray> gradOutput) {
