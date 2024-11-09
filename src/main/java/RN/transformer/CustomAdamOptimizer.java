@@ -137,7 +137,7 @@ public class CustomAdamOptimizer implements Serializable {
             param.subi(step);
     
             // Afficher le paramètre après la mise à jour
-            // System.out.println("Param " + i + " after update: " + param);
+            //  System.out.println("Param " + i + " after update: " + param);
         }
     
         // Mettre à jour le taux d'apprentissage si nécessaire

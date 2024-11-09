@@ -67,7 +67,7 @@ public class Decoder implements Serializable {
     
         // Projection linéaire vers le vocabulaire
         INDArray logits = linearProjection.project(encodedDecoderInput); // [batchSize, targetSeqLength, vocabSize]
-        System.out.println("Logits shape: " + Arrays.toString(logits.shape()));
+        // System.out.println("Logits shape: " + Arrays.toString(logits.shape()));
     
         return logits;
     }

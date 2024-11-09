@@ -50,64 +50,85 @@ public class MultiHeadAttention implements Serializable {
     /**
      * Forward pass of multi-head attention.
      *
-     * @param query Input queries of shape [batchSize, seqLength, dModel]
-     * @param key   Input keys of shape [batchSize, seqLength, dModel]
-     * @param value Input values of shape [batchSize, seqLength, dModel]
-     * @param mask  Padding mask of shape [batchSize, 1, 1, seqLength]
-     * @return Output of shape [batchSize, seqLength, dModel]
+     * @param query Input queries of shape [batchSize, seqLength_q, dModel]
+     * @param key   Input keys of shape [batchSize, seqLength_k, dModel]
+     * @param value Input values of shape [batchSize, seqLength_k, dModel]
+     * @param mask  Padding mask of shape [batchSize, 1, 1, seqLength_k]
+     * @return Output of shape [batchSize, seqLength_q, dModel]
      */
     public INDArray forward(INDArray query, INDArray key, INDArray value, INDArray mask) {
 
         // Stocker les inputs pour la passe backward
-        this.inputQ = query.dup(); // [batchSize, seqLength, dModel]
-        this.inputK = key.dup();
-        this.inputV = value.dup();
+        this.inputQ = query.dup(); // [batchSize, seqLength_q, dModel]
+        this.inputK = key.dup();   // [batchSize, seqLength_k, dModel]
+        this.inputV = value.dup(); // [batchSize, seqLength_k, dModel]
 
         // Obtention des dimensions
         int batchSize = (int) query.size(0);
-        int seqLength = (int) query.size(1);
+        int seqLength_q = (int) query.size(1);
+        int seqLength_k = (int) key.size(1);
+        int depth = dModel / numHeads;
 
         // Vérification des dimensions des entrées
         if (query.rank() != 3 || key.rank() != 3 || value.rank() != 3) {
             throw new IllegalArgumentException("Les entrées query, key et value doivent être de rang 3.");
         }
+       // System.out.println("Key shape: " + Arrays.toString(key.shape()));
+        // System.out.println("Batch Size: " + batchSize);
+        // System.out.println("Seq Length Q: " + seqLength_q);
+        // System.out.println("Seq Length K: " + seqLength_k);
+        // System.out.println("dModel: " + dModel);
+ 
 
-        // Reshaping des entrées de [batchSize, seqLength, dModel] à [batchSize *
-        // seqLength, dModel]
-        INDArray query2D = query.reshape(batchSize * seqLength, dModel);
-        INDArray key2D = key.reshape(batchSize * seqLength, dModel);
-        INDArray value2D = value.reshape(batchSize * seqLength, dModel);
+        // Reshaping des entrées de [batchSize, seqLength, dModel] à [batchSize * seqLength, dModel]
+        INDArray query2D = query.reshape(batchSize * seqLength_q, dModel);
+        INDArray key2D = key.reshape(batchSize * seqLength_k, dModel); // Utiliser seqLength_k
+        INDArray value2D = value.reshape(batchSize * seqLength_k, dModel); // Utiliser seqLength_k
+
+        // System.out.println("Query2D shape: " + Arrays.toString(query2D.shape()));
+        // System.out.println("Key2D shape: " + Arrays.toString(key2D.shape()));
+        // System.out.println("Value2D shape: " + Arrays.toString(value2D.shape()));
 
         // Application des transformations linéaires
-        Q = query2D.mmul(Wq); // [batchSize * seqLength, numHeads * depth]
-        K = key2D.mmul(Wk); // [batchSize * seqLength, numHeads * depth]
-        V = value2D.mmul(Wv); // [batchSize * seqLength, numHeads * depth]
+        this.Q = query2D.mmul(Wq); // [batchSize * seqLength_q, numHeads * depth]
+        this.K = key2D.mmul(Wk);    // [batchSize * seqLength_k, numHeads * depth]
+        this.V = value2D.mmul(Wv);  // [batchSize * seqLength_k, numHeads * depth]
+
+        // System.out.println("Q shape after mmul: " + Arrays.toString(Q.shape()));
+        // System.out.println("K shape after mmul: " + Arrays.toString(K.shape()));
+        // System.out.println("V shape after mmul: " + Arrays.toString(V.shape()));
 
         // Reshaping pour multi-head attention
-        Q = Q.reshape(batchSize, seqLength, numHeads, depth); // [batchSize, seqLength, numHeads, depth]
-        K = K.reshape(batchSize, seqLength, numHeads, depth);
-        V = V.reshape(batchSize, seqLength, numHeads, depth);
+        this.Q = this.Q.reshape(batchSize, seqLength_q, numHeads, depth); // [batchSize, seqLength_q, numHeads, depth]
+        this.K = this.K.reshape(batchSize, seqLength_k, numHeads, depth); // [batchSize, seqLength_k, numHeads, depth]
+        this.V = this.V.reshape(batchSize, seqLength_k, numHeads, depth); // [batchSize, seqLength_k, numHeads, depth]
+
+        // System.out.println("Q shape after reshape: " + Arrays.toString(Q.shape()));
+        // System.out.println("K shape after reshape: " + Arrays.toString(K.shape()));
+        // System.out.println("V shape after reshape: " + Arrays.toString(V.shape()));
 
         // Transpose pour [batchSize, numHeads, seqLength, depth]
-        Q = Q.permute(0, 2, 1, 3);
-        K = K.permute(0, 2, 1, 3);
-        V = V.permute(0, 2, 1, 3);
+        this.Q = this.Q.permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength_q, depth]
+        this.K = this.K.permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength_k, depth]
+        this.V = this.V.permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength_k, depth]
+
+        // System.out.println("Q shape after permute: " + Arrays.toString(Q.shape()));
+        // System.out.println("K shape after permute: " + Arrays.toString(K.shape()));
+        // System.out.println("V shape after permute: " + Arrays.toString(V.shape()));
 
         // Initialiser un tableau pour stocker les scores
-        INDArray scores = Nd4j.create(batchSize, numHeads, seqLength, seqLength); // [batchSize, numHeads, seqLength,
-                                                                                  // seqLength]
+        INDArray scores = Nd4j.create(batchSize, numHeads, seqLength_q, seqLength_k); // [batchSize, numHeads, seqLength_q, seqLength_k]
 
         // Itérer sur batchSize et numHeads pour effectuer mmul
         for (int b = 0; b < batchSize; b++) {
             for (int h = 0; h < numHeads; h++) {
-                // Extraire les matrices [seqLength, depth] et [depth, seqLength]
-                INDArray Q_batch_head = Q.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(),
-                        NDArrayIndex.all());
+                // Extraire les matrices [seqLength_q, depth] et [depth, seqLength_k]
+                INDArray Q_batch_head = Q.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all());
                 INDArray KTransposed_batch_head = K
                         .get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all())
                         .transpose();
 
-                // Calculer les scores [seqLength, seqLength]
+                // Calculer les scores [seqLength_q, seqLength_k]
                 INDArray score = Q_batch_head.mmul(KTransposed_batch_head).div(Math.sqrt(depth));
 
                 // Stocker les scores en utilisant assign
@@ -116,34 +137,37 @@ public class MultiHeadAttention implements Serializable {
             }
         }
 
+        // System.out.println("Scores shape after computation: " + Arrays.toString(scores.shape()));
+
         // Appliquer le masque si fourni
         if (mask != null) {
             // Assurez-vous que le masque a les mêmes dimensions que scores
-            // Généralement, mask a la forme [batchSize, 1, 1, seqLength]
+            // Généralement, mask a la forme [batchSize, 1, 1, seqLength_k]
             scores = scores.add(mask.mul(-1e9)); // Ajouter un grand nombre négatif aux positions masquées
         }
 
+        // System.out.println("Scores shape after masking: " + Arrays.toString(scores.shape()));
+
         // Application du softmax sur le dernier axe (axis=3)
-        // NDArrayUtils.softmax(scores, 3) doit être une méthode qui applique softmax
-        // correctement
-        // Assurez-vous que cette méthode fonctionne comme attendu
-        INDArray weights = NDArrayUtils.softmax(scores, 3); // [batchSize, numHeads, seqLength, seqLength]
+        INDArray weights = NDArrayUtils.softmax(scores, 3); // [batchSize, numHeads, seqLength_q, seqLength_k]
+
+        // System.out.println("Weights shape after softmax: " + Arrays.toString(weights.shape()));
 
         // **Stocker attentionWeights pour la passe backward**
         this.attentionWeights = weights;
 
         // Calcul de l'attention pondérée
-        INDArray attention = Nd4j.create(batchSize, numHeads, seqLength, depth); // [batchSize, numHeads, seqLength,
-                                                                                 // depth]
+        INDArray attention = Nd4j.create(batchSize, numHeads, seqLength_q, depth); // [batchSize, numHeads, seqLength_q, depth]
+
         for (int b = 0; b < batchSize; b++) {
             for (int h = 0; h < numHeads; h++) {
-                // Extraire les matrices [seqLength, seqLength] et [seqLength, depth]
+                // Extraire les matrices [seqLength_q, seqLength_k] et [seqLength_k, depth]
                 INDArray weights_batch_head = weights.get(NDArrayIndex.point(b), NDArrayIndex.point(h),
                         NDArrayIndex.all(), NDArrayIndex.all());
                 INDArray V_batch_head = V.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(),
                         NDArrayIndex.all());
 
-                // Calculer l'attention pondérée [seqLength, depth]
+                // Calculer l'attention pondérée [seqLength_q, depth]
                 INDArray attention_head = weights_batch_head.mmul(V_batch_head);
 
                 // Stocker l'attention en utilisant assign
@@ -152,22 +176,25 @@ public class MultiHeadAttention implements Serializable {
             }
         }
 
+        // System.out.println("Attention shape after computation: " + Arrays.toString(attention.shape()));
+
         // Transposition et reshaping pour concaténer les têtes
-        // [batchSize, numHeads, seqLength, depth] -> [batchSize, seqLength, numHeads *
-        // depth]
-        INDArray attentionConcat = attention.permute(0, 2, 1, 3).reshape(batchSize, seqLength, numHeads * depth); // [batchSize,
-                                                                                                                  // seqLength,
-                                                                                                                  // dModel]
+        // [batchSize, numHeads, seqLength_q, depth] -> [batchSize, seqLength_q, numHeads * depth]
+        INDArray attentionConcat = attention.permute(0, 2, 1, 3).reshape(batchSize, seqLength_q, numHeads * depth); // [batchSize, seqLength_q, dModel]
+
+        // System.out.println("AttentionConcat shape: " + Arrays.toString(attentionConcat.shape()));
 
         // Effectuer la multiplication matricielle avec Wo
-        // Reshape attentionConcat de [batchSize, seqLength, dModel] à [batchSize *
-        // seqLength, dModel]
-        INDArray attention2D = attentionConcat.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength,
-                                                                                       // dModel]
-        INDArray output2D = attention2D.mmul(Wo); // [batchSize * seqLength, dModel]
+        // Reshape attentionConcat de [batchSize, seqLength_q, dModel] à [batchSize * seqLength_q, dModel]
+        INDArray attention2D = attentionConcat.reshape(batchSize * seqLength_q, dModel); // [batchSize * seqLength_q, dModel]
+        INDArray output2D = attention2D.mmul(Wo); // [batchSize * seqLength_q, dModel]
 
-        // Reshape le résultat en [batchSize, seqLength, dModel]
-        INDArray output = output2D.reshape(batchSize, seqLength, dModel); // [batchSize, seqLength, dModel]
+        // System.out.println("Output2D shape: " + Arrays.toString(output2D.shape()));
+
+        // Reshape le résultat en [batchSize, seqLength_q, dModel]
+        INDArray output = output2D.reshape(batchSize, seqLength_q, dModel); // [batchSize, seqLength_q, dModel]
+
+        // System.out.println("Output shape: " + Arrays.toString(output.shape()));
 
         // **Stocker l'attentionOutput pour la passe backward**
         this.attentionOutput = attentionConcat; // ou `output` selon ce qui est nécessaire pour backward
@@ -224,7 +251,7 @@ public class MultiHeadAttention implements Serializable {
         INDArray gradWo = attentionOutputConcat.transpose().mmul(gradOutputReshaped); // [numHeads * depth, dModel]
         NDArrayUtils.addGradient(gradients, "Wo", gradWo);
         
-        System.out.println("gradWo shape: " + gradWo.shapeInfoToString());
+        // System.out.println("gradWo shape: " + gradWo.shapeInfoToString());
 
         // Step 2: Compute gradients for attentionOutputConcat
         // gradAttentionOutputConcat = gradOutputReshaped * Wo^T
@@ -235,7 +262,7 @@ public class MultiHeadAttention implements Serializable {
         // Permute to [batchSize, numHeads, seqLength, depth]
         gradAttentionOutputConcatND = gradAttentionOutputConcatND.permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength, depth]
         NDArrayUtils.addGradient(gradients, "gradAttentionOutputConcat", gradAttentionOutputConcatND);
-        System.out.println("gradAttentionOutputConcat shape: " + gradAttentionOutputConcatND.shapeInfoToString());
+        // System.out.println("gradAttentionOutputConcat shape: " + gradAttentionOutputConcatND.shapeInfoToString());
 
         // Step 3: Compute gradients for attentionWeights and V
         // attentionOutput = attentionWeights.mmul(V)
@@ -273,7 +300,7 @@ public class MultiHeadAttention implements Serializable {
             }
         }
         NDArrayUtils.addGradient(gradients,"gradAttentionWeights", gradAttentionWeights);
-        System.out.println("gradAttentionWeights shape: " + gradAttentionWeights.shapeInfoToString());
+        // System.out.println("gradAttentionWeights shape: " + gradAttentionWeights.shapeInfoToString());
 
         // Compute gradV
         INDArray gradV = Nd4j.create(batchSize, numHeads, seqLength, depth); // [batchSize, numHeads, seqLength, depth]
@@ -308,14 +335,14 @@ public class MultiHeadAttention implements Serializable {
                 
             }
         }
-        NDArrayUtils.addGradient(gradients,"gradV", gradV);
-        System.out.println("gradV shape: " + gradV.shapeInfoToString());
+        //NDArrayUtils.addGradient(gradients,"gradV", gradV);
+        // System.out.println("gradV shape: " + gradV.shapeInfoToString());
 
         // Step 4: Compute gradients through softmax
         // gradScores = softmaxGrad(attentionWeights, gradAttentionWeights)
         INDArray gradScores = softmaxGrad(this.attentionWeights, gradAttentionWeights); // [batchSize, numHeads, seqLength, seqLength]
         NDArrayUtils.addGradient(gradients,"gradScores", gradScores);
-        System.out.println("gradScores shape: " + gradScores.shapeInfoToString());
+        // System.out.println("gradScores shape: " + gradScores.shapeInfoToString());
 
         // Step 5: Compute gradients for Q and K
         // scores = Q.mmul(K.transpose(0, 1, 3, 2)) / sqrt(depth)
@@ -352,8 +379,8 @@ public class MultiHeadAttention implements Serializable {
                 ).assign(gradQHead);
             }
         }
-        NDArrayUtils.addGradient(gradients,"gradQ", gradQ);
-        System.out.println("gradQ shape: " + gradQ.shapeInfoToString());
+        //NDArrayUtils.addGradient(gradients,"gradQ", gradQ);
+        // System.out.println("gradQ shape: " + gradQ.shapeInfoToString());
 
         // Compute gradK
         INDArray gradK = Nd4j.create(batchSize, numHeads, seqLength, depth); // [batchSize, numHeads, seqLength, depth]
@@ -387,8 +414,8 @@ public class MultiHeadAttention implements Serializable {
                 ).assign(gradKHead);
             }
         }
-        NDArrayUtils.addGradient(gradients,"gradK", gradK);
-        System.out.println("gradK shape: " + gradK.shapeInfoToString());
+        //NDArrayUtils.addGradient(gradients,"gradK", gradK);
+        // System.out.println("gradK shape: " + gradK.shapeInfoToString());
 
         // Step 6: Reshape gradQ and gradK for Wq and Wk gradients
         // Reshape gradQ and gradK from [batchSize, numHeads, seqLength, depth] to [batchSize * seqLength, numHeads * depth]
@@ -400,13 +427,13 @@ public class MultiHeadAttention implements Serializable {
         INDArray inputQReshaped = this.inputQ.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength, dModel]
         INDArray gradWq = inputQReshaped.transpose().mmul(gradQReshaped); // [dModel, numHeads * depth]
         NDArrayUtils.addGradient(gradients,"Wq", gradWq);
-        System.out.println("gradWq shape: " + gradWq.shapeInfoToString());
+        // System.out.println("gradWq shape: " + gradWq.shapeInfoToString());
 
         // gradWk = inputK^T * gradKReshaped [dModel, batchSize * seqLength] mmul [batchSize * seqLength, numHeads * depth] = [dModel, numHeads * depth]
         INDArray inputKReshaped = this.inputK.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength, dModel]
         INDArray gradWk = inputKReshaped.transpose().mmul(gradKReshaped); // [dModel, numHeads * depth]
         NDArrayUtils.addGradient(gradients,"Wk", gradWk);
-        System.out.println("gradWk shape: " + gradWk.shapeInfoToString());
+        // System.out.println("gradWk shape: " + gradWk.shapeInfoToString());
 
         // gradWv = inputV^T * gradVReshaped [dModel, batchSize * seqLength] mmul [batchSize * seqLength, numHeads * depth] = [dModel, numHeads * depth]
         // Reshape gradV from [batchSize, numHeads, depth, seqLength] to [batchSize * seqLength, numHeads * depth]
@@ -414,7 +441,7 @@ public class MultiHeadAttention implements Serializable {
         INDArray inputVReshaped = this.inputV.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength, dModel]
         INDArray gradWv = inputVReshaped.transpose().mmul(gradVReshaped); // [dModel, numHeads * depth]
         NDArrayUtils.addGradient(gradients,"Wv", gradWv);
-        System.out.println("gradWv shape: " + gradWv.shapeInfoToString());
+        // System.out.println("gradWv shape: " + gradWv.shapeInfoToString());
 
         // // Step 8: Compute gradients for the inputs (query, key, value)
 
@@ -453,7 +480,7 @@ public class MultiHeadAttention implements Serializable {
         INDArray gradInputFinal = gradInputReshaped.reshape(batchSize, seqLength, dModel); // [1, 6, 300]
 
         NDArrayUtils.addGradient(gradients,"input", gradInputFinal);
-        System.out.println("gradInput shape: " + Arrays.toString(gradInputFinal.shape()));
+        // System.out.println("gradInput shape: " + Arrays.toString(gradInputFinal.shape()));
 
 
 

@@ -42,7 +42,7 @@ public class TransformerModelTest {
         TransformerModel originalModel = new TransformerModel();
 
         // Simuler un entraînement en modifiant quelques paramètres
-        originalModel.train(new MockDataGenerator()); // Supposons que vous avez une implémentation mock de DataGenerator pour les tests
+        originalModel.train(new MockDataGenerator(), 1); // Supposons que vous avez une implémentation mock de DataGenerator pour les tests
         
         // Sauvegarder l'état du modèle
         String filePath = "test_transformer_state.ser";
@@ -121,8 +121,8 @@ public class TransformerModelTest {
     @Test
     public void testTrainingChangesModelToTrained() throws Exception {
         // Utilisation de DummyDataGenerator pour simuler l'entraînement
-        DataGenerator dummyDataGenerator = new DummyDataGenerator("src/test/resources/dummy-data.txt", "src/test/resources/dummy-data-target.txt", model.tokenizer, 32, 512);
-        model.train(dummyDataGenerator);
+        DataGenerator dummyDataGenerator = new DummyDataGenerator("src/test/resources/dummy-data.txt", "src/test/resources/dummy-data-target.txt", model.tokenizer, 32, 512, 5);
+        model.train(dummyDataGenerator, 1);
         assertTrue("Le modèle devrait être marqué comme entraîné après l'entraînement", model.isTrained());
     }
 
@@ -137,14 +137,48 @@ public class TransformerModelTest {
     @Test
     public void testInferenceAfterTraining() throws Exception {
         // Simuler l'entraînement
-        DataGenerator dummyDataGenerator = new DummyDataGenerator("src/test/resources/dummy-data.txt", "src/test/resources/dummy-data-target.txt", model.tokenizer, 32, 512);
-        model.train(dummyDataGenerator);
+        DataGenerator dummyDataGenerator = new DummyDataGenerator("src/test/resources/dummy-data.txt", "src/test/resources/dummy-data-target.txt", model.tokenizer, 32, 512, 5);
+        model.train(dummyDataGenerator, 1);
         
-        String response = model.infer("Some input text", 45);
+        String inputPrompt = "Some input text";
+        String response = model.infer(inputPrompt, 45);
         assertNotNull("L'inférence devrait retourner une réponse non-null", response);
+        System.out.println("Inférence 1 prompt: " + inputPrompt + " : " + response);
         // Ici, vous pouvez ajouter d'autres assertions pour vérifier la plausibilité de la réponse.
-        response = model.infer("This is a dummy sentence", 32);
+        inputPrompt = "This is a dummy sentence";
+        response = model.infer(inputPrompt, 32);
         assertNotNull("L'inférence devrait retourner une réponse non-null", response);
+        System.out.println("Inférence 2 prompt: " + inputPrompt + " : " + response);
 
     }
+
+    @Test
+    public void testInferenceAfterTraining2() throws Exception {
+        // Initialiser le tokenizer et le modèle
+        TransformerModel model = new TransformerModel(2, 300, 6, 2048, 0.1); // Utiliser 2 layers pour le test
+
+        // Créer un DummyDataGenerator avec 3 batches par epoch
+        DummyDataGenerator dataGenerator = new DummyDataGenerator(
+            "src/test/resources/dummy-data.txt",
+            "src/test/resources/dummy-data-target.txt",
+            model.tokenizer,
+            2,  // batchSize
+            50, // maxTokensPerBatch
+            3   // maxBatchesPerEpoch
+        );
+
+        // Simuler l'entraînement
+        model.train(dataGenerator, 1);
+
+        // Effectuer l'inférence
+        String response1 = model.infer("Some input text", 45);
+        assertNotNull("L'inférence devrait retourner une réponse non-null", response1);
+        System.out.println("Inference Response 1: " + response1);
+
+        String response2 = model.infer("This is a dummy sentence", 32);
+        assertNotNull("L'inférence devrait retourner une réponse non-null", response2);
+        System.out.println("Inference Response 2: " + response2);
+    }
+
+
 }

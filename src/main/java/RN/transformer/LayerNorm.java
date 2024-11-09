@@ -38,8 +38,8 @@ public class LayerNorm extends Layer implements Serializable {
         beta = Nd4j.zeros(DataType.FLOAT, 1, 1, dModel); // [1, 1, dModel]
 
         // Log des formes pour vérification
-        System.out.println("Initialized gamma shape: " + Arrays.toString(gamma.shape()));
-        System.out.println("Initialized beta shape: " + Arrays.toString(beta.shape()));
+        // System.out.println("Initialized gamma shape: " + Arrays.toString(gamma.shape()));
+        // System.out.println("Initialized beta shape: " + Arrays.toString(beta.shape()));
     }
 
     /**

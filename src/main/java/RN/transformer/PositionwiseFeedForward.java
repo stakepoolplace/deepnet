@@ -24,6 +24,7 @@ public class PositionwiseFeedForward implements Serializable {
     private INDArray inputCache, reluCache; // Cache pour le forward
     private Map<String, INDArray> gradients = new HashMap<>();
     private int dModel;
+    private int ffSize; // Taille de la couche Feed-Forward
     private double epsilon = 1e-7; // Ajouter epsilon ici pour éviter la division par zéro
 
     /**
@@ -34,6 +35,7 @@ public class PositionwiseFeedForward implements Serializable {
      */
     public PositionwiseFeedForward(int modelSize, int ffSize) {
         this.dModel = modelSize;
+        this.ffSize = ffSize;
         // Initialisation des poids avec une distribution normale et He Initialization
         this.W1 = Nd4j.randn(modelSize, ffSize).div(Math.sqrt(modelSize)); // [dModel, ffSize]
         this.b1 = Nd4j.zeros(1, ffSize); // [1, ffSize]
@@ -98,7 +100,7 @@ public class PositionwiseFeedForward implements Serializable {
         // 1. Calcul des gradients par rapport à W2 et b2
         INDArray reluOutput = Transforms.relu(reluCache); // [batchSize * seqLength, ffSize]
         INDArray gradW2 = reluOutput.transpose().mmul(gradOutput); // [ffSize, dModel]
-        INDArray gradB2 = gradOutput.sum(0); // [1, dModel]
+        INDArray gradB2 = gradOutput.sum(0).reshape(1, dModel); // [1, dModel]
 
         // 2. Propagation du gradient à travers la deuxième couche linéaire
         INDArray gradHidden = gradOutput.mmul(W2.transpose()); // [batchSize * seqLength, ffSize]
@@ -109,8 +111,8 @@ public class PositionwiseFeedForward implements Serializable {
 
         // 4. Calcul des gradients par rapport à W1 et b1
         INDArray gradW1 = inputReshaped.transpose().mmul(gradThroughRelu); // [dModel, ffSize]
-        INDArray gradB1 = gradThroughRelu.sum(0); // [1, ffSize]
-
+        INDArray gradB1 = gradThroughRelu.sum(0).reshape(1, ffSize); // [1, ffSize]
+        
         // 5. Calcul du gradient à propager à la couche précédente
         INDArray gradInput = gradThroughRelu.mmul(W1.transpose()); // [batchSize * seqLength, dModel]
 

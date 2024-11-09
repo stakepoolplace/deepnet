@@ -104,10 +104,10 @@ public class TransformerModel  implements Serializable {
     }
 
 
-    public void train(DataGenerator dataGenerator) throws IOException {
-        for (int epoch = 0; epoch < 10; epoch++) {
+    public void train(DataGenerator dataGenerator, int epochNum) throws IOException {
+        for (int epoch = 0; epoch < epochNum; epoch++) {
             optimizer.setEpoch(epoch);
-            System.out.println("Starting epoch " + (epoch + 1));
+            System.out.println("Epoch " + (epoch + 1) + " / " + epochNum);
     
             while (dataGenerator.hasNextBatch()) {
                 
@@ -149,11 +149,11 @@ public class TransformerModel  implements Serializable {
     
                 // Encoder les données du batch
                 INDArray encoded = encoder.encode(true, paddedDataTokenIds, encoderPaddingMask);
-                System.out.println("Encoded output shape: " + Arrays.toString(encoded.shape()));
+                // System.out.println("Encoded output shape: " + Arrays.toString(encoded.shape()));
     
                 // Décoder les données encodées
-                INDArray decodedOutput = decoder.decode(true, encoded, encoded, lookAheadMask, decoderPaddingMask);
-                System.out.println("Decoded output shape: " + Arrays.toString(decodedOutput.shape()));
+                INDArray decodedOutput = decoder.decode(true, encoded, encoded, lookAheadMask, encoderPaddingMask); // Passer encoderPaddingMask pour cross-attention
+                // System.out.println("Decoded output shape: " + Arrays.toString(decodedOutput.shape()));
     
                 // Calculer la perte et les gradients
                 List<INDArray> decodedLogits = Arrays.asList(decodedOutput);
@@ -163,7 +163,7 @@ public class TransformerModel  implements Serializable {
                 optimizer.update(combinedParameters, combinedGradients);
     
                 // (Optionnel) Afficher la progression
-                System.out.println("Batch processed.");
+                // System.out.println("Batch processed.");
             }
     
             // Réinitialiser le générateur de données pour le prochain epoch
@@ -241,7 +241,7 @@ public class TransformerModel  implements Serializable {
         Map<String, INDArray> decoderGradients = decoder.backward(initialGradients);
 
         // Vérifiez les clés présentes dans decoderGradients
-        System.out.println("Keys in decoderGradients: " + decoderGradients.keySet());
+        // System.out.println("Keys in decoderGradients: " + decoderGradients.keySet());
         
         // Extraire les gradients pertinents pour l'encodeur à partir de decoderGradients
         Map<String, INDArray> encoderGradients = extractEncoderGradients(decoderGradients);
@@ -265,12 +265,6 @@ public class TransformerModel  implements Serializable {
         // Extrayez les gradients par rapport aux entrées K et V de l'attention encoder-décodeur.
         INDArray gradAttentionOutputConcat = decoderGradients.get("gradAttentionOutputConcat");
         
-        // Logs pour vérifier les gradients
-        if (gradAttentionOutputConcat != null) {
-            System.out.println("gradAttentionOutputConcat retrieved successfully. Shape: " + Arrays.toString(gradAttentionOutputConcat.shape()));
-        } else {
-            System.out.println("gradAttentionOutputConcat is null!");
-        }
         
         // Vérifiez que gradAttentionOutputConcat n'est pas null
         if (gradAttentionOutputConcat == null) {
@@ -288,8 +282,8 @@ public class TransformerModel  implements Serializable {
     private void updateModelWeights() {
 
         // Log pour les tailles
-        System.out.println("Nombre de paramètres : " + combinedParameters.size());
-        System.out.println("Nombre de gradients : " + combinedGradients.size());
+        // System.out.println("Nombre de paramètres : " + combinedParameters.size());
+        // System.out.println("Nombre de gradients : " + combinedGradients.size());
 
         // Vérifiez si les tailles correspondent avant de les passer à l'optimiseur
         if (combinedParameters.size() != combinedGradients.size()) {
@@ -350,7 +344,7 @@ public class TransformerModel  implements Serializable {
     
         // Encoder le prompt (traité comme un batch de taille 1)
         INDArray encodedPrompt = encoder.encode(false, Arrays.asList(paddedPromptTokenIds), encoderPaddingMask);
-        System.out.println("Encoded prompt shape: " + Arrays.toString(encodedPrompt.shape()));
+        // System.out.println("Encoded prompt shape: " + Arrays.toString(encodedPrompt.shape()));
     
         // Initialiser les IDs de sortie avec le token de début
         List<Integer> outputIds = new ArrayList<>();
@@ -358,16 +352,16 @@ public class TransformerModel  implements Serializable {
     
         for (int i = 0; i < maxLength; i++) {
             // Créer les masques pour le décodeur
-            INDArray decoderPaddingMask = createPaddingMaskSingle(outputIds);
             INDArray lookAheadMask = createLookAheadMask(outputIds.size());
-    
+            INDArray crossAttnMask = encoderPaddingMask; // [1,1,1,4}
+
             // Convertir les IDs de sortie en embeddings pour le décodeur
             INDArray encodedDecoderInput = encoder.lookupEmbeddings(Arrays.asList(outputIds));
-            System.out.println("Encoded decoder input shape: " + Arrays.toString(encodedDecoderInput.shape()));
+            // System.out.println("Encoded decoder input shape: " + Arrays.toString(encodedDecoderInput.shape()));
     
             // Décoder
-            INDArray logits = decoder.decode(false, encodedPrompt, encodedDecoderInput, lookAheadMask, decoderPaddingMask);
-            System.out.println("Logits shape: " + Arrays.toString(logits.shape()));
+            INDArray logits = decoder.decode(false, encodedPrompt, encodedDecoderInput, lookAheadMask, crossAttnMask);
+            // System.out.println("Logits shape: " + Arrays.toString(logits.shape()));
     
             // Extraction des logits du dernier token généré
             // Correction de l'utilisation de INDArrayIndex

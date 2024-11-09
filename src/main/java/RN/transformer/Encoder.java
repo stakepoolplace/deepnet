@@ -80,7 +80,7 @@ public class Encoder implements Serializable  {
                             .assign(tokenEmbedding);
             }
         }
-        System.out.println("Embedded input shape: " + Arrays.toString(inputEmbeddings.shape()));
+        // System.out.println("Embedded input shape: " + Arrays.toString(inputEmbeddings.shape()));
 
         // Appliquer le MultiHeadAttention et les couches de l'encodeur
         INDArray encoded = forward(isTraining, inputEmbeddings, paddingMask);
@@ -135,15 +135,15 @@ public class Encoder implements Serializable  {
         // Appliquer les embeddings positionnels
         INDArray posEncoding = positionalEncoding.getPositionalEncoding(x.shape()[1]);
         x = x.add(posEncoding);
-        System.out.println("After positional encoding: " + Arrays.toString(x.shape()));
+        // System.out.println("After positional encoding: " + Arrays.toString(x.shape()));
     
         for (EncoderLayer layer : layers) {
             x = layer.forward(isTraining, x, paddingMask);
-            System.out.println("After encoder layer: " + Arrays.toString(x.shape()));
+            // System.out.println("After encoder layer: " + Arrays.toString(x.shape()));
         }
         
         x = layerNorm.forward(x);
-        System.out.println("After layer normalization: " + Arrays.toString(x.shape()));
+        // System.out.println("After layer normalization: " + Arrays.toString(x.shape()));
     
         return x;
     }
