@@ -1,15 +1,18 @@
 package RN.transformer;
 
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.File;
 import java.io.IOException;
@@ -18,22 +21,29 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
+import org.junit.Assert;
+import org.junit.Before;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+import org.apache.commons.lang3.tuple.Pair;
 
 public class TransformerTest {
     
     private TransformerModel model;
 
+    private int dModel = 10;
+    private int vocabSize = 15;
+
+
     @BeforeEach
     public void setUp() throws Exception {
         // Initialize your model and any other components here
-        model = new TransformerModel(); // Assuming the constructor is available and initializes everything
-    }
+        model = new TransformerModel(6, this.dModel, 2, 1200, 0.1);
+    }  
     
     @AfterEach
     public void tearDown() throws Exception {
@@ -211,9 +221,10 @@ public class TransformerTest {
         assertEquals(seqLength, (int) encoded.shape()[1], "Sequence length should match the input tokens size");
         assertEquals(dModel, (int) encoded.shape()[2], "dModel should be " + dModel);
     
-        // Prepare decoder input as INDArray
-        INDArray decoderInput = encoderInput.dup(); // Using the same input for simplicity
-    
+        // Préparer decoderInput comme un tenseur de rang 3 et de type FLOAT
+        INDArray decoderInput = Nd4j.rand(DataType.FLOAT, batchSize, seqLength, dModel);
+        System.out.println("decoderInput shape: " + Arrays.toString(decoderInput.shape()));
+
         // Decode the output
         INDArray decoded = model.decoder.decode(false, decoderInput, encoded, lookAheadMask, decoderPaddingMask);
         assertNotNull(decoded, "Decoded output should not be null.");
@@ -223,43 +234,74 @@ public class TransformerTest {
         // Verify the shape of the decoder output
         assertEquals(1, (int) decoded.shape()[0], "Batch size should be 1");
         assertEquals(seqLength, (int) decoded.shape()[1], "Sequence length should match the input tokens size");
-        assertEquals(dModel, (int) decoded.shape()[2], "dModel should be " + dModel);
+
+        int outputSize = TransformerModel.getVocabSize(); // Assurez-vous que cette valeur est correcte
+        assertEquals(outputSize, (int) decoded.shape()[2], "Output size should be " + outputSize);
+
     }
     
         
     @Test
-    public void testBackwardPropagation() {
-        // D'abord, effectuez un passage avant pour initialiser les caches
+    public void testBackwardPropagation0() {
+        // Initialiser les données d'entrée
         String testInput = "Test input";
         List<String> tokens = model.tokenizer.tokenize(testInput);
 
         List<Integer> inputTokenIds = model.tokenizer.tokensToIds(tokens);
         List<Integer> targetTokenIds = model.tokenizer.tokensToIds(tokens);
 
-        INDArray encoderPaddingMask = model.createPaddingMask(inputTokenIds);
-        INDArray decoderPaddingMask = model.createPaddingMask(targetTokenIds);
+       // Prepare inputTokenIdsBatch as List<List<Integer>>
+       List<List<Integer>> inputTokenIdsBatch = Arrays.asList(inputTokenIds);
+       List<List<Integer>> targetTokenIdsBatch = Arrays.asList(targetTokenIds);
+    
+
+        // Créer les masques
+        INDArray encoderPaddingMask = model.createPaddingMask(inputTokenIdsBatch);
+        INDArray decoderPaddingMask = model.createPaddingMask(targetTokenIdsBatch);
         INDArray lookAheadMask = model.createLookAheadMask(targetTokenIds.size());
 
-        INDArray encoded = model.encoder.encode(true, inputTokenIds, encoderPaddingMask);
+        // Effectuer le passage avant
+        INDArray encoded = model.encoder.encode(true, inputTokenIdsBatch, encoderPaddingMask);
         INDArray decoderOutput = model.decoder.decode(true, encoded, encoded, lookAheadMask, decoderPaddingMask);
-        
-        // Maintenant, effectuez la rétropropagation
+
+        // Vérifier la forme de la sortie
+        Assert.assertEquals("Decoder output should have rank 3", 3, decoderOutput.rank());
+        Assert.assertEquals("Last dimension of decoder output should be vocabSize", 
+                            vocabSize, (int) decoderOutput.shape()[2]);
+
+        // Effectuer la rétropropagation avec un gradOutput aléatoire
         INDArray gradOutput = Nd4j.rand(decoderOutput.shape());
         Map<String, INDArray> gradients = model.decoder.backward(gradOutput);
-        assertNotNull(gradients, "Gradients should not be null.");
-        assertFalse(gradients.isEmpty(), "Gradients map should not be empty.");
+
+        // Vérifier que les gradients ne sont pas nuls ou vides
+        Assert.assertNotNull("Gradients should not be null.", gradients);
+        Assert.assertFalse("Gradients map should not be empty.", gradients.isEmpty());
+
+        // Vérifier que les gradients contiennent les clés attendues pour LinearProjection
+        Assert.assertTrue("Gradients should contain 'weights'", gradients.containsKey("weights"));
+        Assert.assertTrue("Gradients should contain 'bias'", gradients.containsKey("bias"));
+        Assert.assertTrue("Gradients should contain 'gamma'", gradients.containsKey("gamma"));
+        Assert.assertTrue("Gradients should contain 'beta'", gradients.containsKey("beta"));
+
+        // Vérifier les formes des gradients de LinearProjection
+        INDArray gradWeights = gradients.get("weights");
+        INDArray gradBias = gradients.get("bias");
+        INDArray gradGamma = gradients.get("gamma");
+        INDArray gradBeta = gradients.get("beta");
+
+        Assert.assertArrayEquals("weights gradient shape should be [dModel, vocabSize]", 
+                                  new long[]{dModel, vocabSize}, gradWeights.shape());
+        Assert.assertArrayEquals("bias gradient shape should be [1, vocabSize]", 
+                                  new long[]{1, vocabSize}, gradBias.shape());
+        Assert.assertArrayEquals("gamma gradient shape should be [1, dModel]", 
+                                  new long[]{1, dModel}, gradGamma.shape());
+        Assert.assertArrayEquals("beta gradient shape should be [1, dModel]", 
+                                  new long[]{1, dModel}, gradBeta.shape());
+
     }
     
     @Test
     public void testBackwardPropagation1() {
-        // Initialisation des paramètres du modèle
-        int numLayers = 6;
-        int dModel = 512;
-        int numHeads = 8;
-        int dff = 2048;
-        double dropoutRate = 0.1;
-        TransformerModel model = new TransformerModel(numLayers, dModel, numHeads, dff, dropoutRate); // Assurez-vous que TransformerModel est correctement initialisé
-
         // Création des entrées fictives
         String testInput = "Test input";
         List<String> tokens = model.tokenizer.tokenize(testInput);
@@ -267,16 +309,23 @@ public class TransformerTest {
         List<Integer> inputTokenIds = model.tokenizer.tokensToIds(tokens);
         List<Integer> targetTokenIds = model.tokenizer.tokensToIds(tokens);
 
-        INDArray encoderPaddingMask = model.createPaddingMask(inputTokenIds);
-        INDArray decoderPaddingMask = model.createPaddingMask(targetTokenIds);
+        // Préparer inputTokenIdsBatch et targetTokenIdsBatch comme List<List<Integer>>
+        List<List<Integer>> inputTokenIdsBatch = Arrays.asList(inputTokenIds);
+        List<List<Integer>> targetTokenIdsBatch = Arrays.asList(targetTokenIds);
+
+        INDArray encoderPaddingMask = model.createPaddingMask(inputTokenIdsBatch);
+        INDArray decoderPaddingMask = model.createPaddingMask(targetTokenIdsBatch);
         INDArray lookAheadMask = model.createLookAheadMask(targetTokenIds.size());
 
         // Passe forward
-        INDArray encoded = model.encoder.encode(true, inputTokenIds, encoderPaddingMask);
+        INDArray encoded = model.encoder.encode(true, inputTokenIdsBatch, encoderPaddingMask);
         INDArray decoderOutput = model.decoder.decode(true, encoded, encoded, lookAheadMask, decoderPaddingMask);
 
+        // Vérifier la forme des logits
+        System.out.println("Decoder Output Shape: " + Arrays.toString(decoderOutput.shape()));
+        
         // Création d'un gradient fictif pour la rétropropagation
-        INDArray gradOutput = Nd4j.rand(decoderOutput.shape());
+        INDArray gradOutput = Nd4j.rand(decoderOutput.shape()).castTo(DataType.FLOAT);
 
         // Appel de la méthode backward
         Map<String, INDArray> gradients = model.decoder.backward(gradOutput);
@@ -284,10 +333,14 @@ public class TransformerTest {
         // Assertions pour vérifier les gradients
         assertNotNull("Les gradients ne devraient pas être null", gradients);
         assertFalse("Le map des gradients ne devrait pas être vide", gradients.isEmpty());
+        // Décommentez si vous souhaitez vérifier 'gamma' et 'beta' si ils sont présents
         assertTrue("Les gradients devraient contenir la clé 'gamma'", gradients.containsKey("gamma"));
         assertTrue("Les gradients devraient contenir la clé 'beta'", gradients.containsKey("beta"));
-//        assertTrue("Les gradients devraient contenir la clé 'weights'", gradients.containsKey("weights"));
-//        assertTrue("Les gradients devraient contenir la clé 'bias'", gradients.containsKey("bias"));
+        // Décommentez si vous souhaitez vérifier 'W1', 'b1', 'W2', 'b2', etc.
+        // assertTrue("Les gradients devraient contenir la clé 'W1'", gradients.containsKey("W1"));
+        // assertTrue("Les gradients devraient contenir la clé 'b1'", gradients.containsKey("b1"));
+        // assertTrue("Les gradients devraient contenir la clé 'W2'", gradients.containsKey("W2"));
+        // assertTrue("Les gradients devraient contenir la clé 'b2'", gradients.containsKey("b2"));
 
         // Optionnel : Vérifier que les gradients ne contiennent pas de NaN ou d'Inf
         for (Map.Entry<String, INDArray> entry : gradients.entrySet()) {
@@ -295,7 +348,41 @@ public class TransformerTest {
             assertFalse("Le gradient pour " + entry.getKey() + " contient des NaN", grad.isNaN().any());
             assertFalse("Le gradient pour " + entry.getKey() + " contient des Inf", grad.isInfinite().any());
         }
+
+        // Vérifier que les gradients ont des formes cohérentes
+        for (Map.Entry<String, INDArray> entry : gradients.entrySet()) {
+            String key = entry.getKey();
+            INDArray grad = entry.getValue();
+            switch (key) {
+                case "W1":
+                    assertEquals("Forme des gradients de W1", new long[]{512, 2048}, grad.shape()); // ffSize = 2048
+                    break;
+                case "b1":
+                    assertEquals("Forme des gradients de b1", new long[]{1, 2048}, grad.shape());
+                    break;
+                case "W2":
+                    assertEquals("Forme des gradients de W2", new long[]{2048, 512}, grad.shape());
+                    break;
+                case "b2":
+                    assertEquals("Forme des gradients de b2", new long[]{1, 512}, grad.shape());
+                    break;
+                case "input":
+                    // Forme du gradient de l'entrée dépend de l'entrée originale
+                    assertEquals("Forme du gradient de l'entrée", encoded.shape(), grad.shape());
+                    break;
+                case "gamma":
+                    assertEquals("Forme des gradients de gamma", new long[]{1, 512}, grad.shape());
+                    break;
+                case "beta":
+                    assertEquals("Forme des gradients de beta", new long[]{1, 512}, grad.shape());
+                    break;
+                default:
+                    fail("Clé de gradient inattendue : " + key);
+            }
+        }
     }
+
+    
 
     @Test
     public void testParameterUpdates() throws IOException {
@@ -314,22 +401,42 @@ public class TransformerTest {
         assertFalse(initialWeights.equalsWithEps(updatedWeights, 1e-6), "Weights should be updated after training.");
     }
 
-    @Test
+  @Test
     public void testLossCalculation() {
         int batchSize = 2;
         int seqLength = 5;
 
-        // Création des logits : batchSize x seqLength x vocabSize
-        List<INDArray> logits = Arrays.asList(Nd4j.rand(new int[]{batchSize * seqLength, TransformerModel.getVocabSize()}));
+        // Assurez-vous que vocabSize est correct
+        assertEquals("Vocab size should match", vocabSize, TransformerModel.getVocabSize());
 
-        // Création des targetTokenIds : 2 séquences concaténées de 5 tokens (10 tokens au total)
-        List<Integer> targetTokenIds = Arrays.asList(0, 1, 2, 3, 4, 0, 1, 2, 3, 4);
+        // Création des logits : [batchSize, seqLength, vocabSize]
+        INDArray logitsArray = Nd4j.rand(new int[]{batchSize, seqLength, vocabSize}, 'c');
+        List<INDArray> logits = Arrays.asList(logitsArray);
 
-        // Calcul de la perte
-        float loss = model.calculateCrossEntropyLossAndGradient(logits, targetTokenIds).getLeft();
+        // Création des targetTokenIds : 2 séquences de 5 tokens chacune
+        // Assurez-vous que les IDs sont valides (entre 0 et vocabSize -1)
+        List<Integer> targetTokenIds1 = Arrays.asList(1, 2, 3, 4, 5);
+        List<Integer> targetTokenIds2 = Arrays.asList(2, 3, 4, 5, 6);
+        List<List<Integer>> targetBatchTokenIds = Arrays.asList(targetTokenIds1, targetTokenIds2);
+
+        // Calcul de la perte et des gradients
+        Pair<Float, INDArray> lossAndGradients = model.calculateCrossEntropyLossAndGradient(logits, targetBatchTokenIds);
+        float loss = lossAndGradients.getLeft();
+        INDArray gradients = lossAndGradients.getRight();
 
         // Vérification que la perte est non négative
-        assertTrue(loss >= 0, "La perte doit être non-négative.");
+        assertTrue("La perte doit être non-négative.", loss >= 0);
+
+        // Vérification de la forme des gradients
+        assertArrayEquals("Forme des gradients doit correspondre aux logits",
+            logitsArray.shape(), gradients.shape());
+
+        // // Vérification que les gradients sont dans des plages attendues
+        // assertFalse("Les gradients ne doivent pas contenir de NaN.", gradients.isNaN());
+        // assertFalse("Les gradients ne doivent pas contenir d'Inf.", gradients.isInfinite());
+
+        // (Optionnel) Vérification de valeurs spécifiques pour des cas simples
+        // Vous pouvez définir des logits et des cibles spécifiques et vérifier la perte et les gradients attendus
     }
 
 
@@ -378,8 +485,19 @@ public class TransformerTest {
     
     @Test
     public void testOptimizerUpdate() {
-    	model.addCombinedParameters();
+        // Ajouter les paramètres au modèle
+        model.addCombinedParameters();
+        
+        // Récupérer les paramètres ajoutés
         List<INDArray> parameters = model.getCombinedParameters();
+        
+        // Initialiser l'optimiseur **après** l'ajout des paramètres
+        float initialLr = 0.001f;
+        int dmodel = 3;
+        int warmupSteps = 1000;
+        model.optimizer = new CustomAdamOptimizer(initialLr, dmodel, warmupSteps, parameters);
+        
+        // Générer des gradients fictifs
         List<INDArray> gradients = new ArrayList<>();
         for (INDArray param : parameters) {
             gradients.add(Nd4j.rand(param.shape()));
@@ -400,6 +518,47 @@ public class TransformerTest {
                         "Parameter " + i + " should have been updated");
         }
     }
+
+    @Test
+    public void testOptimizerMultipleUpdates() {
+        // Ajouter les paramètres au modèle
+        model.addCombinedParameters();
+        
+        // Récupérer les paramètres ajoutés
+        List<INDArray> parameters = model.getCombinedParameters();
+        
+        // Initialiser l'optimiseur avec warmupSteps = 1
+        float initialLr = 0.001f;
+        int dmodel = 3;
+        int warmupSteps = 1;
+        model.optimizer = new CustomAdamOptimizer(initialLr, dmodel, warmupSteps, parameters);
+        
+        // Générer des gradients fictifs
+        List<INDArray> gradients = new ArrayList<>();
+        for (INDArray param : parameters) {
+            gradients.add(Nd4j.rand(param.shape()));
+        }
+        
+        // Copier les paramètres initiaux
+        List<INDArray> initialParams = new ArrayList<>();
+        for (INDArray param : parameters) {
+            initialParams.add(param.dup());
+        }
+        
+        // Effectuer plusieurs mises à jour
+        int numUpdates = 10;
+        for (int u = 0; u < numUpdates; u++) {
+            model.optimizer.update(parameters, gradients);
+        }
+        
+        // Vérifier que les paramètres ont été mis à jour
+        for (int i = 0; i < parameters.size(); i++) {
+            assertFalse(parameters.get(i).equalsWithEps(initialParams.get(i), 1e-6), 
+                        "Parameter " + i + " should have been updated");
+        }
+    }
+    
+    
     
     @Test
     public void testAdaptiveLearningRate() {

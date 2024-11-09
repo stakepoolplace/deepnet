@@ -56,7 +56,7 @@ public class Transformer implements Serializable {
             // Charger l'état de l'optimiseur
             int currentStep = (int) ois.readObject();
             int epoch = (int) ois.readObject();
-            double learningRate = (double) ois.readObject();
+            float learningRate = (float) ois.readObject();
             optimizer.setCurrentStep(currentStep);
             optimizer.setEpoch(epoch);
             optimizer.setLearningRate(learningRate);

@@ -1,6 +1,7 @@
 package RN.transformer;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -9,6 +10,9 @@ import java.util.Map;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.ops.transforms.Transforms;
+
+import RN.utils.NDArrayUtils;
+
 import org.nd4j.linalg.api.buffer.DataType;
 
 /**
@@ -50,8 +54,25 @@ public class LinearProjection implements Serializable {
      * @return Sortie projetée de forme [seqLength, outputSize]
      */
     public INDArray project(INDArray input) {
-        // Projection linéaire: [seqLength, dModel] * [dModel, outputSize] + [1, outputSize] = [seqLength, outputSize]
-        return input.mmul(weights).addRowVector(bias);
+        if (input.rank() == 3) {
+            int batchSize = (int) input.size(0);
+            int seqLength = (int) input.size(1);
+            int inputDim = (int) input.size(2);
+
+            // Reshaper en [batchSize * seqLength, inputDim]
+            INDArray reshapedInput = input.reshape(batchSize * seqLength, inputDim);
+
+            // Multiplication matricielle et ajout du biais
+            INDArray projected = reshapedInput.mmul(weights).addiRowVector(bias);
+
+            // Reshaper de retour en [batchSize, seqLength, outputDim]
+            return projected.reshape(batchSize, seqLength, weights.size(1));
+        } else if (input.rank() == 2) {
+            // Multiplication matricielle et ajout du biais
+            return input.mmul(weights).addiRowVector(bias);
+        } else {
+            throw new IllegalArgumentException("Input must be rank 2 or 3.");
+        }
     }
 
     /**
@@ -77,6 +98,7 @@ public class LinearProjection implements Serializable {
         return output;
     }
 
+
     /**
      * Passe backward pour calculer les gradients.
      * 
@@ -85,41 +107,69 @@ public class LinearProjection implements Serializable {
      * @return Map contenant les gradients pour les paramètres 'weights', 'bias', 'gamma' et 'beta', ainsi que 'input'
      */
     public Map<String, INDArray> backward(INDArray input, INDArray gradOutput) {
+        // Vérifier les formes
+        if (input.rank() != 3 && input.rank() != 2) {
+            throw new IllegalArgumentException("Input must be rank 2 or 3.");
+        }
+        if (input.size(input.rank() - 1) != weights.size(0)) { // dModel
+            throw new IllegalArgumentException("Input size mismatch. Expected " + weights.size(0) + ", got " + input.size(input.rank() - 1));
+        }
+    
+        // Si l'input est de rang 3, reshaper pour le traitement
+        boolean reshaped = false;
+        int batchSize = 1;
+        int seqLength = 1;
+        if (input.rank() == 3) {
+            batchSize = (int) input.size(0);
+            seqLength = (int) input.size(1);
+            input = input.reshape(batchSize * seqLength, input.size(2)); // [batchSize * seqLength, dModel]
+            gradOutput = gradOutput.reshape(batchSize * seqLength, gradOutput.size(2)); // [batchSize * seqLength, vocabSize]
+            reshaped = true;
+        }
+    
         // Calcul des moyennes et variances
-        INDArray mean = input.mean(1).reshape(input.rows(), 1); // [seqLength, 1]
-        INDArray variance = input.var(false, 1).reshape(input.rows(), 1); // [seqLength, 1]
-        INDArray stdInv = Transforms.pow(variance.add(epsilon), -0.5); // [seqLength, 1]
-
+        INDArray mean = input.mean(1).reshape(input.size(0), 1); // [batchSize * seqLength, 1]
+        INDArray variance = input.var(false, 1).reshape(input.size(0), 1); // [batchSize * seqLength, 1]
+        INDArray stdInv = Transforms.pow(variance.add(epsilon), -0.5); // [batchSize * seqLength, 1]
+    
         // Calcul de normalized = (input - mean) / sqrt(var + epsilon)
-        INDArray normalized = input.sub(mean).mul(stdInv); // [seqLength, dModel]
-
+        INDArray normalized = input.sub(mean).mul(stdInv); // [batchSize * seqLength, dModel]
+    
         // Gradients pour la projection linéaire
-        INDArray gradScaled = gradOutput.mmul(weights.transpose()); // [seqLength, dModel]
-
+        INDArray gradScaled = gradOutput.mmul(weights.transpose()); // [batchSize * seqLength, dModel]
+    
         // Gradients pour gamma et beta de LayerNorm
-        INDArray gradGamma = normalized.mul(gradScaled).sum(0); // [dModel]
-        INDArray gradBeta = gradScaled.sum(0); // [dModel]
-
+        INDArray gradGamma = normalized.mul(gradScaled).sum(0).reshape(1, input.size(1)); // [1, dModel]
+        INDArray gradBeta = gradScaled.sum(0).reshape(1, input.size(1)); // [1, dModel]
+    
         // Gradients pour la normalisation
-        INDArray gradNormalized = gradScaled.mul(gamma); // [seqLength, dModel]
+        INDArray gradNormalized = gradScaled.mul(gamma); // [batchSize * seqLength, dModel]
         
         // Calcul des gradients pour l'entrée
-        INDArray sumGradNormInput = gradNormalized.mul(normalized).sum(1).reshape(input.rows(), 1); // [seqLength, 1]
-        INDArray gradInput = gradNormalized.mul(stdInv).sub(normalized.mul(sumGradNormInput).mul(stdInv)); // [seqLength, dModel]
-
+        INDArray sumGradNormInput = gradNormalized.mul(normalized).sum(1).reshape(input.size(0), 1); // [batchSize * seqLength, 1]
+        INDArray gradInput = gradNormalized.mul(stdInv).sub(normalized.mul(sumGradNormInput).mul(stdInv)); // [batchSize * seqLength, dModel]
+    
         // Gradients pour les poids et les biais
-        INDArray gradWeights = input.transpose().mmul(gradOutput); // [dModel, outputSize]
-        INDArray gradBias = gradOutput.sum(0); // [outputSize]
-
+        INDArray gradWeights = input.transpose().mmul(gradOutput); // [dModel, vocabSize]
+        INDArray gradBias = gradOutput.sum(0).reshape(1, gradOutput.size(1)); // [1, vocabSize]
+    
+        // Si reshaped, remettre les formes d'origine
+        if (reshaped) {
+            gradInput = gradInput.reshape(batchSize, seqLength, input.size(1)); // [batchSize, seqLength, dModel]
+        }
+    
         // Stockage des gradients dans la map
-        gradients.put("weights", gradWeights);
-        gradients.put("bias", gradBias);
-        gradients.put("gamma", gradGamma);
-        gradients.put("beta", gradBeta);
-        gradients.put("input", gradInput); // Gradient à propager vers les couches précédentes
-
+        NDArrayUtils.addGradient(gradients, "weights", gradWeights);
+        NDArrayUtils.addGradient(gradients, "bias", gradBias);
+        NDArrayUtils.addGradient(gradients, "gamma", gradGamma);
+        NDArrayUtils.addGradient(gradients, "beta", gradBeta);
+        NDArrayUtils.addGradient(gradients, "input", gradInput); // Gradient à propager vers les couches précédentes
+    
         return gradients;
     }
+     
+    
+
 
     /**
      * Obtient les gradients des paramètres.
@@ -127,7 +177,15 @@ public class LinearProjection implements Serializable {
      * @return Liste des gradients dans l'ordre [weights, bias, gamma, beta]
      */
     public List<INDArray> getGradients() {
-        return Arrays.asList(gradients.get("weights"), gradients.get("bias"), gradients.get("gamma"), gradients.get("beta"));
+        List<INDArray> list = new ArrayList<>();
+        list.add(gradients.get("weights"));
+        list.add(gradients.get("bias"));
+        list.add(gradients.get("gamma"));
+        list.add(gradients.get("beta"));
+        if (list.contains(null)) {
+            throw new IllegalArgumentException(" gradients contains null ");
+        }
+        return list;    
     }
 
     /**

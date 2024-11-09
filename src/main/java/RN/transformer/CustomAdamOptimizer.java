@@ -16,16 +16,16 @@ public class CustomAdamOptimizer implements Serializable {
     private static final long serialVersionUID = 3031098044411623634L;
 
     // Hyperparamètres d'Adam
-    private double initialLr;
-    private double beta1;
-    private double beta2;
-    private double epsilon;
+    private float initialLr;
+    private float beta1;
+    private float beta2;
+    private float epsilon;
 
     // Paramètres de scheduling
     private int warmupSteps;
     private int currentStep;
     private int epoch;
-    private double learningRate;
+    private float learningRate;
 
     // États pour chaque paramètre
     private List<AdamState> states;
@@ -50,11 +50,11 @@ public class CustomAdamOptimizer implements Serializable {
      * @param warmupSteps      Nombre de pas de warmup.
      * @param params           Liste des paramètres du modèle.
      */
-    public CustomAdamOptimizer(double initialLr, int dmodel, int warmupSteps, List<INDArray> params) {
+    public CustomAdamOptimizer(float initialLr, int dmodel, int warmupSteps, List<INDArray> params) {
         this.initialLr = initialLr;
-        this.beta1 = 0.9;
-        this.beta2 = 0.999;
-        this.epsilon = 1e-8;
+        this.beta1 = 0.9f;
+        this.beta2 = 0.999f;
+        this.epsilon = 1e-8f;
         this.warmupSteps = warmupSteps;
         this.currentStep = 0;
         this.epoch = 0;
@@ -98,58 +98,79 @@ public class CustomAdamOptimizer implements Serializable {
         if (params.size() != grads.size()) {
             throw new IllegalArgumentException("La taille de la liste des paramètres et des gradients doit être la même.");
         }
-
+    
+        if (params.size() != states.size()) {
+            throw new IllegalStateException("Le nombre de paramètres (" + params.size() + ") ne correspond pas au nombre d'états (" + states.size() + "). Assurez-vous que l'optimiseur est initialisé après avoir ajouté tous les paramètres.");
+        }
+    
         currentStep++;
-
+        // System.out.println("Current Step: " + currentStep);
+        // System.out.println("Learning Rate: " + learningRate);
+    
         for (int i = 0; i < params.size(); i++) {
             INDArray param = params.get(i);
             INDArray grad = grads.get(i);
-
+    
             AdamState state = states.get(i);
-
-            // Mise à jour des moments
-            state.m.mul(beta1).addi(grad.mul(1 - beta1));
-            state.v.mul(beta2).addi(grad.mul(grad).mul(1 - beta2));
-
+    
+            // Afficher les valeurs avant la mise à jour
+            // System.out.println("Param " + i + " before update: " + param);
+            // System.out.println("Grad " + i + ": " + grad);
+    
+            // Mise à jour des moments en place
+            state.m.muli(beta1).addi(grad.mul(1 - beta1));
+            state.v.muli(beta2).addi(grad.mul(grad).mul(1 - beta2));
+    
             // Correction de biais
-            INDArray mHat = state.m.mul(1.0 / (1 - Math.pow(beta1, currentStep)));
-            INDArray vHat = state.v.mul(1.0 / (1 - Math.pow(beta2, currentStep)));
-
+            INDArray mHat = state.m.mul(1.0f / (1.0f - (float) Math.pow(beta1, currentStep)));
+            INDArray vHat = state.v.mul(1.0f / (1.0f - (float) Math.pow(beta2, currentStep)));
+    
             // Calcul de l'étape de mise à jour
             INDArray step = mHat.mul(learningRate).div(Transforms.sqrt(vHat).add(epsilon));
-
+    
+            // Afficher les valeurs intermédiaires
+            // System.out.println("mHat " + i + ": " + mHat);
+            // System.out.println("vHat " + i + ": " + vHat);
+            // System.out.println("Step " + i + ": " + step);
+    
             // Mise à jour du paramètre
             param.subi(step);
+    
+            // Afficher le paramètre après la mise à jour
+            // System.out.println("Param " + i + " after update: " + param);
         }
-
+    
         // Mettre à jour le taux d'apprentissage si nécessaire
         calculateLearningRate();
     }
+    
+    
+    
 
     // Calcul du taux d'apprentissage avec warmup et décroissance
-    double calculateLearningRate() {
-        double step = Math.max(1.0, (double) currentStep);  // Commencer à 1 pour éviter la division par zéro
+    float calculateLearningRate() {
+        float step = Math.max(1.0f, (float) currentStep);  // Commencer à 1 pour éviter la division par zéro
 
         // Learning rate de base
-        double lr = initialLr;
+        float lr = initialLr;
 
         // Calculer le facteur de warmup (0 à 1 pendant la période de warmup)
-        double warmupFactor = Math.min(1.0, step / warmupSteps);
+        float warmupFactor = Math.min(1.0f, step / warmupSteps);
 
         // Calculer le facteur de décroissance (diminue après la période de warmup)
-        double decayFactor;
+        float decayFactor;
         if (step <= warmupSteps) {
-            decayFactor = 1.0;
+            decayFactor = 1.0f;
         } else {
             // Décroissance en racine carrée inverse après le warmup
-            decayFactor = Math.sqrt(warmupSteps / step);
+            decayFactor = (float) Math.sqrt(warmupSteps / step);
         }
 
         // Calculer le learning rate final
         this.learningRate = lr * warmupFactor * decayFactor;
 
         // Appliquer des limites pour éviter des valeurs extrêmes
-        this.learningRate = Math.max(this.learningRate, initialLr * 0.1);   // Pas moins de 10% du lr initial
+        this.learningRate = Math.max(this.learningRate, initialLr * 0.1f);   // Pas moins de 10% du lr initial
         this.learningRate = Math.min(this.learningRate, initialLr);         // Pas plus que le lr initial
 
         // Log des valeurs pour debugging
@@ -178,11 +199,11 @@ public class CustomAdamOptimizer implements Serializable {
         return this.epoch;
     }
 
-    public double getLearningRate() {
+    public float getLearningRate() {
         return learningRate;
     }
 
-    public void setLearningRate(double learningRate) {
+    public void setLearningRate(float learningRate) {
         this.learningRate = learningRate;
     }
 }

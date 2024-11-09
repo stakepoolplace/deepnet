@@ -12,7 +12,7 @@ import org.nd4j.linalg.factory.Nd4j;
 
 public class Decoder implements Serializable {
     private static final long serialVersionUID = 283129978055526337L;
-    private List<DecoderLayer> layers;
+    List<DecoderLayer> layers;
     private LayerNorm layerNorm;
     private int numLayers;
     protected int dModel;
@@ -22,6 +22,8 @@ public class Decoder implements Serializable {
 
     // Cache pour stocker les entrées des couches pendant la passe forward
     private List<INDArray> forwardCache;
+    private INDArray lastNormalizedInput; // Stocke l'entrée normalisée après LayerNorm
+
 
     public Decoder(int numLayers, int dModel, int numHeads, int dff, double dropoutRate) {
         this.numLayers = numLayers;
@@ -61,6 +63,7 @@ public class Decoder implements Serializable {
     
         // Normalisation finale
         encodedDecoderInput = layerNorm.forward(encodedDecoderInput);
+        lastNormalizedInput = encodedDecoderInput.dup(); // Stocker l'entrée normalisée
     
         // Projection linéaire vers le vocabulaire
         INDArray logits = linearProjection.project(encodedDecoderInput); // [batchSize, targetSeqLength, vocabSize]
@@ -69,25 +72,22 @@ public class Decoder implements Serializable {
         return logits;
     }
     
-    
-
     public Map<String, INDArray> backward(INDArray gradOutput) {
-        // Récupérer l'entrée de la dernière couche à partir du cache
-        INDArray lastLayerInput = forwardCache.get(layers.size() - 1);
-        if (lastLayerInput == null) {
-            throw new IllegalStateException("Cache de la dernière couche non initialisé. Assurez-vous d'effectuer une passe forward avant.");
+        // Récupérer l'entrée normalisée de la passe forward
+        if (lastNormalizedInput == null) {
+            throw new IllegalStateException("L'entrée normalisée n'est pas initialisée. Assurez-vous d'effectuer une passe forward avant.");
         }
-
+    
         // Propager le gradient à travers LinearProjection
-        Map<String, INDArray> gradLinearProjection = linearProjection.backward(lastLayerInput, gradOutput);
-
+        Map<String, INDArray> gradLinearProjection = linearProjection.backward(lastNormalizedInput, gradOutput);
+    
         // Propager le gradient à travers LayerNorm
         Map<String, INDArray> gradLayerNorm = layerNorm.backward(gradLinearProjection.get("input"));
-
-        // Transformer gradOutput en un Map pour correspondre à la signature de DecoderLayer.backward
+    
+        // Transformer gradLayerNorm en un Map pour correspondre à la signature de DecoderLayer.backward
         Map<String, INDArray> gradMap = new HashMap<>();
         gradMap.put("input", gradLayerNorm.get("input")); // Utiliser "input" comme clé est arbitraire mais doit correspondre à ce que s'attend à recevoir DecoderLayer.backward
-
+    
         // Commencer avec le gradient à la sortie du Decoder
         for (int i = layers.size() - 1; i >= 0; i--) {
             DecoderLayer layer = layers.get(i);
@@ -97,9 +97,10 @@ public class Decoder implements Serializable {
         }
         // À ce stade, gradMap contiendrait le gradient à propager à l'Encoder
         // Vous pouvez ensuite extraire le gradient à passer à l'encodeur ou à d'autres parties du modèle si nécessaire.
-
+    
         return gradMap;
     }
+    
 
     // Méthode pour obtenir tous les paramètres du décodeur
     public List<INDArray> getParameters() {
@@ -196,6 +197,12 @@ public class Decoder implements Serializable {
          * @return Sortie après cette couche
          */
         public INDArray forward(boolean isTraining, INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray paddingMask, INDArray cachedInput) {
+            
+            // Vérification des formes
+            if (x.rank() != 3 || encoderOutput.rank() != 3) {
+                throw new IllegalArgumentException("Les entrées query, key et value doivent être de rang 3.");
+            }
+            
             INDArray attn1 = selfAttention.forward(x, x, x, lookAheadMask);
             attn1 = dropout1.apply(isTraining, attn1);
             x = layerNorm1.forward(x.add(attn1));
@@ -237,7 +244,7 @@ public class Decoder implements Serializable {
             gradients.putAll(gradEncoderDecoderAttention);
 
             // Rétropropagation à travers LayerNorm1
-            Map<String, INDArray> gradLayerNorm1 = layerNorm1.backward(gradEncoderDecoderAttention.get("inputQ"));
+            Map<String, INDArray> gradLayerNorm1 = layerNorm1.backward(gradEncoderDecoderAttention.get("input"));
             gradients.putAll(gradLayerNorm1);
 
             // Rétropropagation à travers selfAttention

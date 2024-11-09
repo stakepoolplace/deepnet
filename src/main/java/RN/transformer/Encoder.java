@@ -152,12 +152,17 @@ public class Encoder implements Serializable  {
 
     public void backward(Map<String, INDArray> gradOutput) {
     	
-    	INDArray gradK = gradOutput.get("gradK");
-    	INDArray gradV = gradOutput.get("gradV");
-    	
-    	INDArray gradFromDecoder = gradK.add(gradV);  // Cette étape suppose que gradK et gradV sont adaptés pour être sommés ainsi
+        // Récupérer gradAttentionOutputConcat
+        INDArray gradAttentionOutputConcatND = gradOutput.get("gradAttentionOutputConcat"); // [1,6,6,50]
+
+        // Permute les axes pour [batchSize, seqLength, numHeads, depth]
+        INDArray gradPermuted = gradAttentionOutputConcatND.permute(0, 2, 1, 3); // [1,6,6,50]
+    
+        // Reshaper pour concaténer les têtes : [batchSize, seqLength, numHeads * depth]
+        INDArray gradOutputForLayerNorm = gradPermuted.reshape(1, 6, 6 * 50); // [1,6,300]
+    
         // Backpropagation à travers la normalisation de couche finale
-    	Map<String, INDArray> gradientsFromLayerNorm = layerNorm.backward(gradFromDecoder);
+    	Map<String, INDArray> gradientsFromLayerNorm = layerNorm.backward(gradOutputForLayerNorm);
 
         // Récupération du gradient par rapport aux entrées de LayerNorm qui sera utilisé comme gradient initial pour les couches de l'Encoder
         INDArray gradInput = gradientsFromLayerNorm.get("input");
@@ -166,6 +171,9 @@ public class Encoder implements Serializable  {
         for (int i = layers.size() - 1; i >= 0; i--) {
             // Chaque couche retourne le gradient par rapport à ses entrées qui est passé à la couche précédente
             gradInput = layers.get(i).backward(gradInput);
+            if (gradInput == null) {
+                throw new IllegalArgumentException("gradInput est null après backward de la couche " + i);
+            }
         }
 
         // Mettre à jour ou enregistrer les gradients pour gamma et beta si nécessaire
@@ -307,17 +315,8 @@ public class Encoder implements Serializable  {
             // Backward à travers SelfAttention
             Map<String, INDArray> gradSelfAttention = selfAttention.backward(gradToSelfAttention);
 
-            // Préparer les gradients pour les étapes suivantes si nécessaire
-//            INDArray gradInput = gradSelfAttention.get("inputQ");  // Utilisation de 'inputQ' comme exemple de gradient retourné
-//            INDArray gradK = gradSelfAttention.get("inputK");
-//            INDArray gradV = gradSelfAttention.get("inputV");
-//
-//            Map<String, INDArray> gradInputs = new HashMap<>();
-//            gradInputs.put("input", gradInput);
-//            gradInputs.put("gradK", gradK);
-//            gradInputs.put("gradV", gradV);
 
-            return gradSelfAttention.get("inputQ");
+            return gradSelfAttention.get("input");
         }
 
 

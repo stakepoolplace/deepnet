@@ -14,7 +14,7 @@ import java.util.List;
 public class calculateLearningRateOptimizerTest {
 
     private CustomAdamOptimizer optimizer;
-    private final double initialLr = 0.001;
+    private final float initialLr = 0.001f;
     private final int warmupSteps = 1000;
     private final int modelSize = 512;
     private List<INDArray> parameters;

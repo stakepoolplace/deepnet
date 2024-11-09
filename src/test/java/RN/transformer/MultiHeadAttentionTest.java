@@ -90,7 +90,7 @@ public class MultiHeadAttentionTest {
         // Vérifier les gradients des entrées
         assertEquals(batchSize, gradInput.shape()[0], "Le nombre de batch de gradInput est incorrect");
         assertEquals(seqLength, gradInput.shape()[1], "La longueur de séquence de gradInput est incorrecte");
-        assertEquals(3 * dModel, gradInput.shape()[2], "La dimension du modèle de gradInput est incorrecte");
+        assertEquals(dModel, gradInput.shape()[2], "La dimension du modèle de gradInput est incorrecte");
 
         // Optionnel : Vérifier que les gradients ne contiennent pas de NaN ou d'Inf
         assertFalse(gradWq.isNaN().any(), "gradWq ne devrait pas contenir de NaN");
@@ -183,7 +183,7 @@ public class MultiHeadAttentionTest {
         // Vérifier les gradients des entrées
         assertEquals(batchSize, gradInput.shape()[0], "Le nombre de batch de gradInput est incorrect");
         assertEquals(seqLength, gradInput.shape()[1], "La longueur de séquence de gradInput est incorrecte");
-        assertEquals(3 * dModel, gradInput.shape()[2], "La dimension du modèle de gradInput est incorrecte");
+        assertEquals(dModel, gradInput.shape()[2], "La dimension du modèle de gradInput est incorrecte");
 
         // Optionnel : Vérifier que les gradients ne contiennent pas de NaN ou d'Inf
         assertFalse(gradWq.isNaN().any(), "gradWq ne devrait pas contenir de NaN");
@@ -255,7 +255,7 @@ public class MultiHeadAttentionTest {
         // Vérifier les gradients des entrées
         assertEquals(batchSize, gradInput.shape()[0], "Le nombre de batch de gradInput est incorrect");
         assertEquals(seqLength, gradInput.shape()[1], "La longueur de séquence de gradInput est incorrecte");
-        assertEquals(3 * dModel, gradInput.shape()[2], "La dimension du modèle de gradInput est incorrecte");
+        assertEquals(dModel, gradInput.shape()[2], "La dimension du modèle de gradInput est incorrecte");
 
         // Optionnel : Vérifier que les gradients ne contiennent pas de NaN ou d'Inf
         assertFalse(gradWq.isNaN().any(), "gradWq ne devrait pas contenir de NaN");

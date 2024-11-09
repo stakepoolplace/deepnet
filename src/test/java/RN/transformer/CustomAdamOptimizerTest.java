@@ -16,7 +16,7 @@ public class CustomAdamOptimizerTest {
     private CustomAdamOptimizer optimizer;
     private List<INDArray> parameters;
     private List<INDArray> gradients;
-    private final double initialLr = 0.001;
+    private final float initialLr = 0.001f;
     private final int warmupSteps = 1000;
     private final int dModel = 512;
     
@@ -65,7 +65,7 @@ public class CustomAdamOptimizerTest {
             optimizer.update(parameters, gradients);
         }
 
-        double learningRateAfterWarmup = optimizer.getLearningRate();
+        float learningRateAfterWarmup = optimizer.getLearningRate();
 
         // Verify learning rate after warmup is less than during warmup
         Assert.assertTrue("Learning rate should decrease after warmup",
@@ -74,7 +74,7 @@ public class CustomAdamOptimizerTest {
     
     @Test
     public void testLearningRateSetter() {
-        double newLearningRate = 0.0001;
+        float newLearningRate = 0.0001f;
         optimizer.setLearningRate(newLearningRate);
         Assert.assertEquals("Learning rate setter should update the learning rate",
                             newLearningRate, optimizer.getLearningRate(), 0.0);

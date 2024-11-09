@@ -99,9 +99,8 @@ public class TransformerModel  implements Serializable {
         this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate);   
 
         addCombinedParameters();
-        addCombinedGradients();
 
-        this.optimizer = new CustomAdamOptimizer(0.001, dModel, 1000, combinedParameters); // Initialisation hypothétique
+        this.optimizer = new CustomAdamOptimizer(0.001f, dModel, 1000, combinedParameters); // Initialisation hypothétique
     }
 
 
@@ -229,10 +228,6 @@ public class TransformerModel  implements Serializable {
     }
     
     
-
-
-
-    
     private void backpropagation(List<INDArray> decodedLogits, List<List<Integer>> targetTokenIdsBatch) {
         // Étape 1: Calcul de la perte et des gradients initiaux
         Pair<Float, INDArray> lossAndGradients = calculateCrossEntropyLossAndGradient(decodedLogits, targetTokenIdsBatch);
@@ -244,12 +239,18 @@ public class TransformerModel  implements Serializable {
     
         // Étape 2: Rétropropagation à travers le Décodeur
         Map<String, INDArray> decoderGradients = decoder.backward(initialGradients);
-    
+
+        // Vérifiez les clés présentes dans decoderGradients
+        System.out.println("Keys in decoderGradients: " + decoderGradients.keySet());
+        
         // Extraire les gradients pertinents pour l'encodeur à partir de decoderGradients
         Map<String, INDArray> encoderGradients = extractEncoderGradients(decoderGradients);
-    
+
         // Étape 3: Rétropropagation à travers l'Encodeur
         encoder.backward(encoderGradients);
+
+        // Ajouter tous les gradients calculés aux `combinedGradients`
+        addCombinedGradients();
     
         // Mettre à jour les poids basés sur les gradients calculés, normalement fait par l'optimiseur
         updateModelWeights();
@@ -258,30 +259,42 @@ public class TransformerModel  implements Serializable {
 
 
     private Map<String, INDArray> extractEncoderGradients(Map<String, INDArray> decoderGradients) {
-        // Créez un nouveau Map pour contenir les gradients spécifiquement pour l'encoder.
+        // Créez un nouveau Map pour contenir les gradients spécifiquement pour l'encodeur.
         Map<String, INDArray> encoderGradients = new HashMap<>();
         
         // Extrayez les gradients par rapport aux entrées K et V de l'attention encoder-décodeur.
-        // Ces gradients sont ceux qui doivent être propagés à travers l'encoder.
-        INDArray gradK = decoderGradients.get("inputK");
-        INDArray gradV = decoderGradients.get("inputV");
+        INDArray gradAttentionOutputConcat = decoderGradients.get("gradAttentionOutputConcat");
         
-        // Ajoutez ces gradients au Map sous des clés représentant leur rôle dans l'encoder.
-        // Par exemple, vous pouvez simplement les renommer pour correspondre à la nomenclature attendue par l'encoder.
-        encoderGradients.put("gradK", gradK);
-        encoderGradients.put("gradV", gradV);
+        // Logs pour vérifier les gradients
+        if (gradAttentionOutputConcat != null) {
+            System.out.println("gradAttentionOutputConcat retrieved successfully. Shape: " + Arrays.toString(gradAttentionOutputConcat.shape()));
+        } else {
+            System.out.println("gradAttentionOutputConcat is null!");
+        }
+        
+        // Vérifiez que gradAttentionOutputConcat n'est pas null
+        if (gradAttentionOutputConcat == null) {
+            throw new IllegalStateException("gradAttentionOutputConcat est null. Assurez-vous que MultiHeadAttention.backward retourne correctement ce gradient.");
+        }
+        
+        // Ajoutez gradAttentionOutputConcat au Map des gradients pour l'encodeur
+        encoderGradients.put("gradAttentionOutputConcat", gradAttentionOutputConcat);
         
         return encoderGradients;
     }
-
-
+    
 
 
     private void updateModelWeights() {
-        // Récupérer les gradients de toutes les couches
-        combinedGradients = new ArrayList<>();
-        combinedGradients.addAll(encoder.getGradients());
-        combinedGradients.addAll(decoder.getGradients());
+
+        // Log pour les tailles
+        System.out.println("Nombre de paramètres : " + combinedParameters.size());
+        System.out.println("Nombre de gradients : " + combinedGradients.size());
+
+        // Vérifiez si les tailles correspondent avant de les passer à l'optimiseur
+        if (combinedParameters.size() != combinedGradients.size()) {
+            throw new IllegalArgumentException("La taille de la liste des paramètres et des gradients doit être la même.");
+        }
     
         // Mettre à jour les poids du modèle via l'optimiseur
         optimizer.update(combinedParameters, combinedGradients);
@@ -311,12 +324,8 @@ public class TransformerModel  implements Serializable {
     }
     
     public void cleanGradients() {
-    	combinedParameters.clear();
     	combinedGradients.clear();
     }
-
-
-
 
     public String infer(String prompt, int maxLength) {
         if (!isTrained) {
@@ -443,6 +452,7 @@ public class TransformerModel  implements Serializable {
         float loss = 0.0f;
         int batchSize = targetTokenIdsBatch.size();
         int maxSeqLength = targetTokenIdsBatch.stream().mapToInt(List::size).max().orElse(0);
+        int vocabSize = (int) decodedLogits.get(0).shape()[2];
     
         // Assumons que decodedLogits contient une seule INDArray pour tout le batch
         INDArray logits = decodedLogits.get(0); // [batchSize, targetSeqLength, vocabSize]
@@ -472,11 +482,11 @@ public class TransformerModel  implements Serializable {
                 loss += -logSoftmaxForTarget;
     
                 // Calculer le gradient (p - y)
-                INDArray targetOneHot = Nd4j.zeros(DataType.FLOAT, softmaxLogits.shape());
+                INDArray targetOneHot = Nd4j.zeros(DataType.FLOAT, vocabSize);
                 targetOneHot.putScalar(targetId, 1.0f);
                 INDArray gradForPosition = softmaxLogits.sub(targetOneHot); // [vocabSize]
     
-                // Mise à jour du gradient pour toute la tranche [b, i, :]
+                // Assignation correcte des gradients
                 gradients.put(
                     new INDArrayIndex[]{
                         NDArrayIndex.point(b), 
@@ -485,18 +495,22 @@ public class TransformerModel  implements Serializable {
                     },
                     gradForPosition
                 );
-
             }
         }
     
-        // Moyenne de la perte sur le batch
-        loss /= batchSize;
+        // Calculer le nombre total de tokens
+        int totalTokens = targetTokenIdsBatch.stream().mapToInt(List::size).sum();
     
-        // Moyenne des gradients
-        gradients.divi(batchSize);
+        // Moyenne de la perte sur tous les tokens
+        loss /= totalTokens;
+    
+        // Moyenne des gradients sur tous les tokens
+        gradients.divi(totalTokens);
     
         return Pair.of(loss, gradients); // Moyenne de la perte et gradients accumulés
     }
+    
+    
     
     
     
@@ -537,7 +551,7 @@ public class TransformerModel  implements Serializable {
             // Charger l'état de l'optimiseur
             int currentStep = (int) ois.readObject();
             int epoch = (int) ois.readObject();
-            double learningRate = (double) ois.readObject();
+            float learningRate = (float) ois.readObject();
             optimizer.setCurrentStep(currentStep);
             optimizer.setEpoch(epoch);
             optimizer.setLearningRate(learningRate);
