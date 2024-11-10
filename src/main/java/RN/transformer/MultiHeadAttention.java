@@ -47,78 +47,47 @@ public class MultiHeadAttention implements Serializable {
         Wo = Nd4j.randn(DataType.FLOAT, numHeads * depth, dModel).div(Math.sqrt(numHeads * depth));
     }
 
-    /**
-     * Forward pass of multi-head attention.
-     *
-     * @param query Input queries of shape [batchSize, seqLength_q, dModel]
-     * @param key   Input keys of shape [batchSize, seqLength_k, dModel]
-     * @param value Input values of shape [batchSize, seqLength_k, dModel]
-     * @param mask  Padding mask of shape [batchSize, 1, 1, seqLength_k]
-     * @return Output of shape [batchSize, seqLength_q, dModel]
-     */
     public INDArray forward(INDArray query, INDArray key, INDArray value, INDArray mask) {
 
         // Stocker les inputs pour la passe backward
         this.inputQ = query.dup(); // [batchSize, seqLength_q, dModel]
         this.inputK = key.dup();   // [batchSize, seqLength_k, dModel]
         this.inputV = value.dup(); // [batchSize, seqLength_k, dModel]
-
+    
         // Obtention des dimensions
         int batchSize = (int) query.size(0);
         int seqLength_q = (int) query.size(1);
         int seqLength_k = (int) key.size(1);
         int depth = dModel / numHeads;
-
+    
         // Vérification des dimensions des entrées
         if (query.rank() != 3 || key.rank() != 3 || value.rank() != 3) {
             throw new IllegalArgumentException("Les entrées query, key et value doivent être de rang 3.");
         }
-       // System.out.println("Key shape: " + Arrays.toString(key.shape()));
-        // System.out.println("Batch Size: " + batchSize);
-        // System.out.println("Seq Length Q: " + seqLength_q);
-        // System.out.println("Seq Length K: " + seqLength_k);
-        // System.out.println("dModel: " + dModel);
- 
-
+    
         // Reshaping des entrées de [batchSize, seqLength, dModel] à [batchSize * seqLength, dModel]
         INDArray query2D = query.reshape(batchSize * seqLength_q, dModel);
         INDArray key2D = key.reshape(batchSize * seqLength_k, dModel); // Utiliser seqLength_k
         INDArray value2D = value.reshape(batchSize * seqLength_k, dModel); // Utiliser seqLength_k
-
-        // System.out.println("Query2D shape: " + Arrays.toString(query2D.shape()));
-        // System.out.println("Key2D shape: " + Arrays.toString(key2D.shape()));
-        // System.out.println("Value2D shape: " + Arrays.toString(value2D.shape()));
-
+    
         // Application des transformations linéaires
         this.Q = query2D.mmul(Wq); // [batchSize * seqLength_q, numHeads * depth]
         this.K = key2D.mmul(Wk);    // [batchSize * seqLength_k, numHeads * depth]
         this.V = value2D.mmul(Wv);  // [batchSize * seqLength_k, numHeads * depth]
-
-        // System.out.println("Q shape after mmul: " + Arrays.toString(Q.shape()));
-        // System.out.println("K shape after mmul: " + Arrays.toString(K.shape()));
-        // System.out.println("V shape after mmul: " + Arrays.toString(V.shape()));
-
+    
         // Reshaping pour multi-head attention
         this.Q = this.Q.reshape(batchSize, seqLength_q, numHeads, depth); // [batchSize, seqLength_q, numHeads, depth]
         this.K = this.K.reshape(batchSize, seqLength_k, numHeads, depth); // [batchSize, seqLength_k, numHeads, depth]
         this.V = this.V.reshape(batchSize, seqLength_k, numHeads, depth); // [batchSize, seqLength_k, numHeads, depth]
-
-        // System.out.println("Q shape after reshape: " + Arrays.toString(Q.shape()));
-        // System.out.println("K shape after reshape: " + Arrays.toString(K.shape()));
-        // System.out.println("V shape after reshape: " + Arrays.toString(V.shape()));
-
+    
         // Transpose pour [batchSize, numHeads, seqLength, depth]
         this.Q = this.Q.permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength_q, depth]
         this.K = this.K.permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength_k, depth]
         this.V = this.V.permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength_k, depth]
-
-        // System.out.println("Q shape after permute: " + Arrays.toString(Q.shape()));
-        // System.out.println("K shape after permute: " + Arrays.toString(K.shape()));
-        // System.out.println("V shape after permute: " + Arrays.toString(V.shape()));
-
+    
         // Initialiser un tableau pour stocker les scores
         INDArray scores = Nd4j.create(batchSize, numHeads, seqLength_q, seqLength_k); // [batchSize, numHeads, seqLength_q, seqLength_k]
-
+    
         // Itérer sur batchSize et numHeads pour effectuer mmul
         for (int b = 0; b < batchSize; b++) {
             for (int h = 0; h < numHeads; h++) {
@@ -127,38 +96,49 @@ public class MultiHeadAttention implements Serializable {
                 INDArray KTransposed_batch_head = K
                         .get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all())
                         .transpose();
-
+    
                 // Calculer les scores [seqLength_q, seqLength_k]
                 INDArray score = Q_batch_head.mmul(KTransposed_batch_head).div(Math.sqrt(depth));
-
+    
                 // Stocker les scores en utilisant assign
                 scores.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all())
                         .assign(score);
             }
         }
-
-        // System.out.println("Scores shape after computation: " + Arrays.toString(scores.shape()));
-
-        // Appliquer le masque si fourni
+    
+        // Application du masque
         if (mask != null) {
-            // Assurez-vous que le masque a les mêmes dimensions que scores
-            // Généralement, mask a la forme [batchSize, 1, 1, seqLength_k]
-            scores = scores.add(mask.mul(-1e9)); // Ajouter un grand nombre négatif aux positions masquées
+            // Vérifier que le batch size du masque correspond à celui des scores
+            if (mask.shape()[0] != scores.shape()[0]) {
+                throw new IllegalArgumentException("Le batch size du masque (" + mask.shape()[0] + ") ne correspond pas à celui des scores (" + scores.shape()[0] + ").");
+            }
+    
+            // Vérifier le type de masque
+            if (mask.rank() != 4) {
+                throw new IllegalArgumentException("Le masque doit avoir 4 dimensions. Forme actuelle: " + Arrays.toString(mask.shape()));
+            }
+    
+            // Identifier si c'est un masque de padding ou un masque look-ahead
+            boolean isPaddingMask = (mask.size(1) == 1 && mask.size(2) == 1);
+            boolean isLookAheadMask = (mask.size(1) == 1 && mask.size(2) > 1);
+    
+            if (!isPaddingMask && !isLookAheadMask) {
+                throw new IllegalArgumentException("Le masque doit être soit [batch_size, 1, 1, seq_len], soit [batch_size, 1, seq_length_q, seq_length_k]. Forme actuelle: " + Arrays.toString(mask.shape()));
+            }
+    
+            // Ajouter le masque aux scores
+            scores = scores.add(mask.mul(-1e9));
         }
-
-        // System.out.println("Scores shape after masking: " + Arrays.toString(scores.shape()));
-
+    
         // Application du softmax sur le dernier axe (axis=3)
         INDArray weights = NDArrayUtils.softmax(scores, 3); // [batchSize, numHeads, seqLength_q, seqLength_k]
-
-        // System.out.println("Weights shape after softmax: " + Arrays.toString(weights.shape()));
-
-        // **Stocker attentionWeights pour la passe backward**
+    
+        // Stocker attentionWeights pour la passe backward
         this.attentionWeights = weights;
-
+    
         // Calcul de l'attention pondérée
         INDArray attention = Nd4j.create(batchSize, numHeads, seqLength_q, depth); // [batchSize, numHeads, seqLength_q, depth]
-
+    
         for (int b = 0; b < batchSize; b++) {
             for (int h = 0; h < numHeads; h++) {
                 // Extraire les matrices [seqLength_q, seqLength_k] et [seqLength_k, depth]
@@ -166,41 +146,34 @@ public class MultiHeadAttention implements Serializable {
                         NDArrayIndex.all(), NDArrayIndex.all());
                 INDArray V_batch_head = V.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(),
                         NDArrayIndex.all());
-
+    
                 // Calculer l'attention pondérée [seqLength_q, depth]
                 INDArray attention_head = weights_batch_head.mmul(V_batch_head);
-
+    
                 // Stocker l'attention en utilisant assign
                 attention.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all())
                         .assign(attention_head);
             }
         }
-
-        // System.out.println("Attention shape after computation: " + Arrays.toString(attention.shape()));
-
+    
         // Transposition et reshaping pour concaténer les têtes
         // [batchSize, numHeads, seqLength_q, depth] -> [batchSize, seqLength_q, numHeads * depth]
         INDArray attentionConcat = attention.permute(0, 2, 1, 3).reshape(batchSize, seqLength_q, numHeads * depth); // [batchSize, seqLength_q, dModel]
-
-        // System.out.println("AttentionConcat shape: " + Arrays.toString(attentionConcat.shape()));
-
+    
         // Effectuer la multiplication matricielle avec Wo
         // Reshape attentionConcat de [batchSize, seqLength_q, dModel] à [batchSize * seqLength_q, dModel]
         INDArray attention2D = attentionConcat.reshape(batchSize * seqLength_q, dModel); // [batchSize * seqLength_q, dModel]
         INDArray output2D = attention2D.mmul(Wo); // [batchSize * seqLength_q, dModel]
-
-        // System.out.println("Output2D shape: " + Arrays.toString(output2D.shape()));
-
+    
         // Reshape le résultat en [batchSize, seqLength_q, dModel]
         INDArray output = output2D.reshape(batchSize, seqLength_q, dModel); // [batchSize, seqLength_q, dModel]
-
-        // System.out.println("Output shape: " + Arrays.toString(output.shape()));
-
-        // **Stocker l'attentionOutput pour la passe backward**
+    
+        // Stocker l'attentionOutput pour la passe backward
         this.attentionOutput = attentionConcat; // ou `output` selon ce qui est nécessaire pour backward
-
+    
         return output;
     }
+    
 
 
     /**

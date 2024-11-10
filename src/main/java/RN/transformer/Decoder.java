@@ -2,14 +2,17 @@ package RN.transformer;
 
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 
+/**
+ * Classe représentant le décodeur du modèle Transformer.
+ */
 public class Decoder implements Serializable {
     private static final long serialVersionUID = 283129978055526337L;
     List<DecoderLayer> layers;
@@ -24,15 +27,17 @@ public class Decoder implements Serializable {
     private List<INDArray> forwardCache;
     private INDArray lastNormalizedInput; // Stocke l'entrée normalisée après LayerNorm
 
+    private Tokenizer tokenizer; // Référence au Tokenizer
 
-    public Decoder(int numLayers, int dModel, int numHeads, int dff, double dropoutRate) {
+    public Decoder(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, Tokenizer tokenizer) {
         this.numLayers = numLayers;
         this.dModel = dModel;
         this.numHeads = numHeads;
         this.dropoutRate = dropoutRate;
         this.layers = new ArrayList<>();
         this.layerNorm = new LayerNorm(dModel);
-        this.linearProjection = new LinearProjection(dModel, TransformerModel.getVocabSize()); // Initialiser avec la taille du vocabulaire
+        this.tokenizer = tokenizer;
+        this.linearProjection = new LinearProjection(dModel, tokenizer.getVocabSize()); // Utiliser la taille du vocabulaire du Tokenizer
         this.forwardCache = new ArrayList<>();
 
         for (int i = 0; i < numLayers; i++) {
@@ -50,59 +55,77 @@ public class Decoder implements Serializable {
         }
     }
 
+    /**
+     * Décode les entrées en utilisant les couches du décodeur.
+     *
+     * @param isTraining       Indique si le modèle est en mode entraînement.
+     * @param encoderOutput    Sortie de l'encodeur.
+     * @param encodedDecoderInput Entrée encodée pour le décodeur.
+     * @param lookAheadMask    Masque look-ahead pour l'auto-attention.
+     * @param paddingMask      Masque de padding pour l'attention croisée.
+     * @return Logits après projection linéaire.
+     */
     public INDArray decode(boolean isTraining, INDArray encoderOutput, INDArray encodedDecoderInput, INDArray lookAheadMask, INDArray paddingMask) {
         // Réinitialiser le cache avant une nouvelle passe forward
         resetCache();
-    
-        // Traitement par les couches de décodeur
+
+        // Passer à travers les couches du décodeur
         for (int i = 0; i < layers.size(); i++) {
             DecoderLayer layer = layers.get(i);
             encodedDecoderInput = layer.forward(isTraining, encodedDecoderInput, encoderOutput, lookAheadMask, paddingMask, forwardCache.get(i));
             forwardCache.set(i, encodedDecoderInput.dup()); // Stocker l'entrée actuelle dans le cache
         }
-    
+
         // Normalisation finale
         encodedDecoderInput = layerNorm.forward(encodedDecoderInput);
         lastNormalizedInput = encodedDecoderInput.dup(); // Stocker l'entrée normalisée
-    
-        // Projection linéaire vers le vocabulaire
+
+        // Projection linéaire vers la taille du vocabulaire
         INDArray logits = linearProjection.project(encodedDecoderInput); // [batchSize, targetSeqLength, vocabSize]
         // System.out.println("Logits shape: " + Arrays.toString(logits.shape()));
-    
+
         return logits;
     }
     
+    /**
+     * Passe backward à travers le décodeur.
+     *
+     * @param gradOutput Gradient provenant de la couche suivante (logits).
+     * @return Gradients à propager vers l'encodeur.
+     */
     public Map<String, INDArray> backward(INDArray gradOutput) {
-        // Récupérer l'entrée normalisée de la passe forward
+        // S'assurer qu'une passe forward a été effectuée
         if (lastNormalizedInput == null) {
-            throw new IllegalStateException("L'entrée normalisée n'est pas initialisée. Assurez-vous d'effectuer une passe forward avant.");
+            throw new IllegalStateException("L'entrée normalisée n'est pas initialisée. Effectuez une passe forward d'abord.");
         }
-    
-        // Propager le gradient à travers LinearProjection
+
+        // Backpropager à travers la projection linéaire
         Map<String, INDArray> gradLinearProjection = linearProjection.backward(lastNormalizedInput, gradOutput);
-    
-        // Propager le gradient à travers LayerNorm
+
+        // Backpropager à travers la normalisation de couche finale
         Map<String, INDArray> gradLayerNorm = layerNorm.backward(gradLinearProjection.get("input"));
-    
-        // Transformer gradLayerNorm en un Map pour correspondre à la signature de DecoderLayer.backward
+
+        // Transformer gradLayerNorm en un Map pour correspondre à la signature attendue par DecoderLayer.backward
         Map<String, INDArray> gradMap = new HashMap<>();
-        gradMap.put("input", gradLayerNorm.get("input")); // Utiliser "input" comme clé est arbitraire mais doit correspondre à ce que s'attend à recevoir DecoderLayer.backward
-    
-        // Commencer avec le gradient à la sortie du Decoder
+        gradMap.put("input", gradLayerNorm.get("input")); // Utiliser "input" comme clé
+
+        // Commencer avec le gradient à la sortie du Décodeur
         for (int i = layers.size() - 1; i >= 0; i--) {
             DecoderLayer layer = layers.get(i);
             // Passer le cache correspondant à cette couche
             INDArray layerInput = forwardCache.get(i);
             gradMap = layer.backward(gradMap, layerInput);
         }
-        // À ce stade, gradMap contiendrait le gradient à propager à l'Encoder
-        // Vous pouvez ensuite extraire le gradient à passer à l'encodeur ou à d'autres parties du modèle si nécessaire.
-    
+        // À ce stade, gradMap contiendrait le gradient à propager à l'Encodeur
+
         return gradMap;
     }
-    
 
-    // Méthode pour obtenir tous les paramètres du décodeur
+    /**
+     * Obtient tous les paramètres du décodeur.
+     *
+     * @return Liste des paramètres.
+     */
     public List<INDArray> getParameters() {
         List<INDArray> params = new ArrayList<>();
 
@@ -120,7 +143,11 @@ public class Decoder implements Serializable {
         return params;
     }
 
-    // Méthode pour obtenir tous les gradients du décodeur
+    /**
+     * Obtient tous les gradients du décodeur.
+     *
+     * @return Liste des gradients.
+     */
     public List<INDArray> getGradients() {
         List<INDArray> grads = new ArrayList<>();
 
@@ -138,14 +165,11 @@ public class Decoder implements Serializable {
         return grads;
     }
 
-    // Méthode pour calculer les gradients basés sur la perte
-    public INDArray calculateGradients(double loss) {
-        // La logique réelle de calcul des gradients serait beaucoup plus complexe
-        // et dépendrait des détails spécifiques de votre implémentation et de votre bibliothèque d'autograd.
-        INDArray gradients = Nd4j.rand(1, 100); // Assumer des dimensions hypothétiques pour l'exemple
-        return gradients;
-    }
-
+    /**
+     * Obtient le nombre total de paramètres dans le décodeur.
+     *
+     * @return Nombre de paramètres.
+     */
     public int getNumberOfParameters() {
         int numParams = 0;
 
@@ -161,6 +185,9 @@ public class Decoder implements Serializable {
         return numParams;
     }
 
+    /**
+     * Classe interne représentant une couche unique du décodeur.
+     */
     static class DecoderLayer implements Serializable {
         private static final long serialVersionUID = 4450374170745550258L;
         MultiHeadAttention selfAttention;
@@ -186,75 +213,75 @@ public class Decoder implements Serializable {
         }
 
         /**
-         * Passe forward avec gestion du cache.
+         * Passe forward à travers la couche du décodeur.
          *
-         * @param isTraining       Indique si le modèle est en mode entraînement
-         * @param x                Entrée actuelle
-         * @param encoderOutput    Sortie de l'encodeur
-         * @param lookAheadMask    Masque de look-ahead
-         * @param paddingMask      Masque de padding
-         * @param cachedInput      Entrée mise en cache de la passe forward précédente
-         * @return Sortie après cette couche
+         * @param isTraining       Indique si le modèle est en mode entraînement.
+         * @param x                Entrée actuelle.
+         * @param encoderOutput    Sortie de l'encodeur pour l'attention croisée.
+         * @param lookAheadMask    Masque look-ahead pour l'auto-attention.
+         * @param paddingMask      Masque de padding pour l'attention croisée.
+         * @param cachedInput      Entrée mise en cache de la passe forward précédente.
+         * @return Sortie de la couche.
          */
         public INDArray forward(boolean isTraining, INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray paddingMask, INDArray cachedInput) {
-            
-            // Vérification des formes
-            if (x.rank() != 3 || encoderOutput.rank() != 3) {
-                throw new IllegalArgumentException("Les entrées query, key et value doivent être de rang 3.");
-            }
-            
+            // Self-attention
             INDArray attn1 = selfAttention.forward(x, x, x, lookAheadMask);
             attn1 = dropout1.apply(isTraining, attn1);
-            x = layerNorm1.forward(x.add(attn1));
+            x = layerNorm1.forward(x.add(attn1)); // Add & Norm
 
+            // Encoder-decoder attention
             INDArray attn2 = encoderDecoderAttention.forward(x, encoderOutput, encoderOutput, paddingMask);
             attn2 = dropout2.apply(isTraining, attn2);
-            x = layerNorm2.forward(x.add(attn2));
+            x = layerNorm2.forward(x.add(attn2)); // Add & Norm
 
+            // Feed-forward
             INDArray ffOutput = feedForward.forward(x);
             ffOutput = dropout3.apply(isTraining, ffOutput);
-            return layerNorm3.forward(x.add(ffOutput));
+            return layerNorm3.forward(x.add(ffOutput)); // Add & Norm again
         }
 
         /**
-         * Passe backward avec utilisation du cache.
+         * Passe backward à travers la couche du décodeur.
          *
-         * @param gradOutput Gradients provenant de la couche suivante
-         * @param cachedInput Entrée mise en cache de la passe forward précédente
-         * @return Gradients à propager vers les couches précédentes
+         * @param gradOutput Gradient provenant de la couche suivante.
+         * @param cachedInput Entrée mise en cache de la passe forward précédente.
+         * @return Gradient à propager vers la couche précédente.
          */
         public Map<String, INDArray> backward(Map<String, INDArray> gradOutput, INDArray cachedInput) {
-            
             Map<String, INDArray> gradients = new HashMap<>();
 
-        	// Rétropropagation à travers LayerNorm3
+            // Backpropager à travers LayerNorm3
             Map<String, INDArray> gradLayerNorm3 = layerNorm3.backward(gradOutput.get("input"));
             gradients.putAll(gradLayerNorm3);
 
-            // Rétropropagation à travers PositionwiseFeedForward
+            // Backpropager à travers FeedForward
             Map<String, INDArray> gradFeedForward = feedForward.backward(gradLayerNorm3.get("input"));
             gradients.putAll(gradFeedForward);
 
-            // Rétropropagation à travers LayerNorm2
+            // Backpropager à travers LayerNorm2
             Map<String, INDArray> gradLayerNorm2 = layerNorm2.backward(gradFeedForward.get("input"));
             gradients.putAll(gradLayerNorm2);
 
-            // Rétropropagation à travers encoderDecoderAttention
+            // Backpropager à travers EncoderDecoderAttention
             Map<String, INDArray> gradEncoderDecoderAttention = encoderDecoderAttention.backward(gradLayerNorm2.get("input"));
             gradients.putAll(gradEncoderDecoderAttention);
 
-            // Rétropropagation à travers LayerNorm1
+            // Backpropager à travers LayerNorm1
             Map<String, INDArray> gradLayerNorm1 = layerNorm1.backward(gradEncoderDecoderAttention.get("input"));
             gradients.putAll(gradLayerNorm1);
 
-            // Rétropropagation à travers selfAttention
+            // Backpropager à travers SelfAttention
             Map<String, INDArray> gradSelfAttention = selfAttention.backward(gradLayerNorm1.get("input"));
             gradients.putAll(gradSelfAttention);
 
-            // Retourner les gradients accumulés pour mise à jour des paramètres
             return gradients;
         }
 
+        /**
+         * Obtient tous les paramètres de la couche du décodeur.
+         *
+         * @return Liste des paramètres.
+         */
         public List<INDArray> getParameters() {
             List<INDArray> layerParams = new ArrayList<>();
 
@@ -268,6 +295,11 @@ public class Decoder implements Serializable {
             return layerParams;
         }
 
+        /**
+         * Obtient tous les gradients de la couche du décodeur.
+         *
+         * @return Liste des gradients.
+         */
         public List<INDArray> getGradients() {
             List<INDArray> layerGrads = new ArrayList<>();
 
@@ -281,6 +313,11 @@ public class Decoder implements Serializable {
             return layerGrads;
         }
 
+        /**
+         * Obtient le nombre total de paramètres dans la couche du décodeur.
+         *
+         * @return Nombre de paramètres.
+         */
         public long getNumberOfParameters() {
             return selfAttention.getNumberOfParameters() +
                    encoderDecoderAttention.getNumberOfParameters() +
@@ -290,6 +327,11 @@ public class Decoder implements Serializable {
                    layerNorm3.getNumberOfParameters();
         }
 
+        /**
+         * Obtient le nombre total de gradients dans la couche du décodeur.
+         *
+         * @return Nombre de gradients.
+         */
         public long getNumberOfGradients() {
             return selfAttention.getNumberOfGradients() +
                    encoderDecoderAttention.getNumberOfGradients() +

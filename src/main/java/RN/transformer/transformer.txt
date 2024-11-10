@@ -37,16 +37,16 @@ public class CustomAdamOptimizer implements Serializable {
     private static final long serialVersionUID = 3031098044411623634L;
 
     // Hyperparamètres d'Adam
-    private double initialLr;
-    private double beta1;
-    private double beta2;
-    private double epsilon;
+    private float initialLr;
+    private float beta1;
+    private float beta2;
+    private float epsilon;
 
     // Paramètres de scheduling
     private int warmupSteps;
     private int currentStep;
     private int epoch;
-    private double learningRate;
+    private float learningRate;
 
     // États pour chaque paramètre
     private List<AdamState> states;
@@ -71,11 +71,11 @@ public class CustomAdamOptimizer implements Serializable {
      * @param warmupSteps      Nombre de pas de warmup.
      * @param params           Liste des paramètres du modèle.
      */
-    public CustomAdamOptimizer(double initialLr, int dmodel, int warmupSteps, List<INDArray> params) {
+    public CustomAdamOptimizer(float initialLr, int dmodel, int warmupSteps, List<INDArray> params) {
         this.initialLr = initialLr;
-        this.beta1 = 0.9;
-        this.beta2 = 0.999;
-        this.epsilon = 1e-8;
+        this.beta1 = 0.9f;
+        this.beta2 = 0.999f;
+        this.epsilon = 1e-8f;
         this.warmupSteps = warmupSteps;
         this.currentStep = 0;
         this.epoch = 0;
@@ -119,58 +119,79 @@ public class CustomAdamOptimizer implements Serializable {
         if (params.size() != grads.size()) {
             throw new IllegalArgumentException("La taille de la liste des paramètres et des gradients doit être la même.");
         }
-
+    
+        if (params.size() != states.size()) {
+            throw new IllegalStateException("Le nombre de paramètres (" + params.size() + ") ne correspond pas au nombre d'états (" + states.size() + "). Assurez-vous que l'optimiseur est initialisé après avoir ajouté tous les paramètres.");
+        }
+    
         currentStep++;
-
+        // System.out.println("Current Step: " + currentStep);
+        // System.out.println("Learning Rate: " + learningRate);
+    
         for (int i = 0; i < params.size(); i++) {
             INDArray param = params.get(i);
             INDArray grad = grads.get(i);
-
+    
             AdamState state = states.get(i);
-
-            // Mise à jour des moments
-            state.m.mul(beta1).addi(grad.mul(1 - beta1));
-            state.v.mul(beta2).addi(grad.mul(grad).mul(1 - beta2));
-
+    
+            // Afficher les valeurs avant la mise à jour
+            // System.out.println("Param " + i + " before update: " + param);
+            // System.out.println("Grad " + i + ": " + grad);
+    
+            // Mise à jour des moments en place
+            state.m.muli(beta1).addi(grad.mul(1 - beta1));
+            state.v.muli(beta2).addi(grad.mul(grad).mul(1 - beta2));
+    
             // Correction de biais
-            INDArray mHat = state.m.mul(1.0 / (1 - Math.pow(beta1, currentStep)));
-            INDArray vHat = state.v.mul(1.0 / (1 - Math.pow(beta2, currentStep)));
-
+            INDArray mHat = state.m.mul(1.0f / (1.0f - (float) Math.pow(beta1, currentStep)));
+            INDArray vHat = state.v.mul(1.0f / (1.0f - (float) Math.pow(beta2, currentStep)));
+    
             // Calcul de l'étape de mise à jour
             INDArray step = mHat.mul(learningRate).div(Transforms.sqrt(vHat).add(epsilon));
-
+    
+            // Afficher les valeurs intermédiaires
+            // System.out.println("mHat " + i + ": " + mHat);
+            // System.out.println("vHat " + i + ": " + vHat);
+            // System.out.println("Step " + i + ": " + step);
+    
             // Mise à jour du paramètre
             param.subi(step);
+    
+            // Afficher le paramètre après la mise à jour
+            //  System.out.println("Param " + i + " after update: " + param);
         }
-
+    
         // Mettre à jour le taux d'apprentissage si nécessaire
         calculateLearningRate();
     }
+    
+    
+    
 
     // Calcul du taux d'apprentissage avec warmup et décroissance
-    double calculateLearningRate() {
-        double step = Math.max(1.0, (double) currentStep);  // Commencer à 1 pour éviter la division par zéro
+    float calculateLearningRate() {
+        float step = Math.max(1.0f, (float) currentStep);  // Commencer à 1 pour éviter la division par zéro
 
         // Learning rate de base
-        double lr = initialLr;
+        float lr = initialLr;
 
         // Calculer le facteur de warmup (0 à 1 pendant la période de warmup)
-        double warmupFactor = Math.min(1.0, step / warmupSteps);
+        float warmupFactor = Math.min(1.0f, step / warmupSteps);
 
         // Calculer le facteur de décroissance (diminue après la période de warmup)
-        double decayFactor;
+        float decayFactor;
         if (step <= warmupSteps) {
-            decayFactor = 1.0;
+            decayFactor = 1.0f;
         } else {
             // Décroissance en racine carrée inverse après le warmup
-            decayFactor = Math.sqrt(warmupSteps / step);
+            decayFactor = (float) Math.sqrt(warmupSteps / step);
         }
 
         // Calculer le learning rate final
         this.learningRate = lr * warmupFactor * decayFactor;
 
         // Appliquer des limites pour éviter des valeurs extrêmes
-        this.learningRate = Math.max(this.learningRate, initialLr * 0.1);   // Pas moins de 10% du lr initial
+        this.learningRate = Math.max(this.learningRate, initialLr * 0.1f);   // Pas moins de 10% du lr initial
         this.learningRate = Math.min(this.learningRate, initialLr);         // Pas plus que le lr initial
 
         // Log des valeurs pour debugging
@@ -199,11 +220,11 @@ public class CustomAdamOptimizer implements Serializable {
         return this.epoch;
     }
 
-    public double getLearningRate() {
+    public float getLearningRate() {
         return learningRate;
     }
 
-    public void setLearningRate(double learningRate) {
+    public void setLearningRate(float learningRate) {
         this.learningRate = learningRate;
     }
 }
@@ -318,7 +339,7 @@ import org.nd4j.linalg.factory.Nd4j;
 
 public class Decoder implements Serializable {
     private static final long serialVersionUID = 283129978055526337L;
-    private List<DecoderLayer> layers;
+    List<DecoderLayer> layers;
     private LayerNorm layerNorm;
     private int numLayers;
     protected int dModel;
@@ -328,6 +349,8 @@ public class Decoder implements Serializable {
 
     // Cache pour stocker les entrées des couches pendant la passe forward
     private List<INDArray> forwardCache;
+    private INDArray lastNormalizedInput; // Stocke l'entrée normalisée après LayerNorm
+
 
     public Decoder(int numLayers, int dModel, int numHeads, int dff, double dropoutRate) {
         this.numLayers = numLayers;
@@ -354,45 +377,44 @@ public class Decoder implements Serializable {
         }
     }
 
-    public INDArray decode(boolean isTraining, INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray paddingMask) {
+    public INDArray decode(boolean isTraining, INDArray encoderOutput, INDArray encodedDecoderInput, INDArray lookAheadMask, INDArray paddingMask) {
         // Réinitialiser le cache avant une nouvelle passe forward
         resetCache();
-
+    
         // Traitement par les couches de décodeur
         for (int i = 0; i < layers.size(); i++) {
             DecoderLayer layer = layers.get(i);
-            x = layer.forward(isTraining, x, encoderOutput, lookAheadMask, paddingMask, forwardCache.get(i));
-            forwardCache.set(i, x.dup()); // Stocker l'entrée actuelle dans le cache
+            encodedDecoderInput = layer.forward(isTraining, encodedDecoderInput, encoderOutput, lookAheadMask, paddingMask, forwardCache.get(i));
+            forwardCache.set(i, encodedDecoderInput.dup()); // Stocker l'entrée actuelle dans le cache
         }
-
+    
         // Normalisation finale
-        x = layerNorm.forward(x);
-
-        // Application d'une projection linéaire, si nécessaire
-        if (this.linearProjection != null) {
-            x = linearProjection.project(x); // Transforme la sortie du décodeur pour les logits de vocabulaire
-        }
-
-        return x;
+        encodedDecoderInput = layerNorm.forward(encodedDecoderInput);
+        lastNormalizedInput = encodedDecoderInput.dup(); // Stocker l'entrée normalisée
+    
+        // Projection linéaire vers le vocabulaire
+        INDArray logits = linearProjection.project(encodedDecoderInput); // [batchSize, targetSeqLength, vocabSize]
+        // System.out.println("Logits shape: " + Arrays.toString(logits.shape()));
+    
+        return logits;
     }
-
+    
     public Map<String, INDArray> backward(INDArray gradOutput) {
-        // Récupérer l'entrée de la dernière couche à partir du cache
-        INDArray lastLayerInput = forwardCache.get(layers.size() - 1);
-        if (lastLayerInput == null) {
-            throw new IllegalStateException("Cache de la dernière couche non initialisé. Assurez-vous d'effectuer une passe forward avant.");
+        // Récupérer l'entrée normalisée de la passe forward
+        if (lastNormalizedInput == null) {
+            throw new IllegalStateException("L'entrée normalisée n'est pas initialisée. Assurez-vous d'effectuer une passe forward avant.");
         }
-
+    
         // Propager le gradient à travers LinearProjection
-        Map<String, INDArray> gradLinearProjection = linearProjection.backward(lastLayerInput, gradOutput);
-
+        Map<String, INDArray> gradLinearProjection = linearProjection.backward(lastNormalizedInput, gradOutput);
+    
         // Propager le gradient à travers LayerNorm
         Map<String, INDArray> gradLayerNorm = layerNorm.backward(gradLinearProjection.get("input"));
-
-        // Transformer gradOutput en un Map pour correspondre à la signature de DecoderLayer.backward
+    
+        // Transformer gradLayerNorm en un Map pour correspondre à la signature de DecoderLayer.backward
         Map<String, INDArray> gradMap = new HashMap<>();
         gradMap.put("input", gradLayerNorm.get("input")); // Utiliser "input" comme clé est arbitraire mais doit correspondre à ce que s'attend à recevoir DecoderLayer.backward
-
+    
         // Commencer avec le gradient à la sortie du Decoder
         for (int i = layers.size() - 1; i >= 0; i--) {
             DecoderLayer layer = layers.get(i);
@@ -402,9 +424,10 @@ public class Decoder implements Serializable {
         }
         // À ce stade, gradMap contiendrait le gradient à propager à l'Encoder
         // Vous pouvez ensuite extraire le gradient à passer à l'encodeur ou à d'autres parties du modèle si nécessaire.
-
+    
         return gradMap;
     }
+    
 
     // Méthode pour obtenir tous les paramètres du décodeur
     public List<INDArray> getParameters() {
@@ -501,6 +524,12 @@ public class Decoder implements Serializable {
          * @return Sortie après cette couche
          */
         public INDArray forward(boolean isTraining, INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray paddingMask, INDArray cachedInput) {
+            
+            // Vérification des formes
+            if (x.rank() != 3 || encoderOutput.rank() != 3) {
+                throw new IllegalArgumentException("Les entrées query, key et value doivent être de rang 3.");
+            }
+            
             INDArray attn1 = selfAttention.forward(x, x, x, lookAheadMask);
             attn1 = dropout1.apply(isTraining, attn1);
             x = layerNorm1.forward(x.add(attn1));
@@ -542,7 +571,7 @@ public class Decoder implements Serializable {
             gradients.putAll(gradEncoderDecoderAttention);
 
             // Rétropropagation à travers LayerNorm1
-            Map<String, INDArray> gradLayerNorm1 = layerNorm1.backward(gradEncoderDecoderAttention.get("inputQ"));
+            Map<String, INDArray> gradLayerNorm1 = layerNorm1.backward(gradEncoderDecoderAttention.get("input"));
             gradients.putAll(gradLayerNorm1);
 
             // Rétropropagation à travers selfAttention
@@ -650,6 +679,7 @@ import java.util.Map;
 import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.indexing.NDArrayIndex;
 
 
 /**
@@ -668,6 +698,7 @@ public class Encoder implements Serializable  {
 	 */
 	private static final long serialVersionUID = -5716799542280937448L;
 	private List<EncoderLayer> layers;
+    private int dModel;
     private PositionalEncoding positionalEncoding;
     private LayerNorm layerNorm;
     private Tokenizer tokenizer;
@@ -676,7 +707,8 @@ public class Encoder implements Serializable  {
 	}
     
     public Encoder(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, Tokenizer tokenizer) {
-    	this.positionalEncoding = new PositionalEncoding(dModel);
+    	this.dModel = dModel;
+        this.positionalEncoding = new PositionalEncoding(dModel);
         this.layers = new ArrayList<>();
         this.layerNorm = new LayerNorm(dModel);
         this.tokenizer = tokenizer;
@@ -695,49 +727,61 @@ public class Encoder implements Serializable  {
         List<Integer> tokenIds = tokenizer.tokensToIds(tokens);
 
         // Encodage des IDs de tokens à travers les couches de l'encodeur
-        INDArray inputEmbeddings = lookupEmbeddings(tokenIds);
+        INDArray inputEmbeddings = lookupEmbeddings(Arrays.asList(tokenIds));
         INDArray encoded = forward(isTraining, inputEmbeddings, null);
         
         // Conversion des embeddings encodés en logits
         return convertToLogits(encoded);
     }
     
-    public INDArray encode(boolean isTraining, List<Integer> tokenIds, INDArray paddingMask) {
-    	
-        // Utiliser la matrice d'embeddings pré-entraînée pour récupérer les embeddings correspondants aux IDs de tokens
-        INDArray inputEmbeddings = lookupEmbeddings(tokenIds);
+    public INDArray encode(boolean isTraining, List<List<Integer>> tokenIdsBatch, INDArray paddingMask) {
+        int batchSize = tokenIdsBatch.size();
+        int seqLength = tokenIdsBatch.get(0).size();
+        INDArray inputEmbeddings = Nd4j.zeros(DataType.FLOAT, batchSize, seqLength, dModel);
 
-        // Appliquer les transformations de l'encodeur sur les embeddings
+        for (int i = 0; i < batchSize; i++) {
+            for (int j = 0; j < seqLength; j++) {
+                int tokenId = tokenIdsBatch.get(i).get(j);
+                INDArray tokenEmbedding = TransformerModel.getPretrainedEmbeddings().getRow(tokenId);
+                // Utilisez slice pour accéder à la position correcte et assign pour copier les valeurs
+                inputEmbeddings.get(NDArrayIndex.point(i), NDArrayIndex.point(j), NDArrayIndex.all())
+                            .assign(tokenEmbedding);
+            }
+        }
+        // System.out.println("Embedded input shape: " + Arrays.toString(inputEmbeddings.shape()));
+
+        // Appliquer le MultiHeadAttention et les couches de l'encodeur
         INDArray encoded = forward(isTraining, inputEmbeddings, paddingMask);
-
         return encoded;
     }
     
-
     
-   
-
-    private INDArray lookupEmbeddings(List<Integer> tokenIds) {
-        // Utiliser la matrice d'embeddings pré-entraînée pour récupérer les embeddings correspondants aux IDs de tokens
-        int maxSeqLength = tokenIds.size();
-        int dModel = layers.get(0).selfAttention.getdModel();
-        INDArray embeddings = Nd4j.zeros(DataType.FLOAT, maxSeqLength, dModel);
-
-        for (int i = 0; i < tokenIds.size(); i++) {
-            int tokenId = tokenIds.get(i) - 1;
-            
-            // Vérifier que tokenId est valide
-            if (tokenId >= TransformerModel.getPretrainedEmbeddings().rows()) {
-                throw new IllegalArgumentException("Token ID " + tokenId + " est hors des limites de la matrice d'embeddings qui a " + TransformerModel.getPretrainedEmbeddings().rows() + " lignes.");
+    public INDArray lookupEmbeddings(List<List<Integer>> tokenIdsBatch) {
+        int batchSize = tokenIdsBatch.size();
+        int seqLength = tokenIdsBatch.get(0).size();
+    
+        // Étape 1: Aplatir la liste de listes en un tableau 1D d'entiers (int[])
+        int[] flattenedTokenIds = new int[batchSize * seqLength];
+        for (int i = 0; i < batchSize; i++) {
+            List<Integer> tokenIds = tokenIdsBatch.get(i);
+            for (int j = 0; j < seqLength; j++) {
+                flattenedTokenIds[i * seqLength + j] = tokenIds.get(j); // Pas besoin de convertir en long
             }
-            
-            
-            // Récupérer l'embedding correspondant au token ID à partir de la matrice d'embeddings pré-entraînée
-            embeddings.putRow(i, TransformerModel.getPretrainedEmbeddings().getRow(tokenId));
         }
-
-        return embeddings;
+    
+        // Étape 2: Récupérer les embeddings correspondants
+        // TransformerModel.getPretrainedEmbeddings() doit être de forme [vocabSize, dModel]
+        INDArray batchEmbeddings = TransformerModel.getPretrainedEmbeddings().getRows(flattenedTokenIds); // [batchSize * seqLength, dModel]
+    
+        // Étape 3: Reshaper en [batchSize, seqLength, dModel]
+        batchEmbeddings = batchEmbeddings.reshape(batchSize, seqLength, dModel); // Utilisation correcte de dModel
+    
+        return batchEmbeddings;
     }
+    
+    
+    
+    
 
     private List<List<Float>> convertToLogits(INDArray encoded) {
         // Convertir les embeddings encodés en logits
@@ -754,30 +798,39 @@ public class Encoder implements Serializable  {
         return logits;
     }
 
-    private INDArray forward(boolean isTraining, INDArray x, INDArray paddingMask) {
-    	
+    public INDArray forward(boolean isTraining, INDArray x, INDArray paddingMask) {
+        
         // Appliquer les embeddings positionnels
-        INDArray posEncoding = positionalEncoding.getPositionalEncoding(x.shape()[0]);
+        INDArray posEncoding = positionalEncoding.getPositionalEncoding(x.shape()[1]);
         x = x.add(posEncoding);
-
+        // System.out.println("After positional encoding: " + Arrays.toString(x.shape()));
+    
         for (EncoderLayer layer : layers) {
             x = layer.forward(isTraining, x, paddingMask);
+            // System.out.println("After encoder layer: " + Arrays.toString(x.shape()));
         }
         
-        x =  layerNorm.forward(x);
-
+        x = layerNorm.forward(x);
+        // System.out.println("After layer normalization: " + Arrays.toString(x.shape()));
+    
         return x;
     }
+    
     
 
     public void backward(Map<String, INDArray> gradOutput) {
     	
-    	INDArray gradK = gradOutput.get("gradK");
-    	INDArray gradV = gradOutput.get("gradV");
-    	
-    	INDArray gradFromDecoder = gradK.add(gradV);  // Cette étape suppose que gradK et gradV sont adaptés pour être sommés ainsi
+        // Récupérer gradAttentionOutputConcat
+        INDArray gradAttentionOutputConcatND = gradOutput.get("gradAttentionOutputConcat"); // [1,6,6,50]
+
+        // Permute les axes pour [batchSize, seqLength, numHeads, depth]
+        INDArray gradPermuted = gradAttentionOutputConcatND.permute(0, 2, 1, 3); // [1,6,6,50]
+    
+        // Reshaper pour concaténer les têtes : [batchSize, seqLength, numHeads * depth]
+        INDArray gradOutputForLayerNorm = gradPermuted.reshape(1, 6, 6 * 50); // [1,6,300]
+    
         // Backpropagation à travers la normalisation de couche finale
-    	Map<String, INDArray> gradientsFromLayerNorm = layerNorm.backward(gradFromDecoder);
+    	Map<String, INDArray> gradientsFromLayerNorm = layerNorm.backward(gradOutputForLayerNorm);
 
         // Récupération du gradient par rapport aux entrées de LayerNorm qui sera utilisé comme gradient initial pour les couches de l'Encoder
         INDArray gradInput = gradientsFromLayerNorm.get("input");
@@ -786,6 +839,9 @@ public class Encoder implements Serializable  {
         for (int i = layers.size() - 1; i >= 0; i--) {
             // Chaque couche retourne le gradient par rapport à ses entrées qui est passé à la couche précédente
             gradInput = layers.get(i).backward(gradInput);
+            if (gradInput == null) {
+                throw new IllegalArgumentException("gradInput est null après backward de la couche " + i);
+            }
         }
 
         // Mettre à jour ou enregistrer les gradients pour gamma et beta si nécessaire
@@ -927,17 +983,8 @@ public class Encoder implements Serializable  {
             // Backward à travers SelfAttention
             Map<String, INDArray> gradSelfAttention = selfAttention.backward(gradToSelfAttention);
 
-            // Préparer les gradients pour les étapes suivantes si nécessaire
-//            INDArray gradInput = gradSelfAttention.get("inputQ");  // Utilisation de 'inputQ' comme exemple de gradient retourné
-//            INDArray gradK = gradSelfAttention.get("inputK");
-//            INDArray gradV = gradSelfAttention.get("inputV");
-//
-//            Map<String, INDArray> gradInputs = new HashMap<>();
-//            gradInputs.put("input", gradInput);
-//            gradInputs.put("gradK", gradK);
-//            gradInputs.put("gradV", gradV);
 
-            return gradSelfAttention.get("inputQ");
+            return gradSelfAttention.get("input");
         }
 
 
@@ -1022,6 +1069,7 @@ class Layer implements Serializable {
 package RN.transformer;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -1032,13 +1080,16 @@ import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.ops.transforms.Transforms;
 
+import RN.utils.NDArrayUtils;
+
 /**
  * Classe représentant une normalisation de couche (LayerNorm).
- * Les tenseurs sont supposés avoir la forme [seqLength, dModel].
+ * Les tenseurs peuvent avoir n'importe quel rang >= 2, normalisés sur la dernière dimension (dModel).
  */
 public class LayerNorm extends Layer implements Serializable {
     private static final long serialVersionUID = 941772045774041840L;
     private INDArray gamma, beta;
+    private int dModel;
     private final double epsilon = 1e-6;
     private INDArray inputCache; // Cache pour le forward
     private Map<String, INDArray> gradients = new HashMap<>();
@@ -1049,35 +1100,37 @@ public class LayerNorm extends Layer implements Serializable {
      * @param dModel Dimension du modèle (dModel)
      */
     public LayerNorm(int dModel) {
-        // Initialisation de gamma à des uns et de beta à des zéros avec la forme [1, dModel]
-        gamma = Nd4j.ones(DataType.FLOAT, 1, dModel); // [1, dModel]
-        beta = Nd4j.zeros(DataType.FLOAT, 1, dModel); // [1, dModel]
+        this.dModel = dModel;
+        // Initialisation de gamma à des uns et de beta à des zéros avec la forme [1, 1, dModel]
+        gamma = Nd4j.ones(DataType.FLOAT, 1, 1, dModel); // [1, 1, dModel]
+        beta = Nd4j.zeros(DataType.FLOAT, 1, 1, dModel); // [1, 1, dModel]
+
+        // Log des formes pour vérification
+        // System.out.println("Initialized gamma shape: " + Arrays.toString(gamma.shape()));
+        // System.out.println("Initialized beta shape: " + Arrays.toString(beta.shape()));
     }
 
     /**
      * Passe forward de la normalisation de couche.
      * 
-     * @param x Entrée de forme [seqLength, dModel]
-     * @return Sortie normalisée de forme [seqLength, dModel]
+     * @param x Entrée de forme [batchSize, seqLength, dModel] ou plus
+     * @return Sortie normalisée de même forme
      */
     @Override
     public INDArray forward(INDArray x) {
-        // Vérification des valeurs NaN ou Inf dans l'entrée
         if (x.isNaN().any() || x.isInfinite().any()) {
             throw new RuntimeException("LayerNorm.forward received NaN or Infinite values in input.");
         }
 
-        // Stockage de l'entrée pour la rétropropagation
         this.inputCache = x.dup();
 
-        // Calcul de la moyenne et de la variance sur la dimension dModel (axis=1)
-        INDArray mean = x.mean(1).reshape(x.rows(), 1); // [seqLength, 1]
-        INDArray variance = x.var(false, 1).reshape(x.rows(), 1); // [seqLength, 1]
+        // Calcul de la moyenne et de la variance sur la dernière dimension (dModel)
+        INDArray mean = x.mean(true, x.rank() - 1);     // [batchSize, seqLength, 1]
+        INDArray variance = x.var(false, x.rank() - 1);  // [batchSize, seqLength, 1]
 
-        // Ajout de epsilon pour éviter la division par zéro
-        INDArray std = Transforms.sqrt(variance.add(epsilon)); // [seqLength, 1]
+        // Ajout de epsilon et calcul de l'écart-type
+        INDArray std = Transforms.sqrt(variance.add(epsilon)).reshape(x.shape()[0], x.shape()[1], 1); // [batchSize, seqLength, 1]
 
-        // Vérification des valeurs NaN ou Inf dans les résultats intermédiaires
         if (mean.isNaN().any() || mean.isInfinite().any()) {
             throw new RuntimeException("NaN or Infinite values encountered in mean calculation.");
         }
@@ -1085,13 +1138,16 @@ public class LayerNorm extends Layer implements Serializable {
             throw new RuntimeException("NaN or Infinite values encountered in standard deviation calculation.");
         }
 
-        // Normalisation : (x - mean) / std
-        INDArray normalized = x.sub(mean).div(std); // [seqLength, dModel]
+        // Normalisation avec broadcast explicite
+        INDArray normalized = x.sub(mean).div(std); // [batchSize, seqLength, dModel] / [batchSize, seqLength, 1]
 
-        // Mise à l'échelle et décalage : normalized * gamma + beta
-        INDArray output = normalized.mulRowVector(gamma).addRowVector(beta); // [seqLength, dModel]
+        // Reshape gamma et beta pour le broadcasting correct
+        INDArray gammaBroadcast = gamma.reshape(1, 1, dModel);  // [1, 1, dModel]
+        INDArray betaBroadcast = beta.reshape(1, 1, dModel);    // [1, 1, dModel]
 
-        // Vérification des valeurs NaN ou Inf dans la sortie
+        // Mise à l'échelle et décalage
+        INDArray output = normalized.mul(gammaBroadcast).add(betaBroadcast); // [batchSize, seqLength, dModel]
+
         if (output.isNaN().any() || output.isInfinite().any()) {
             throw new RuntimeException("NaN or Infinite values produced by LayerNorm normalization.");
         }
@@ -1102,39 +1158,54 @@ public class LayerNorm extends Layer implements Serializable {
     /**
      * Passe backward de la normalisation de couche.
      * 
-     * @param gradOutput Gradient provenant de la couche suivante de forme [seqLength, dModel]
+     * @param gradOutput Gradient provenant de la couche suivante de même forme que l'entrée
      * @return Map contenant les gradients pour les paramètres 'gamma', 'beta' et 'input'
      */
     @Override
     public Map<String, INDArray> backward(INDArray gradOutput) {
-        INDArray input = this.inputCache; // [seqLength, dModel]
-        long seqLength = input.shape()[0];
-        long dModel = input.shape()[1];
+
+        if (gradOutput == null) {
+            throw new IllegalArgumentException("gradOutput ne peut pas être null lors de la rétropropagation dans LayerNorm.");
+        }
+
+        // Vérifications de base
+        if (gradOutput.shape()[gradOutput.rank() - 1] != dModel) {
+            throw new IllegalStateException("La dernière dimension de gradOutput doit être égale à dModel.");
+        }
+
+        // Récupération des valeurs du forward
+        INDArray input = this.inputCache; // [batchSize, seqLength, dModel]
+        long batchSize = input.size(0);
+        long seqLength = input.size(1);
+        // Note: On suppose que les dimensions intermédiaires sont maintenues
 
         // Recalcul de la moyenne et de la variance comme dans le forward
-        INDArray mean = input.mean(1).reshape(seqLength, 1); // [seqLength, 1]
-        INDArray variance = input.var(false, 1).reshape(seqLength, 1); // [seqLength, 1]
-        INDArray stdInv = Transforms.pow(variance.add(epsilon), -0.5); // [seqLength, 1]
-        INDArray normalized = input.sub(mean).mul(stdInv); // [seqLength, dModel]
+        INDArray mean = input.mean(true, input.rank() - 1); // [batchSize, seqLength, 1]
+        INDArray variance = input.var(false, input.rank() - 1).reshape(batchSize, seqLength, 1); // [batchSize, seqLength, 1]
 
-        // Reshape de gamma pour le broadcasting : [1, dModel]
-        INDArray gammaReshaped = gamma.reshape(1, dModel); // [1, dModel]
+        INDArray stdInv = Transforms.pow(variance.add(epsilon), -0.5); // [batchSize, seqLength, 1]
+
+        INDArray normalized = input.sub(mean).mul(stdInv); // [batchSize, seqLength, dModel]
 
         // Calcul des gradients pour gamma et beta
-        INDArray gradGamma = gradOutput.mul(normalized).sum(0); // [dModel]
-        INDArray gradBeta = gradOutput.sum(0); // [dModel]
-
-        // Calcul du gradient par rapport à la normalisation
-        INDArray gradNormalized = gradOutput.mul(gammaReshaped); // [seqLength, dModel]
+        INDArray gradGamma = gradOutput.mul(normalized).sum(new int[]{0, 1}); // [1, 1, dModel]
+        INDArray gradBeta = gradOutput.sum(new int[]{0, 1}); // [1, 1, dModel]
 
         // Calcul du gradient par rapport à l'entrée
-        INDArray sumGradNorm = gradNormalized.mul(normalized).sum(1).reshape(seqLength, 1); // [seqLength, 1]
-        INDArray gradInput = gradNormalized.mul(stdInv).sub(normalized.mul(sumGradNorm).mul(stdInv)); // [seqLength, dModel]
+        INDArray gradNormalized = gradOutput.mul(gamma); // [batchSize, seqLength, dModel]
 
-        // Stockage des gradients dans la map
-        gradients.put("gamma", gradGamma);
-        gradients.put("beta", gradBeta);
-        gradients.put("input", gradInput); // Gradient à propager vers les couches précédentes
+        INDArray gradVariance = gradNormalized.mul(normalized).mul(-0.5).div(Transforms.pow(variance.add(epsilon), 1.5)).sum(2).reshape(batchSize, seqLength, 1); // [batchSize, seqLength, 1]
+        INDArray gradMean = gradNormalized.mul(-1).div(Transforms.sqrt(variance.add(epsilon))).sum(2).reshape(batchSize, seqLength, 1)
+                            .add( gradVariance.mul(normalized.mul(-2)).sum(2).reshape(batchSize, seqLength, 1)); // [batchSize, seqLength, 1]
+
+        INDArray gradInput = gradNormalized.div(Transforms.sqrt(variance.add(epsilon)))
+                            .add( gradVariance.mul(normalized.mul(2)).div(dModel))
+                            .add( gradMean.div(dModel)); // [batchSize, seqLength, dModel]
+
+        // Stockage des gradients
+        NDArrayUtils.addGradient(gradients,"gamma", gradGamma);
+        NDArrayUtils.addGradient(gradients,"beta", gradBeta);
+        NDArrayUtils.addGradient(gradients,"input", gradInput);// Gradient à propager vers les couches précédentes
 
         return gradients;
     }
@@ -1145,7 +1216,13 @@ public class LayerNorm extends Layer implements Serializable {
      * @return Liste des gradients dans l'ordre [gamma, beta]
      */
     public List<INDArray> getGradients() {
-        return Arrays.asList(gradients.get("gamma"), gradients.get("beta"));
+        List<INDArray> list = new ArrayList<>();
+        list.add(gradients.get("gamma"));
+        list.add(gradients.get("beta"));
+        if (list.contains(null)) {
+            throw new IllegalArgumentException(" gradients contains null ");
+        }
+        return list;  
     }
 
     /**
@@ -1164,6 +1241,13 @@ public class LayerNorm extends Layer implements Serializable {
      * @param newBeta  Nouvelles valeurs pour beta
      */
     public void setParameters(INDArray newGamma, INDArray newBeta) {
+        // Vérifier que les nouvelles formes sont correctes
+        if (!Arrays.equals(newGamma.shape(), gamma.shape())) {
+            throw new IllegalArgumentException("newGamma a une forme incorrecte: " + Arrays.toString(newGamma.shape()));
+        }
+        if (!Arrays.equals(newBeta.shape(), beta.shape())) {
+            throw new IllegalArgumentException("newBeta a une forme incorrecte: " + Arrays.toString(newBeta.shape()));
+        }
         this.gamma = newGamma;
         this.beta = newBeta;
     }
@@ -1174,7 +1258,6 @@ public class LayerNorm extends Layer implements Serializable {
      * @return Nombre total de paramètres
      */
     public long getNumberOfParameters() {
-        // gamma et beta ont chacun une taille de dModel
         return gamma.length() + beta.length();
     }
 
@@ -1190,6 +1273,7 @@ public class LayerNorm extends Layer implements Serializable {
 package RN.transformer;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -1198,6 +1282,9 @@ import java.util.Map;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.ops.transforms.Transforms;
+
+import RN.utils.NDArrayUtils;
+
 import org.nd4j.linalg.api.buffer.DataType;
 
 /**
@@ -1239,8 +1326,25 @@ public class LinearProjection implements Serializable {
      * @return Sortie projetée de forme [seqLength, outputSize]
      */
     public INDArray project(INDArray input) {
-        // Projection linéaire: [seqLength, dModel] * [dModel, outputSize] + [1, outputSize] = [seqLength, outputSize]
-        return input.mmul(weights).addRowVector(bias);
+        if (input.rank() == 3) {
+            int batchSize = (int) input.size(0);
+            int seqLength = (int) input.size(1);
+            int inputDim = (int) input.size(2);
+
+            // Reshaper en [batchSize * seqLength, inputDim]
+            INDArray reshapedInput = input.reshape(batchSize * seqLength, inputDim);
+
+            // Multiplication matricielle et ajout du biais
+            INDArray projected = reshapedInput.mmul(weights).addiRowVector(bias);
+
+            // Reshaper de retour en [batchSize, seqLength, outputDim]
+            return projected.reshape(batchSize, seqLength, weights.size(1));
+        } else if (input.rank() == 2) {
+            // Multiplication matricielle et ajout du biais
+            return input.mmul(weights).addiRowVector(bias);
+        } else {
+            throw new IllegalArgumentException("Input must be rank 2 or 3.");
+        }
     }
 
     /**
@@ -1266,6 +1370,7 @@ public class LinearProjection implements Serializable {
         return output;
     }
 
+
     /**
      * Passe backward pour calculer les gradients.
      * 
@@ -1274,41 +1379,69 @@ public class LinearProjection implements Serializable {
      * @return Map contenant les gradients pour les paramètres 'weights', 'bias', 'gamma' et 'beta', ainsi que 'input'
      */
     public Map<String, INDArray> backward(INDArray input, INDArray gradOutput) {
+        // Vérifier les formes
+        if (input.rank() != 3 && input.rank() != 2) {
+            throw new IllegalArgumentException("Input must be rank 2 or 3.");
+        }
+        if (input.size(input.rank() - 1) != weights.size(0)) { // dModel
+            throw new IllegalArgumentException("Input size mismatch. Expected " + weights.size(0) + ", got " + input.size(input.rank() - 1));
+        }
+    
+        // Si l'input est de rang 3, reshaper pour le traitement
+        boolean reshaped = false;
+        int batchSize = 1;
+        int seqLength = 1;
+        if (input.rank() == 3) {
+            batchSize = (int) input.size(0);
+            seqLength = (int) input.size(1);
+            input = input.reshape(batchSize * seqLength, input.size(2)); // [batchSize * seqLength, dModel]
+            gradOutput = gradOutput.reshape(batchSize * seqLength, gradOutput.size(2)); // [batchSize * seqLength, vocabSize]
+            reshaped = true;
+        }
+    
         // Calcul des moyennes et variances
-        INDArray mean = input.mean(1).reshape(input.rows(), 1); // [seqLength, 1]
-        INDArray variance = input.var(false, 1).reshape(input.rows(), 1); // [seqLength, 1]
-        INDArray stdInv = Transforms.pow(variance.add(epsilon), -0.5); // [seqLength, 1]
-
+        INDArray mean = input.mean(1).reshape(input.size(0), 1); // [batchSize * seqLength, 1]
+        INDArray variance = input.var(false, 1).reshape(input.size(0), 1); // [batchSize * seqLength, 1]
+        INDArray stdInv = Transforms.pow(variance.add(epsilon), -0.5); // [batchSize * seqLength, 1]
+    
         // Calcul de normalized = (input - mean) / sqrt(var + epsilon)
-        INDArray normalized = input.sub(mean).mul(stdInv); // [seqLength, dModel]
-
+        INDArray normalized = input.sub(mean).mul(stdInv); // [batchSize * seqLength, dModel]
+    
         // Gradients pour la projection linéaire
-        INDArray gradScaled = gradOutput.mmul(weights.transpose()); // [seqLength, dModel]
-
+        INDArray gradScaled = gradOutput.mmul(weights.transpose()); // [batchSize * seqLength, dModel]
+    
         // Gradients pour gamma et beta de LayerNorm
-        INDArray gradGamma = normalized.mul(gradScaled).sum(0); // [dModel]
-        INDArray gradBeta = gradScaled.sum(0); // [dModel]
-
+        INDArray gradGamma = normalized.mul(gradScaled).sum(0).reshape(1, input.size(1)); // [1, dModel]
+        INDArray gradBeta = gradScaled.sum(0).reshape(1, input.size(1)); // [1, dModel]
+    
         // Gradients pour la normalisation
-        INDArray gradNormalized = gradScaled.mul(gamma); // [seqLength, dModel]
+        INDArray gradNormalized = gradScaled.mul(gamma); // [batchSize * seqLength, dModel]
         
         // Calcul des gradients pour l'entrée
-        INDArray sumGradNormInput = gradNormalized.mul(normalized).sum(1).reshape(input.rows(), 1); // [seqLength, 1]
-        INDArray gradInput = gradNormalized.mul(stdInv).sub(normalized.mul(sumGradNormInput).mul(stdInv)); // [seqLength, dModel]
-
+        INDArray sumGradNormInput = gradNormalized.mul(normalized).sum(1).reshape(input.size(0), 1); // [batchSize * seqLength, 1]
+        INDArray gradInput = gradNormalized.mul(stdInv).sub(normalized.mul(sumGradNormInput).mul(stdInv)); // [batchSize * seqLength, dModel]
+    
         // Gradients pour les poids et les biais
-        INDArray gradWeights = input.transpose().mmul(gradOutput); // [dModel, outputSize]
-        INDArray gradBias = gradOutput.sum(0); // [outputSize]
-
+        INDArray gradWeights = input.transpose().mmul(gradOutput); // [dModel, vocabSize]
+        INDArray gradBias = gradOutput.sum(0).reshape(1, gradOutput.size(1)); // [1, vocabSize]
+    
+        // Si reshaped, remettre les formes d'origine
+        if (reshaped) {
+            gradInput = gradInput.reshape(batchSize, seqLength, input.size(1)); // [batchSize, seqLength, dModel]
+        }
+    
         // Stockage des gradients dans la map
-        gradients.put("weights", gradWeights);
-        gradients.put("bias", gradBias);
-        gradients.put("gamma", gradGamma);
-        gradients.put("beta", gradBeta);
-        gradients.put("input", gradInput); // Gradient à propager vers les couches précédentes
-
+        NDArrayUtils.addGradient(gradients, "weights", gradWeights);
+        NDArrayUtils.addGradient(gradients, "bias", gradBias);
+        NDArrayUtils.addGradient(gradients, "gamma", gradGamma);
+        NDArrayUtils.addGradient(gradients, "beta", gradBeta);
+        NDArrayUtils.addGradient(gradients, "input", gradInput); // Gradient à propager vers les couches précédentes
+    
         return gradients;
     }
+     
+    
+
 
     /**
      * Obtient les gradients des paramètres.
@@ -1316,7 +1449,15 @@ public class LinearProjection implements Serializable {
      * @return Liste des gradients dans l'ordre [weights, bias, gamma, beta]
      */
     public List<INDArray> getGradients() {
-        return Arrays.asList(gradients.get("weights"), gradients.get("bias"), gradients.get("gamma"), gradients.get("beta"));
+        List<INDArray> list = new ArrayList<>();
+        list.add(gradients.get("weights"));
+        list.add(gradients.get("bias"));
+        list.add(gradients.get("gamma"));
+        list.add(gradients.get("beta"));
+        if (list.contains(null)) {
+            throw new IllegalArgumentException(" gradients contains null ");
+        }
+        return list;    
     }
 
     /**
@@ -1364,6 +1505,7 @@ public class LinearProjection implements Serializable {
 package RN.transformer;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -1372,6 +1514,7 @@ import java.util.Map;
 import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.indexing.INDArrayIndex;
 import org.nd4j.linalg.indexing.NDArrayIndex;
 import org.nd4j.linalg.ops.transforms.Transforms;
 
@@ -1391,12 +1534,16 @@ public class MultiHeadAttention implements Serializable {
     private Map<String, INDArray> gradients = new HashMap<>();
 
     public MultiHeadAttention(int dModel, int numHeads) {
-        if (dModel % numHeads != 0) {
-            throw new IllegalArgumentException("dModel must be divisible by numHeads");
-        }
+
         this.dModel = dModel;
         this.numHeads = numHeads;
         this.depth = dModel / numHeads;
+
+        if (dModel != numHeads * depth) {
+            throw new IllegalArgumentException("dModel doit être égal à numHeads * depth. Actuellement, dModel="
+                    + dModel + ", numHeads=" + numHeads + ", depth=" + depth);
+        }
+
         // Initialize weights with appropriate normalization
         Wq = Nd4j.randn(DataType.FLOAT, dModel, numHeads * depth).div(Math.sqrt(dModel));
         Wk = Nd4j.randn(DataType.FLOAT, dModel, numHeads * depth).div(Math.sqrt(dModel));
@@ -1407,280 +1554,468 @@ public class MultiHeadAttention implements Serializable {
     /**
      * Forward pass of multi-head attention.
      *
-     * @param query Input queries of shape [batchSize, seqLength, dModel]
-     * @param key   Input keys of shape [batchSize, seqLength, dModel]
-     * @param value Input values of shape [batchSize, seqLength, dModel]
-     * @param mask  Padding mask of shape [batchSize, 1, 1, seqLength]
-     * @return Output of shape [batchSize, seqLength, dModel]
+     * @param query Input queries of shape [batchSize, seqLength_q, dModel]
+     * @param key   Input keys of shape [batchSize, seqLength_k, dModel]
+     * @param value Input values of shape [batchSize, seqLength_k, dModel]
+     * @param mask  Padding mask of shape [batchSize, 1, 1, seqLength_k]
+     * @return Output of shape [batchSize, seqLength_q, dModel]
      */
     public INDArray forward(INDArray query, INDArray key, INDArray value, INDArray mask) {
-        // Cache inputs for backward
-        this.inputQ = query.dup();
-        this.inputK = key.dup();
-        this.inputV = value.dup();
 
-        // Determine batch size and sequence length
-        int batchSize = (int) query.shape()[0];
-        int seqLength = (int) query.shape()[1];
+        // Stocker les inputs pour la passe backward
+        this.inputQ = query.dup(); // [batchSize, seqLength_q, dModel]
+        this.inputK = key.dup();   // [batchSize, seqLength_k, dModel]
+        this.inputV = value.dup(); // [batchSize, seqLength_k, dModel]
 
-        // Linear projections
-        Q = query.reshape(batchSize * seqLength, dModel).mmul(Wq) // [batchSize * seqLength, numHeads * depth]
-                 .reshape(batchSize, seqLength, numHeads, depth) // [batchSize, seqLength, numHeads, depth]
-                 .permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength, depth]
+        // Obtention des dimensions
+        int batchSize = (int) query.size(0);
+        int seqLength_q = (int) query.size(1);
+        int seqLength_k = (int) key.size(1);
+        int depth = dModel / numHeads;
 
-        K = key.reshape(batchSize * seqLength, dModel).mmul(Wk) // [batchSize * seqLength, numHeads * depth]
-               .reshape(batchSize, seqLength, numHeads, depth) // [batchSize, seqLength, numHeads, depth]
-               .permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength, depth]
+        // Vérification des dimensions des entrées
+        if (query.rank() != 3 || key.rank() != 3 || value.rank() != 3) {
+            throw new IllegalArgumentException("Les entrées query, key et value doivent être de rang 3.");
+        }
+       // System.out.println("Key shape: " + Arrays.toString(key.shape()));
+        // System.out.println("Batch Size: " + batchSize);
+        // System.out.println("Seq Length Q: " + seqLength_q);
+        // System.out.println("Seq Length K: " + seqLength_k);
+        // System.out.println("dModel: " + dModel);
+ 
 
-        V = value.reshape(batchSize * seqLength, dModel).mmul(Wv) // [batchSize * seqLength, numHeads * depth]
-                 .reshape(batchSize, seqLength, numHeads, depth) // [batchSize, seqLength, numHeads, depth]
-                 .permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength, depth]
+        // Reshaping des entrées de [batchSize, seqLength, dModel] à [batchSize * seqLength, dModel]
+        INDArray query2D = query.reshape(batchSize * seqLength_q, dModel);
+        INDArray key2D = key.reshape(batchSize * seqLength_k, dModel); // Utiliser seqLength_k
+        INDArray value2D = value.reshape(batchSize * seqLength_k, dModel); // Utiliser seqLength_k
 
-        // Transpose K for attention score computation
-        INDArray kTranspose = K.permute(0, 1, 3, 2); // [batchSize, numHeads, depth, seqLength]
+        // System.out.println("Query2D shape: " + Arrays.toString(query2D.shape()));
+        // System.out.println("Key2D shape: " + Arrays.toString(key2D.shape()));
+        // System.out.println("Value2D shape: " + Arrays.toString(value2D.shape()));
 
-        // Compute attention scores
-        INDArray attentionScores = Nd4j.matmul(Q, kTranspose).div(Math.sqrt(depth)); // [batchSize, numHeads, seqLength, seqLength]
+        // Application des transformations linéaires
+        this.Q = query2D.mmul(Wq); // [batchSize * seqLength_q, numHeads * depth]
+        this.K = key2D.mmul(Wk);    // [batchSize * seqLength_k, numHeads * depth]
+        this.V = value2D.mmul(Wv);  // [batchSize * seqLength_k, numHeads * depth]
 
-        // Apply mask if provided
-        if (mask != null) {
-            attentionScores.addi(mask); // Mask irrelevant scores
+        // System.out.println("Q shape after mmul: " + Arrays.toString(Q.shape()));
+        // System.out.println("K shape after mmul: " + Arrays.toString(K.shape()));
+        // System.out.println("V shape after mmul: " + Arrays.toString(V.shape()));
+
+        // Reshaping pour multi-head attention
+        this.Q = this.Q.reshape(batchSize, seqLength_q, numHeads, depth); // [batchSize, seqLength_q, numHeads, depth]
+        this.K = this.K.reshape(batchSize, seqLength_k, numHeads, depth); // [batchSize, seqLength_k, numHeads, depth]
+        this.V = this.V.reshape(batchSize, seqLength_k, numHeads, depth); // [batchSize, seqLength_k, numHeads, depth]
+
+        // System.out.println("Q shape after reshape: " + Arrays.toString(Q.shape()));
+        // System.out.println("K shape after reshape: " + Arrays.toString(K.shape()));
+        // System.out.println("V shape after reshape: " + Arrays.toString(V.shape()));
+
+        // Transpose pour [batchSize, numHeads, seqLength, depth]
+        this.Q = this.Q.permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength_q, depth]
+        this.K = this.K.permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength_k, depth]
+        this.V = this.V.permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength_k, depth]
+
+        // System.out.println("Q shape after permute: " + Arrays.toString(Q.shape()));
+        // System.out.println("K shape after permute: " + Arrays.toString(K.shape()));
+        // System.out.println("V shape after permute: " + Arrays.toString(V.shape()));
+
+        // Initialiser un tableau pour stocker les scores
+        INDArray scores = Nd4j.create(batchSize, numHeads, seqLength_q, seqLength_k); // [batchSize, numHeads, seqLength_q, seqLength_k]
+
+        // Itérer sur batchSize et numHeads pour effectuer mmul
+        for (int b = 0; b < batchSize; b++) {
+            for (int h = 0; h < numHeads; h++) {
+                // Extraire les matrices [seqLength_q, depth] et [depth, seqLength_k]
+                INDArray Q_batch_head = Q.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all());
+                INDArray KTransposed_batch_head = K
+                        .get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all())
+                        .transpose();
+
+                // Calculer les scores [seqLength_q, seqLength_k]
+                INDArray score = Q_batch_head.mmul(KTransposed_batch_head).div(Math.sqrt(depth));
+
+                // Stocker les scores en utilisant assign
+                scores.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all())
+                        .assign(score);
+            }
         }
 
-        // Compute attention weights using softmax on the last dimension
-        attentionWeights = NDArrayUtils.softmax(attentionScores, -1); // [batchSize, numHeads, seqLength, seqLength]
+        // System.out.println("Scores shape after computation: " + Arrays.toString(scores.shape()));
 
-        // Compute attention output
-        INDArray attentionOutputND = Nd4j.matmul(attentionWeights, V); // [batchSize, numHeads, seqLength, depth]
+        // Appliquer le masque si fourni
+        if (mask != null) {
+            // Assurez-vous que le masque a les mêmes dimensions que scores
+            // Généralement, mask a la forme [batchSize, 1, 1, seqLength_k]
+            scores = scores.add(mask.mul(-1e9)); // Ajouter un grand nombre négatif aux positions masquées
+        }
 
-        // Permute and reshape to combine heads
-        INDArray reshapedAttentionOutput = attentionOutputND.permute(0, 2, 1, 3) // [batchSize, seqLength, numHeads, depth]
-                                                      .reshape(batchSize * seqLength, numHeads * depth); // [batchSize * seqLength, numHeads * depth]
-        this.attentionOutput = reshapedAttentionOutput; // Cache for backward
+        // System.out.println("Scores shape after masking: " + Arrays.toString(scores.shape()));
 
-        // Final linear projection
-        INDArray finalOutput = reshapedAttentionOutput.mmul(Wo).reshape(batchSize, seqLength, dModel); // [batchSize, seqLength, dModel]
-        System.out.println("Shape of Final Output: " + finalOutput.shapeInfoToString());
+        // Application du softmax sur le dernier axe (axis=3)
+        INDArray weights = NDArrayUtils.softmax(scores, 3); // [batchSize, numHeads, seqLength_q, seqLength_k]
 
-        return finalOutput; // [batchSize, seqLength, dModel]
+        // System.out.println("Weights shape after softmax: " + Arrays.toString(weights.shape()));
+
+        // **Stocker attentionWeights pour la passe backward**
+        this.attentionWeights = weights;
+
+        // Calcul de l'attention pondérée
+        INDArray attention = Nd4j.create(batchSize, numHeads, seqLength_q, depth); // [batchSize, numHeads, seqLength_q, depth]
+
+        for (int b = 0; b < batchSize; b++) {
+            for (int h = 0; h < numHeads; h++) {
+                // Extraire les matrices [seqLength_q, seqLength_k] et [seqLength_k, depth]
+                INDArray weights_batch_head = weights.get(NDArrayIndex.point(b), NDArrayIndex.point(h),
+                        NDArrayIndex.all(), NDArrayIndex.all());
+                INDArray V_batch_head = V.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(),
+                        NDArrayIndex.all());
+
+                // Calculer l'attention pondérée [seqLength_q, depth]
+                INDArray attention_head = weights_batch_head.mmul(V_batch_head);
+
+                // Stocker l'attention en utilisant assign
+                attention.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all())
+                        .assign(attention_head);
+            }
+        }
+
+        // System.out.println("Attention shape after computation: " + Arrays.toString(attention.shape()));
+
+        // Transposition et reshaping pour concaténer les têtes
+        // [batchSize, numHeads, seqLength_q, depth] -> [batchSize, seqLength_q, numHeads * depth]
+        INDArray attentionConcat = attention.permute(0, 2, 1, 3).reshape(batchSize, seqLength_q, numHeads * depth); // [batchSize, seqLength_q, dModel]
+
+        // System.out.println("AttentionConcat shape: " + Arrays.toString(attentionConcat.shape()));
+
+        // Effectuer la multiplication matricielle avec Wo
+        // Reshape attentionConcat de [batchSize, seqLength_q, dModel] à [batchSize * seqLength_q, dModel]
+        INDArray attention2D = attentionConcat.reshape(batchSize * seqLength_q, dModel); // [batchSize * seqLength_q, dModel]
+        INDArray output2D = attention2D.mmul(Wo); // [batchSize * seqLength_q, dModel]
+
+        // System.out.println("Output2D shape: " + Arrays.toString(output2D.shape()));
+
+        // Reshape le résultat en [batchSize, seqLength_q, dModel]
+        INDArray output = output2D.reshape(batchSize, seqLength_q, dModel); // [batchSize, seqLength_q, dModel]
+
+        // System.out.println("Output shape: " + Arrays.toString(output.shape()));
+
+        // **Stocker l'attentionOutput pour la passe backward**
+        this.attentionOutput = attentionConcat; // ou `output` selon ce qui est nécessaire pour backward
+
+        return output;
     }
+
 
     /**
      * Backward pass of multi-head attention.
      *
      * @param gradOutput Gradient of the loss with respect to the output [batchSize, seqLength, dModel]
-     * @return Gradients with respect to parameters and inputs
+     * @return Map of gradients with respect to parameters and inputs
      */
     public Map<String, INDArray> backward(INDArray gradOutput) {
+        // Vérifications d'état
         if (this.attentionOutput == null || this.Q == null || this.K == null || this.V == null) {
-            throw new IllegalStateException("Necessary variables (attentionOutput, Q, K, V) are not initialized. Ensure forward pass is called before backward.");
+            throw new IllegalStateException("Les variables nécessaires (attentionOutput, Q, K, V) ne sont pas initialisées. Assurez-vous d'avoir effectué une passe forward avant backward.");
         }
 
-        Map<String, INDArray> gradients = new HashMap<>();
+        if (this.inputQ == null || this.inputK == null || this.inputV == null) {
+            throw new IllegalStateException("Les inputs (inputQ, inputK, inputV) sont null. Assurez-vous que la passe forward les a correctement initialisés.");
+        }
+
+        if (this.attentionWeights == null) {
+            throw new IllegalStateException("attentionWeights est null. Assurez-vous que la passe forward a correctement initialisé attentionWeights.");
+        }
 
         // Dimensions
         int batchSize = (int) gradOutput.shape()[0];
         int seqLength = (int) gradOutput.shape()[1];
-        int dModel = this.dModel;
         int numHeads = this.numHeads;
         int depth = this.depth;
+        int dModel = this.dModel; // Assurez-vous que dModel = numHeads * depth
 
-        // Step 1: Reshape gradOutput from [batchSize, seqLength, dModel] to [batchSize * seqLength, dModel]
+        // Logs de dimensions
+        // System.out.println("Backward Pass:");
+        // System.out.println("batchSize: " + batchSize);
+        // System.out.println("seqLength: " + seqLength);
+        // System.out.println("numHeads: " + numHeads);
+        // System.out.println("depth: " + depth);
+        // System.out.println("dModel: " + dModel);
+        // System.out.println("gradOutput shape: " + gradOutput.shapeInfoToString());
+
+        // Step 1: Compute gradients for Wo
+        // attentionOutputConcat has shape [batchSize, seqLength, numHeads * depth]
+        INDArray attentionOutputConcat = this.attentionOutput.permute(0, 2, 1) // [batchSize, numHeads * depth, seqLength]
+                                            .reshape(batchSize * seqLength, numHeads * depth); // [batchSize * seqLength, numHeads * depth]
+
+        // Reshape gradOutput to [batchSize * seqLength, dModel]
         INDArray gradOutputReshaped = gradOutput.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength, dModel]
-        System.out.println("gradOutputReshaped shape: " + gradOutputReshaped.shapeInfoToString());
 
-        // Step 2: Compute gradWo = attentionOutput^T [numHeads * depth, batchSize * seqLength] mmul gradOutputReshaped [batchSize * seqLength, dModel] = [numHeads * depth, dModel]
-        INDArray gradWo = this.attentionOutput.transpose().mmul(gradOutputReshaped); // [numHeads * depth, dModel]
-        gradients.put("Wo", gradWo);
-        System.out.println("Gradient Wo shape: " + gradWo.shapeInfoToString());
+        // Compute gradWo: [numHeads * depth, dModel]
+        INDArray gradWo = attentionOutputConcat.transpose().mmul(gradOutputReshaped); // [numHeads * depth, dModel]
+        NDArrayUtils.addGradient(gradients, "Wo", gradWo);
+        
+        // System.out.println("gradWo shape: " + gradWo.shapeInfoToString());
 
-        // Step 3: Compute gradAttentionOutputReshaped = gradOutputReshaped [batchSize * seqLength, dModel] mmul Wo^T [dModel, numHeads * depth] = [batchSize * seqLength, numHeads * depth]
-        INDArray gradAttentionOutputReshaped = gradOutputReshaped.mmul(Wo.transpose()); // [batchSize * seqLength, numHeads * depth]
-        System.out.println("gradAttentionOutputReshaped shape: " + gradAttentionOutputReshaped.shapeInfoToString());
+        // Step 2: Compute gradients for attentionOutputConcat
+        // gradAttentionOutputConcat = gradOutputReshaped * Wo^T
+        INDArray WoTransposed = this.Wo.transpose(); // [dModel, numHeads * depth]
+        INDArray gradAttentionOutputConcatReshaped = gradOutputReshaped.mmul(WoTransposed); // [batchSize * seqLength, numHeads * depth]
+        // Reshape back to [batchSize, seqLength, numHeads, depth]
+        INDArray gradAttentionOutputConcatND = gradAttentionOutputConcatReshaped.reshape(batchSize, seqLength, numHeads, depth);
+        // Permute to [batchSize, numHeads, seqLength, depth]
+        gradAttentionOutputConcatND = gradAttentionOutputConcatND.permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength, depth]
+        NDArrayUtils.addGradient(gradients, "gradAttentionOutputConcat", gradAttentionOutputConcatND);
+        // System.out.println("gradAttentionOutputConcat shape: " + gradAttentionOutputConcatND.shapeInfoToString());
 
-        // Step 4: Reshape gradAttentionOutputReshaped from [batchSize * seqLength, numHeads * depth] to [batchSize, seqLength, numHeads, depth]
-        INDArray gradAttentionOutput = gradAttentionOutputReshaped.reshape(batchSize, seqLength, numHeads, depth); // [batchSize, seqLength, numHeads, depth]
-        System.out.println("gradAttentionOutput shape: " + gradAttentionOutput.shapeInfoToString());
-
-        // Step 5: Permute to [batchSize, numHeads, seqLength, depth]
-        gradAttentionOutput = gradAttentionOutput.permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength, depth]
-        System.out.println("gradAttentionOutput permuted shape: " + gradAttentionOutput.shapeInfoToString());
-
-        // Step 6: Compute gradV = attentionWeights [batchSize, numHeads, seqLength, seqLength] mmul gradAttentionOutput [batchSize, numHeads, seqLength, depth] = [batchSize, numHeads, seqLength, depth]
-        INDArray gradV = Nd4j.create(DataType.FLOAT, batchSize, numHeads, seqLength, depth); // [batchSize, numHeads, seqLength, depth]
+        // Step 3: Compute gradients for attentionWeights and V
+        // attentionOutput = attentionWeights.mmul(V)
+        // gradAttentionWeights = gradAttentionOutputConcat.mmul(V^T)
+        // gradV = attentionWeights^T.mmul(gradAttentionOutputConcat)
+        INDArray gradAttentionWeights = Nd4j.create(batchSize, numHeads, seqLength, seqLength); // [batchSize, numHeads, seqLength, seqLength]
         for (int b = 0; b < batchSize; b++) {
             for (int h = 0; h < numHeads; h++) {
-                INDArray attentionWeightsHead = this.attentionWeights.get(
+                // Extract [seqLength, depth] from gradAttentionOutputConcatND
+                INDArray gradAttentionOutputHead = gradAttentionOutputConcatND.get(
                     NDArrayIndex.point(b),
                     NDArrayIndex.point(h),
                     NDArrayIndex.all(),
                     NDArrayIndex.all()
-                ).reshape(seqLength, seqLength); // [seqLength, seqLength]
-                INDArray gradAttentionOutputHead = gradAttentionOutput.get(
+                ); // [seqLength, depth]
+
+                // Extract [depth, seqLength] from V
+                INDArray VTransposedHead = this.V.get(
                     NDArrayIndex.point(b),
                     NDArrayIndex.point(h),
                     NDArrayIndex.all(),
                     NDArrayIndex.all()
-                ).reshape(seqLength, depth); // [seqLength, depth]
-                INDArray gradVHead = attentionWeightsHead.mmul(gradAttentionOutputHead); // [seqLength, depth]
-                // Use assign instead of put to assign the entire sub-array
-                gradV.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all()).assign(gradVHead); // [b, h, :, :]
+                ).transpose(); // [depth, seqLength]
+
+                // Perform mmul: [seqLength, depth] mmul [depth, seqLength] = [seqLength, seqLength]
+                INDArray gradAttentionWeightsHead = gradAttentionOutputHead.mmul(VTransposedHead).div(Math.sqrt(depth)); // [seqLength, seqLength]
+
+                // Assign to gradAttentionWeights
+                gradAttentionWeights.get(
+                    NDArrayIndex.point(b),
+                    NDArrayIndex.point(h),
+                    NDArrayIndex.all(),
+                    NDArrayIndex.all()
+                ).assign(gradAttentionWeightsHead);
             }
         }
-        System.out.println("gradV shape: " + gradV.shapeInfoToString());
+        NDArrayUtils.addGradient(gradients,"gradAttentionWeights", gradAttentionWeights);
+        // System.out.println("gradAttentionWeights shape: " + gradAttentionWeights.shapeInfoToString());
 
-        // Step 7: Reshape gradV from [batchSize, numHeads, seqLength, depth] to [batchSize * seqLength, numHeads * depth]
-        INDArray gradVReshaped = gradV.permute(0, 2, 1, 3).reshape(batchSize * seqLength, numHeads * depth); // [batchSize * seqLength, numHeads * depth]
-        System.out.println("gradVReshaped shape: " + gradVReshaped.shapeInfoToString());
-
-        // Step 8: Compute gradWv = inputV^T [dModel, batchSize * seqLength] mmul gradVReshaped [batchSize * seqLength, numHeads * depth] = [dModel, numHeads * depth]
-        INDArray inputVReshaped = this.inputV.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength, dModel]
-        INDArray gradWv = inputVReshaped.transpose().mmul(gradVReshaped); // [dModel, numHeads * depth]
-        gradients.put("Wv", gradWv);
-        System.out.println("Gradient Wv shape: " + gradWv.shapeInfoToString());
-
-        // Step 9: Compute gradScores = gradAttentionOutput [batchSize, numHeads, seqLength, depth] mmul V^T [batchSize, numHeads, depth, seqLength] = [batchSize, numHeads, seqLength, seqLength]
-        INDArray gradScores = Nd4j.create(DataType.FLOAT, batchSize, numHeads, seqLength, seqLength); // [batchSize, numHeads, seqLength, seqLength]
+        // Compute gradV
+        INDArray gradV = Nd4j.create(batchSize, numHeads, seqLength, depth); // [batchSize, numHeads, seqLength, depth]
         for (int b = 0; b < batchSize; b++) {
             for (int h = 0; h < numHeads; h++) {
-                INDArray gradAttentionOutputHead = gradAttentionOutput.get(
+                // Extract [seqLength, seqLength] from attentionWeights^T
+                INDArray attentionWeightsTransposedHead = this.attentionWeights.get(
                     NDArrayIndex.point(b),
                     NDArrayIndex.point(h),
                     NDArrayIndex.all(),
                     NDArrayIndex.all()
-                ).reshape(seqLength, depth); // [seqLength, depth]
-                // Correctly transpose VHeadT to [depth, seqLength]
-                INDArray VHeadT = this.V.get(
+                ).transpose(); // [seqLength, seqLength]
+
+                // Extract [seqLength, depth] from gradAttentionOutputConcatND
+                INDArray gradAttentionOutputHead = gradAttentionOutputConcatND.get(
                     NDArrayIndex.point(b),
                     NDArrayIndex.point(h),
                     NDArrayIndex.all(),
                     NDArrayIndex.all()
-                ).reshape(depth, seqLength); // [depth, seqLength]
-                INDArray gradScoresHead = gradAttentionOutputHead.mmul(VHeadT).div(Math.sqrt(depth)); // [seqLength, seqLength]
-                // Use assign instead of put to assign the entire sub-array
-                gradScores.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all()).assign(gradScoresHead); // [b, h, :, :]
+                ); // [seqLength, depth]
+
+                // Perform mmul: [seqLength, seqLength] mmul [seqLength, depth] = [seqLength, depth]
+                INDArray gradVHead = attentionWeightsTransposedHead.mmul(gradAttentionOutputHead).div(Math.sqrt(depth)); // [seqLength, depth]
+
+                // Assign to gradV
+                gradV.get(
+                    NDArrayIndex.point(b),
+                    NDArrayIndex.point(h),
+                    NDArrayIndex.all(),
+                    NDArrayIndex.all()
+                ).assign(gradVHead); // [seqLength, depth]
+                
             }
         }
-        System.out.println("gradScores shape: " + gradScores.shapeInfoToString());
+        //NDArrayUtils.addGradient(gradients,"gradV", gradV);
+        // System.out.println("gradV shape: " + gradV.shapeInfoToString());
 
-        // Step 10: Compute gradAttentionScoresFinal = softmaxGrad(attentionWeights, gradScores)
-        INDArray gradAttentionScoresFinal = softmaxGrad(this.attentionWeights, gradScores); // [batchSize, numHeads, seqLength, seqLength]
-        gradients.put("attentionScores", gradAttentionScoresFinal);
-        System.out.println("gradAttentionScoresFinal shape: " + gradAttentionScoresFinal.shapeInfoToString());
+        // Step 4: Compute gradients through softmax
+        // gradScores = softmaxGrad(attentionWeights, gradAttentionWeights)
+        INDArray gradScores = softmaxGrad(this.attentionWeights, gradAttentionWeights); // [batchSize, numHeads, seqLength, seqLength]
+        NDArrayUtils.addGradient(gradients,"gradScores", gradScores);
+        // System.out.println("gradScores shape: " + gradScores.shapeInfoToString());
 
-        // Step 11: Compute gradQ = gradAttentionScoresFinal [batchSize, numHeads, seqLength, seqLength] mmul K [batchSize, numHeads, seqLength, depth] = [batchSize, numHeads, seqLength, depth]
-        INDArray gradQ = Nd4j.create(DataType.FLOAT, batchSize, numHeads, seqLength, depth); // [batchSize, numHeads, seqLength, depth]
+        // Step 5: Compute gradients for Q and K
+        // scores = Q.mmul(K.transpose(0, 1, 3, 2)) / sqrt(depth)
+        // gradQ = gradScores.mmul(K) / sqrt(depth)
+        // gradK = gradScores^T.mmul(Q) / sqrt(depth)
+        INDArray gradQ = Nd4j.create(batchSize, numHeads, seqLength, depth); // [batchSize, numHeads, seqLength, depth]
         for (int b = 0; b < batchSize; b++) {
             for (int h = 0; h < numHeads; h++) {
-                INDArray gradScoresHead = gradAttentionScoresFinal.get(
+                // Extract [seqLength, seqLength] from gradScores
+                INDArray gradScoresHead = gradScores.get(
                     NDArrayIndex.point(b),
                     NDArrayIndex.point(h),
                     NDArrayIndex.all(),
                     NDArrayIndex.all()
-                ).reshape(seqLength, seqLength); // [seqLength, seqLength]
+                ); // [seqLength, seqLength]
+
+                // Extract [seqLength, depth] from K
                 INDArray KHead = this.K.get(
                     NDArrayIndex.point(b),
                     NDArrayIndex.point(h),
                     NDArrayIndex.all(),
                     NDArrayIndex.all()
-                ).reshape(seqLength, depth); // [seqLength, depth]
+                ); // [seqLength, depth]
+
+                // Perform mmul: [seqLength, seqLength] mmul [seqLength, depth] = [seqLength, depth]
                 INDArray gradQHead = gradScoresHead.mmul(KHead); // [seqLength, depth]
-                // Use assign instead of put to assign the entire sub-array
-                gradQ.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all()).assign(gradQHead); // [b, h, :, :]
-            }
-        }
-        System.out.println("gradQ shape: " + gradQ.shapeInfoToString());
 
-        // Step 12: Reshape gradQ from [batchSize, numHeads, seqLength, depth] to [batchSize * seqLength, numHeads * depth]
-        INDArray gradQReshaped = gradQ.permute(0, 2, 1, 3).reshape(batchSize * seqLength, numHeads * depth); // [batchSize * seqLength, numHeads * depth]
-        System.out.println("gradQReshaped shape: " + gradQReshaped.shapeInfoToString());
-
-        // Step 13: Compute gradWq = inputQ^T [dModel, batchSize * seqLength] mmul gradQReshaped [batchSize * seqLength, numHeads * depth] = [dModel, numHeads * depth]
-        INDArray inputQReshaped = this.inputQ.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength, dModel]
-        INDArray gradWq = inputQReshaped.transpose().mmul(gradQReshaped); // [dModel, numHeads * depth]
-        gradients.put("Wq", gradWq);
-        System.out.println("Gradient Wq shape: " + gradWq.shapeInfoToString());
-
-        // Step 14: Compute gradK = gradAttentionScoresFinal [batchSize, numHeads, seqLength, seqLength] mmul Q [batchSize, numHeads, seqLength, depth] = [batchSize, numHeads, seqLength, depth]
-        INDArray gradK = Nd4j.create(DataType.FLOAT, batchSize, numHeads, seqLength, depth); // [batchSize, numHeads, seqLength, depth]
-        for (int b = 0; b < batchSize; b++) {
-            for (int h = 0; h < numHeads; h++) {
-                INDArray gradScoresHeadTrans = gradAttentionScoresFinal.get(
+                // Assign to gradQ
+                gradQ.get(
                     NDArrayIndex.point(b),
                     NDArrayIndex.point(h),
                     NDArrayIndex.all(),
                     NDArrayIndex.all()
-                ).reshape(seqLength, seqLength).transpose(); // [seqLength, seqLength]
+                ).assign(gradQHead);
+            }
+        }
+        //NDArrayUtils.addGradient(gradients,"gradQ", gradQ);
+        // System.out.println("gradQ shape: " + gradQ.shapeInfoToString());
+
+        // Compute gradK
+        INDArray gradK = Nd4j.create(batchSize, numHeads, seqLength, depth); // [batchSize, numHeads, seqLength, depth]
+        for (int b = 0; b < batchSize; b++) {
+            for (int h = 0; h < numHeads; h++) {
+                // Extract [seqLength, seqLength] from gradScores transpose
+                INDArray gradScoresTransposedHead = gradScores.get(
+                    NDArrayIndex.point(b),
+                    NDArrayIndex.point(h),
+                    NDArrayIndex.all(),
+                    NDArrayIndex.all()
+                ).transpose(); // [seqLength, seqLength]
+
+                // Extract [seqLength, depth] from Q
                 INDArray QHead = this.Q.get(
                     NDArrayIndex.point(b),
                     NDArrayIndex.point(h),
                     NDArrayIndex.all(),
                     NDArrayIndex.all()
-                ).reshape(seqLength, depth); // [seqLength, depth]
-                INDArray gradKHead = gradScoresHeadTrans.mmul(QHead); // [seqLength, depth]
-                // Use assign instead of put to assign the entire sub-array
-                gradK.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all()).assign(gradKHead); // [b, h, :, :]
+                ); // [seqLength, depth]
+
+                // Perform mmul: [seqLength, seqLength] mmul [seqLength, depth] = [seqLength, depth]
+                INDArray gradKHead = gradScoresTransposedHead.mmul(QHead); // [seqLength, depth]
+
+                // Assign to gradK
+                gradK.get(
+                    NDArrayIndex.point(b),
+                    NDArrayIndex.point(h),
+                    NDArrayIndex.all(),
+                    NDArrayIndex.all()
+                ).assign(gradKHead);
             }
         }
-        System.out.println("gradK shape: " + gradK.shapeInfoToString());
+        //NDArrayUtils.addGradient(gradients,"gradK", gradK);
+        // System.out.println("gradK shape: " + gradK.shapeInfoToString());
 
-        // Step 15: Reshape gradK from [batchSize, numHeads, seqLength, depth] to [batchSize * seqLength, numHeads * depth]
-        INDArray gradKReshaped = gradK.permute(0, 2, 1, 3).reshape(batchSize * seqLength, numHeads * depth); // [batchSize * seqLength, numHeads * depth]
-        System.out.println("gradKReshaped shape: " + gradKReshaped.shapeInfoToString());
+        // Step 6: Reshape gradQ and gradK for Wq and Wk gradients
+        // Reshape gradQ and gradK from [batchSize, numHeads, seqLength, depth] to [batchSize * seqLength, numHeads * depth]
+        INDArray gradQReshaped = gradQ.reshape(batchSize * seqLength, numHeads * depth); // [1, 300]
+        INDArray gradKReshaped = gradK.reshape(batchSize * seqLength, numHeads * depth); // [1, 300]
 
-        // Step 16: Compute gradWk = inputK^T [dModel, batchSize * seqLength] mmul gradKReshaped [batchSize * seqLength, numHeads * depth] = [dModel, numHeads * depth]
+        // Step 7: Compute gradients for Wq, Wk, Wv
+        // gradWq = inputQ^T * gradQReshaped [dModel, batchSize * seqLength] mmul [batchSize * seqLength, numHeads * depth] = [dModel, numHeads * depth]
+        INDArray inputQReshaped = this.inputQ.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength, dModel]
+        INDArray gradWq = inputQReshaped.transpose().mmul(gradQReshaped); // [dModel, numHeads * depth]
+        NDArrayUtils.addGradient(gradients,"Wq", gradWq);
+        // System.out.println("gradWq shape: " + gradWq.shapeInfoToString());
+
+        // gradWk = inputK^T * gradKReshaped [dModel, batchSize * seqLength] mmul [batchSize * seqLength, numHeads * depth] = [dModel, numHeads * depth]
         INDArray inputKReshaped = this.inputK.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength, dModel]
         INDArray gradWk = inputKReshaped.transpose().mmul(gradKReshaped); // [dModel, numHeads * depth]
-        gradients.put("Wk", gradWk);
-        System.out.println("Gradient Wk shape: " + gradWk.shapeInfoToString());
+        NDArrayUtils.addGradient(gradients,"Wk", gradWk);
+        // System.out.println("gradWk shape: " + gradWk.shapeInfoToString());
 
-        // Step 17: Compute gradInputQ = gradQReshaped [batchSize * seqLength, numHeads * depth] mmul Wq^T [numHeads * depth, dModel] = [batchSize * seqLength, dModel]
-        INDArray gradInputQ = gradQReshaped.mmul(Wq.transpose()); // [batchSize * seqLength, dModel]
-        gradInputQ = gradInputQ.reshape(batchSize, seqLength, dModel); // [batchSize, seqLength, dModel]
-        gradients.put("inputQ", gradInputQ);
-        System.out.println("gradInputQ shape: " + gradInputQ.shapeInfoToString());
+        // gradWv = inputV^T * gradVReshaped [dModel, batchSize * seqLength] mmul [batchSize * seqLength, numHeads * depth] = [dModel, numHeads * depth]
+        // Reshape gradV from [batchSize, numHeads, depth, seqLength] to [batchSize * seqLength, numHeads * depth]
+        INDArray gradVReshaped = gradV.permute(0, 1, 3, 2).reshape(batchSize * seqLength, numHeads * depth); // [1, 300]
+        INDArray inputVReshaped = this.inputV.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength, dModel]
+        INDArray gradWv = inputVReshaped.transpose().mmul(gradVReshaped); // [dModel, numHeads * depth]
+        NDArrayUtils.addGradient(gradients,"Wv", gradWv);
+        // System.out.println("gradWv shape: " + gradWv.shapeInfoToString());
 
-        // Step 18: Compute gradInputK = gradKReshaped [batchSize * seqLength, numHeads * depth] mmul Wk^T [numHeads * depth, dModel] = [batchSize * seqLength, dModel]
-        INDArray gradInputK = gradKReshaped.mmul(Wk.transpose()); // [batchSize * seqLength, dModel]
-        gradInputK = gradInputK.reshape(batchSize, seqLength, dModel); // [batchSize, seqLength, dModel]
-        gradients.put("inputK", gradInputK);
-        System.out.println("gradInputK shape: " + gradInputK.shapeInfoToString());
+        // // Step 8: Compute gradients for the inputs (query, key, value)
 
-        // Step 19: Compute gradInputV = gradVReshaped [batchSize * seqLength, numHeads * depth] mmul Wv^T [numHeads * depth, dModel] = [batchSize * seqLength, dModel]
-        INDArray gradInputV = gradVReshaped.mmul(Wv.transpose()); // [batchSize * seqLength, dModel]
-        gradInputV = gradInputV.reshape(batchSize, seqLength, dModel); // [batchSize, seqLength, dModel]
-        gradients.put("inputV", gradInputV);
-        System.out.println("gradInputV shape: " + gradInputV.shapeInfoToString());
+        // // For gradInputQ
+        // INDArray gradQPermuted = gradQ.permute(0, 2, 1, 3); // [batchSize, seqLength, numHeads, depth]
+        // gradQReshaped = gradQPermuted.reshape(batchSize * seqLength, numHeads * depth); // [batchSize * seqLength, numHeads * depth]
+        // INDArray gradInputQ = gradQReshaped.mmul(this.Wq.transpose()); // [batchSize * seqLength, dModel]
+        // gradInputQ = gradInputQ.reshape(batchSize, seqLength, dModel); // [batchSize, seqLength, dModel]
+        // gradients.put("gradInputQ", gradInputQ);
+        // System.out.println("gradInputQ shape: " + gradInputQ.shapeInfoToString());
 
-        // Step 20: Compute gradInput = gradInputQ + gradInputK + gradInputV
-        INDArray gradInput = gradInputQ.add(gradInputK).add(gradInputV); // [batchSize, seqLength, dModel]
-        gradients.put("input", gradInput);
-        System.out.println("gradInput shape: " + gradInput.shapeInfoToString());
+        // // For gradInputK
+        // INDArray gradKPermuted = gradK.permute(0, 2, 1, 3);
+        // gradKReshaped = gradKPermuted.reshape(batchSize * seqLength, numHeads * depth);
+        // INDArray gradInputK = gradKReshaped.mmul(this.Wk.transpose());
+        // gradInputK = gradInputK.reshape(batchSize, seqLength, dModel);
+        // gradients.put("gradInputK", gradInputK);
+        // System.out.println("gradInputK shape: " + gradInputK.shapeInfoToString());
 
+        // // For gradInputV
+        // INDArray gradVPermuted = gradV.permute(0, 2, 3, 1); // Adjusted permutation for gradV
+        // gradVReshaped = gradVPermuted.reshape(batchSize * seqLength, numHeads * depth);
+        // INDArray gradInputV = gradVReshaped.mmul(this.Wv.transpose());
+        // gradInputV = gradInputV.reshape(batchSize, seqLength, dModel);
+        // gradients.put("gradInputV", gradInputV);
+        // System.out.println("gradInputV shape: " + gradInputV.shapeInfoToString());
+
+        // Step 7: Compute gradInput as gradOutput * Wo^T
+        // Reshape gradOutput to 2D
+        INDArray gradOutputReshapedFinal = gradOutput.reshape(batchSize * seqLength, dModel); // [6, 300]
+
+        // Perform mmul with Wo^T
+        INDArray gradInputReshaped = gradOutputReshapedFinal.mmul(WoTransposed); // [6, 300]
+
+        // Reshape back to 3D
+        INDArray gradInputFinal = gradInputReshaped.reshape(batchSize, seqLength, dModel); // [1, 6, 300]
+
+        NDArrayUtils.addGradient(gradients,"input", gradInputFinal);
+        // System.out.println("gradInput shape: " + Arrays.toString(gradInputFinal.shape()));
+
+
+
+        // Retourner les gradients des inputs séparément
         return gradients;
     }
 
+
     /**
-     * Computes the gradient of the softmax.
+     * Compute the gradient of the softmax function.
      *
-     * @param softmax Softmax results of shape [batchSize, numHeads, seqLength, seqLength]
-     * @param gradA   Gradients from the next layer of the same shape as softmax
-     * @return Gradient with respect to the attention scores of the same shape as softmax
+     * @param softmaxOutput The output of the softmax function [batchSize, numHeads,
+     *                      seqLength, seqLength]
+     * @param gradOutput    The gradient w.r.t. the softmax output [batchSize,
+     *                      numHeads, seqLength, seqLength]
+     * @return The gradient w.r.t. the scores before softmax [batchSize, numHeads,
+     *         seqLength, seqLength]
      */
-    private INDArray softmaxGrad(INDArray softmax, INDArray gradA) {
-        // softmax: [batchSize, numHeads, seqLength, seqLength]
-        // gradA: [batchSize, numHeads, seqLength, seqLength]
+    private INDArray softmaxGrad(INDArray softmaxOutput, INDArray gradOutput) {
+        // Calculate the sum over the last axis
+        INDArray sum = Nd4j.sum(softmaxOutput.mul(gradOutput), 3).reshape(
+                softmaxOutput.shape()[0],
+                softmaxOutput.shape()[1],
+                softmaxOutput.shape()[2],
+                1); // [batchSize, numHeads, seqLength, 1]
 
-        // Compute dL/dS = softmax * (gradA - sum(gradA * softmax, axis=3, keepdims=true))
-        // ND4J does not support keepdims directly, so handle it manually
+        // Calculate gradScores
+        INDArray gradScores = softmaxOutput.mul(gradOutput).sub(softmaxOutput.mul(sum)); // [batchSize, numHeads,
+                                                                                         // seqLength, seqLength]
 
-        // Compute sum(gradA * softmax, axis=3, keepdims=true)
-        INDArray sum = softmax.mul(gradA).sum(3).reshape(softmax.shape()[0], softmax.shape()[1], softmax.shape()[2], 1); // [batchSize, numHeads, seqLength, 1]
-
-        // Compute gradS = softmax * (gradA - sum)
-        INDArray gradS = softmax.mul(gradA.sub(sum)); // [batchSize, numHeads, seqLength, seqLength]
-
-        return gradS;
+        return gradScores;
     }
 
     public List<INDArray> getParameters() {
@@ -1690,7 +2025,15 @@ public class MultiHeadAttention implements Serializable {
 
     public List<INDArray> getGradients() {
         // Return gradients as a list of INDArrays
-        return Arrays.asList(gradients.get("Wq"), gradients.get("Wk"), gradients.get("Wv"), gradients.get("Wo"));
+        List<INDArray> list = new ArrayList<>();
+        list.add(gradients.get("Wq"));
+        list.add(gradients.get("Wk"));
+        list.add(gradients.get("Wv"));
+        list.add(gradients.get("Wo"));
+        if (list.contains(null)) {
+            throw new IllegalArgumentException(" gradients contains null ");
+        }
+        return list;
     }
 
     public long getNumberOfParameters() {
@@ -1790,6 +2133,7 @@ public class PositionalEncoding implements Serializable {
 package RN.transformer;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -1799,16 +2143,21 @@ import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.ops.transforms.Transforms;
 
+import RN.utils.NDArrayUtils;
+
 /**
  * Classe représentant le réseau Feed-Forward positionnel dans le Transformer.
  * Utilise deux couches linéaires avec une activation ReLU entre elles.
- * Les tenseurs sont supposés avoir la forme [seqLength, dModel].
+ * Les tenseurs sont supposés avoir la forme [batchSize, seqLength, dModel].
  */
 public class PositionwiseFeedForward implements Serializable {
     private static final long serialVersionUID = 4036365276693483563L;
     private INDArray W1, b1, W2, b2;
     private INDArray inputCache, reluCache; // Cache pour le forward
     private Map<String, INDArray> gradients = new HashMap<>();
+    private int dModel;
+    private int ffSize; // Taille de la couche Feed-Forward
+    private double epsilon = 1e-7; // Ajouter epsilon ici pour éviter la division par zéro
 
     /**
      * Constructeur de la classe PositionwiseFeedForward.
@@ -1817,65 +2166,99 @@ public class PositionwiseFeedForward implements Serializable {
      * @param ffSize    Taille de la couche Feed-Forward (ffSize)
      */
     public PositionwiseFeedForward(int modelSize, int ffSize) {
-        // Initialisation des poids avec une distribution uniforme ou normale selon le choix
-        this.W1 = Nd4j.randn(modelSize, ffSize).div(Math.sqrt(modelSize)); // He Initialization
-        this.b1 = Nd4j.zeros(1, ffSize);
-        this.W2 = Nd4j.randn(ffSize, modelSize).div(Math.sqrt(ffSize)); // He Initialization
-        this.b2 = Nd4j.zeros(1, modelSize);
+        this.dModel = modelSize;
+        this.ffSize = ffSize;
+        // Initialisation des poids avec une distribution normale et He Initialization
+        this.W1 = Nd4j.randn(modelSize, ffSize).div(Math.sqrt(modelSize)); // [dModel, ffSize]
+        this.b1 = Nd4j.zeros(1, ffSize); // [1, ffSize]
+        this.W2 = Nd4j.randn(ffSize, modelSize).div(Math.sqrt(ffSize)); // [ffSize, dModel]
+        this.b2 = Nd4j.zeros(1, modelSize); // [1, dModel]
     }
 
     /**
      * Passe forward du réseau Feed-Forward positionnel.
      * 
-     * @param input Entrée de forme [seqLength, dModel]
-     * @return Sortie de forme [seqLength, dModel]
+     * @param input Entrée de forme [batchSize, seqLength, dModel]
+     * @return Sortie de forme [batchSize, seqLength, dModel]
      */
     public INDArray forward(INDArray input) {
         // Stockage de l'entrée pour la rétropropagation
-        this.inputCache = input.dup();
-
-        // Première couche linéaire suivie de ReLU
-        INDArray hidden = input.mmul(W1).addRowVector(b1); // [seqLength, ffSize]
-        this.reluCache = hidden.dup();
-        INDArray reluOutput = Transforms.relu(hidden); // [seqLength, ffSize]
-
+        this.inputCache = input.dup(); // [batchSize, seqLength, dModel]
+        
+        long batchSize = input.shape()[0];
+        long seqLength = input.shape()[1];
+        
+        // Reshape input pour la multiplication matricielle
+        INDArray inputReshaped = input.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength, dModel]
+        
+        // Première couche linéaire
+        INDArray hidden = inputReshaped.mmul(W1).addiRowVector(b1); // [batchSize * seqLength, ffSize]
+        this.reluCache = hidden.dup(); // [batchSize * seqLength, ffSize]
+        
+        // Activation ReLU
+        INDArray reluOutput = Transforms.relu(hidden); // [batchSize * seqLength, ffSize]
+        
         // Deuxième couche linéaire
-        INDArray output = reluOutput.mmul(W2).addRowVector(b2); // [seqLength, dModel]
-        return output;
+        INDArray output = reluOutput.mmul(W2).addiRowVector(b2); // [batchSize * seqLength, dModel]
+        
+        // Reshape back to original dimensions
+        return output.reshape(batchSize, seqLength, dModel); // [batchSize, seqLength, dModel]
     }
 
     /**
      * Passe backward pour calculer les gradients.
      * 
-     * @param gradOutput Gradient provenant de la couche suivante de forme [seqLength, dModel]
+     * @param gradOutput Gradient provenant de la couche suivante de forme [batchSize, seqLength, dModel] ou [batchSize * seqLength, dModel]
      * @return Map contenant les gradients pour les paramètres 'W1', 'b1', 'W2', 'b2', et 'input'
      */
     public Map<String, INDArray> backward(INDArray gradOutput) {
+        boolean reshaped = false;
+        long batchSize = 1;
+        long seqLength = 1;
+        
+        // Vérifier le rang de gradOutput et reshaper si nécessaire
+        if (gradOutput.rank() == 3) {
+            batchSize = gradOutput.size(0);
+            seqLength = gradOutput.size(1);
+            gradOutput = gradOutput.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength, dModel]
+            reshaped = true;
+        } else if (gradOutput.rank() != 2) {
+            throw new IllegalArgumentException("gradOutput doit être de rang 2 ou 3.");
+        }
+
+        // Reshape inputCache de la même manière que gradOutput
+        INDArray inputReshaped = inputCache.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength, dModel]
+
         // 1. Calcul des gradients par rapport à W2 et b2
-        INDArray reluOutput = Transforms.relu(reluCache); // [seqLength, ffSize]
+        INDArray reluOutput = Transforms.relu(reluCache); // [batchSize * seqLength, ffSize]
         INDArray gradW2 = reluOutput.transpose().mmul(gradOutput); // [ffSize, dModel]
-        INDArray gradB2 = gradOutput.sum(0); // [dModel]
+        INDArray gradB2 = gradOutput.sum(0).reshape(1, dModel); // [1, dModel]
 
         // 2. Propagation du gradient à travers la deuxième couche linéaire
-        INDArray gradHidden = gradOutput.mmul(W2.transpose()); // [seqLength, ffSize]
+        INDArray gradHidden = gradOutput.mmul(W2.transpose()); // [batchSize * seqLength, ffSize]
 
         // 3. Application de la dérivée de ReLU
-        INDArray reluGrad = reluCache.gt(0).castTo(reluOutput.dataType()); // [seqLength, ffSize]
-        INDArray gradThroughRelu = gradHidden.mul(reluGrad); // [seqLength, ffSize]
+        INDArray reluGrad = reluCache.gt(0).castTo(reluOutput.dataType()); // [batchSize * seqLength, ffSize]
+        INDArray gradThroughRelu = gradHidden.mul(reluGrad); // [batchSize * seqLength, ffSize]
 
         // 4. Calcul des gradients par rapport à W1 et b1
-        INDArray gradW1 = inputCache.transpose().mmul(gradThroughRelu); // [dModel, ffSize]
-        INDArray gradB1 = gradThroughRelu.sum(0); // [ffSize]
-
+        INDArray gradW1 = inputReshaped.transpose().mmul(gradThroughRelu); // [dModel, ffSize]
+        INDArray gradB1 = gradThroughRelu.sum(0).reshape(1, ffSize); // [1, ffSize]
+        
         // 5. Calcul du gradient à propager à la couche précédente
-        INDArray gradInput = gradThroughRelu.mmul(W1.transpose()); // [seqLength, dModel]
+        INDArray gradInput = gradThroughRelu.mmul(W1.transpose()); // [batchSize * seqLength, dModel]
+
+        // Remettre la forme d'origine si reshaped
+        if (reshaped) {
+            gradInput = gradInput.reshape(batchSize, seqLength, dModel); // [batchSize, seqLength, dModel]
+        }
 
         // Stockage des gradients dans la map
-        gradients.put("W1", gradW1);
-        gradients.put("b1", gradB1);
-        gradients.put("W2", gradW2);
-        gradients.put("b2", gradB2);
-        gradients.put("input", gradInput);
+        NDArrayUtils.addGradient(gradients, "W1", gradW1);
+        NDArrayUtils.addGradient(gradients, "b1", gradB1);
+        NDArrayUtils.addGradient(gradients, "W2", gradW2);
+        NDArrayUtils.addGradient(gradients, "b2", gradB2);
+        NDArrayUtils.addGradient(gradients, "input", gradInput); // Gradient à propager vers les couches précédentes
 
         return gradients;
     }
@@ -1886,7 +2269,15 @@ public class PositionwiseFeedForward implements Serializable {
      * @return Liste des gradients dans l'ordre [W1, b1, W2, b2]
      */
     public List<INDArray> getGradients() {
-        return Arrays.asList(gradients.get("W1"), gradients.get("b1"), gradients.get("W2"), gradients.get("b2"));
+        List<INDArray> list = new ArrayList<>();
+        list.add(gradients.get("W1"));
+        list.add(gradients.get("b1"));
+        list.add(gradients.get("W2"));
+        list.add(gradients.get("b2"));
+        if (list.contains(null)) {
+            throw new IllegalArgumentException(" gradients contains null ");
+        }
+        return list; 
     }
 
     /**
@@ -2202,7 +2593,7 @@ public class Transformer implements Serializable {
             // Charger l'état de l'optimiseur
             int currentStep = (int) ois.readObject();
             int epoch = (int) ois.readObject();
-            double learningRate = (double) ois.readObject();
+            float learningRate = (float) ois.readObject();
             optimizer.setCurrentStep(currentStep);
             optimizer.setEpoch(epoch);
             optimizer.setLearningRate(learningRate);
@@ -2236,9 +2627,11 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.deeplearning4j.models.embeddings.loader.WordVectorSerializer;
@@ -2246,7 +2639,11 @@ import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
 import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.indexing.INDArrayIndex;
+import org.nd4j.linalg.indexing.NDArrayIndex;
 import org.nd4j.linalg.ops.transforms.Transforms;
+
+import RN.utils.NDArrayUtils;
 
 public class TransformerModel  implements Serializable {
 	
@@ -2321,47 +2718,96 @@ public class TransformerModel  implements Serializable {
         this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate);   
 
         addCombinedParameters();
-        addCombinedGradients();
 
-        this.optimizer = new CustomAdamOptimizer(0.001, dModel, 1000, combinedParameters); // Initialisation hypothétique
+        this.optimizer = new CustomAdamOptimizer(0.001f, dModel, 1000, combinedParameters); // Initialisation hypothétique
     }
 
 
-    public void train(DataGenerator dataGenerator) throws IOException {
-        for (int epoch = 0; epoch < 10; epoch++) {
+    public void train(DataGenerator dataGenerator, int epochNum) throws IOException {
+        for (int epoch = 0; epoch < epochNum; epoch++) {
             optimizer.setEpoch(epoch);
-
+            System.out.println("Epoch " + (epoch + 1) + " / " + epochNum);
+    
             while (dataGenerator.hasNextBatch()) {
-            	
-            	// at start because it keeps gradients loaded for the last loop and we can save the state on the disk if needed
-            	cleanGradients();
-            	
+                
+                // Nettoyer les gradients précédents
+                cleanGradients();
+                
                 Batch batch = dataGenerator.nextBatch();
-
-                List<Integer> targetTokenIds = tokenizer.tokensToIds(tokenizer.tokenize(String.join("", batch.getTarget())));
-                List<Integer> dataTokenIds = tokenizer.tokensToIds(tokenizer.tokenize(String.join("", batch.getData())));
-
-                // Créer les masques
-                INDArray encoderPaddingMask = createPaddingMask(dataTokenIds);
-                INDArray decoderPaddingMask = createPaddingMask(targetTokenIds);
-                INDArray lookAheadMask = createLookAheadMask(targetTokenIds.size());
-
-                INDArray encoded = encoder.encode(true, dataTokenIds, encoderPaddingMask);
-                INDArray decodedOutput = decoder.decode(true, encoded, encoded, lookAheadMask, decoderPaddingMask);
-
-                List<INDArray> decodedLogits = new ArrayList<>();
-                decodedLogits.add(decodedOutput);
-
-                backpropagation(decodedLogits, targetTokenIds);
-
+    
+                // Tokeniser chaque phrase dans le batch séparément
+                List<List<String>> tokenizedData = batch.getData().stream()
+                    .map(sentence -> tokenizer.tokenize(sentence))
+                    .collect(Collectors.toList());
+    
+                List<List<String>> tokenizedTargets = batch.getTarget().stream()
+                    .map(sentence -> tokenizer.tokenize(sentence))
+                    .collect(Collectors.toList());
+    
+                // Convertir les tokens en IDs pour chaque phrase du batch
+                List<List<Integer>> dataTokenIds = tokenizedData.stream()
+                    .map(tokens -> tokenizer.tokensToIds(tokens))
+                    .collect(Collectors.toList());
+    
+                List<List<Integer>> targetTokenIds = tokenizedTargets.stream()
+                    .map(tokens -> tokenizer.tokensToIds(tokens))
+                    .collect(Collectors.toList());
+    
+                // Déterminer la longueur maximale dans le batch pour le padding
+                int maxDataSeqLength = dataTokenIds.stream().mapToInt(List::size).max().orElse(0);
+                int maxTargetSeqLength = targetTokenIds.stream().mapToInt(List::size).max().orElse(0);
+    
+                // Padder les séquences
+                List<List<Integer>> paddedDataTokenIds = padSequences(dataTokenIds, maxDataSeqLength, tokenizer.getPadTokenId());
+                List<List<Integer>> paddedTargetTokenIds = padSequences(targetTokenIds, maxTargetSeqLength, tokenizer.getPadTokenId());
+    
+                // Créer les masques de padding pour le batch
+                INDArray encoderPaddingMask = createPaddingMask(paddedDataTokenIds);
+                INDArray decoderPaddingMask = createPaddingMask(paddedTargetTokenIds);
+                INDArray lookAheadMask = createLookAheadMask(maxTargetSeqLength);
+    
+                // Encoder les données du batch
+                INDArray encoded = encoder.encode(true, paddedDataTokenIds, encoderPaddingMask);
+                // System.out.println("Encoded output shape: " + Arrays.toString(encoded.shape()));
+    
+                // Décoder les données encodées
+                INDArray decodedOutput = decoder.decode(true, encoded, encoded, lookAheadMask, encoderPaddingMask); // Passer encoderPaddingMask pour cross-attention
+                // System.out.println("Decoded output shape: " + Arrays.toString(decodedOutput.shape()));
+    
+                // Calculer la perte et les gradients
+                List<INDArray> decodedLogits = Arrays.asList(decodedOutput);
+                backpropagation(decodedLogits, paddedTargetTokenIds);
+    
+                // Mettre à jour les paramètres du modèle via l'optimiseur
                 optimizer.update(combinedParameters, combinedGradients);
+    
+                // (Optionnel) Afficher la progression
+                // System.out.println("Batch processed.");
             }
-
+    
+            // Réinitialiser le générateur de données pour le prochain epoch
             dataGenerator.init();
+            System.out.println("Epoch " + (epoch + 1) + " completed.");
         }
-
+    
         isTrained = true;
+        System.out.println("Training completed.");
     }
+    
+
+    private List<List<Integer>> padSequences(List<List<Integer>> sequences, int maxLength, int padTokenId) {
+        return sequences.stream()
+            .map(seq -> {
+                List<Integer> padded = new ArrayList<>(seq);
+                while (padded.size() < maxLength) {
+                    padded.add(padTokenId);
+                }
+                return padded;
+            })
+            .collect(Collectors.toList());
+    }
+    
+
     
     public INDArray createLookAheadMask(int size) {
         // Création d'une matrice où les éléments au-dessus de la diagonale sont 1 (ce qui signifie masqués)
@@ -2379,76 +2825,94 @@ public class TransformerModel  implements Serializable {
     
 
     
-    public INDArray createPaddingMask(List<Integer> tokenIds) {
-        // Génération d'un masque où chaque emplacement de padding est marqué par 1 (infinité après le masquage)
-        long size = tokenIds.size();
-        INDArray mask = Nd4j.zeros(size);
-        for (int i = 0; i < size; i++) {
-            if (tokenIds.get(i) == tokenizer.getPadTokenId()) { 
-                mask.putScalar(i, Double.POSITIVE_INFINITY);
+    public INDArray createPaddingMask(List<List<Integer>> tokenIdsBatch) {
+        // Déterminer le batch size et la longueur maximale de séquence
+        int batchSize = tokenIdsBatch.size();
+        int seqLength = tokenIdsBatch.get(0).size(); // Supposons que toutes les séquences sont padées à seqLength
+    
+        // Créer un masque de zéros de la forme [batchSize, 1, 1, seqLength]
+        INDArray mask = Nd4j.zeros(DataType.FLOAT, batchSize, 1, 1, seqLength);
+    
+        for (int i = 0; i < batchSize; i++) {
+            for (int j = 0; j < seqLength; j++) {
+                if (tokenIdsBatch.get(i).get(j) == tokenizer.getPadTokenId()) { // Supposons que le token <PAD> a un ID spécifique
+                    mask.putScalar(new int[]{i, 0, 0, j}, Float.NEGATIVE_INFINITY); // Utiliser -inf pour les positions à ignorer
+                } else {
+                    mask.putScalar(new int[]{i, 0, 0, j}, 0.0f); // Pas de masque pour les positions valides
+                }
             }
         }
+    
         return mask;
     }
     
-
-
-
     
-    private void backpropagation(List<INDArray> decodedLogits, List<Integer> targetTokenIds) {
+    private void backpropagation(List<INDArray> decodedLogits, List<List<Integer>> targetTokenIdsBatch) {
         // Étape 1: Calcul de la perte et des gradients initiaux
-        // Cette fonction est hypothétique et devrait retourner la perte et le gradient initial
-        Pair<Float, INDArray> lossAndGradients = calculateCrossEntropyLossAndGradient(decodedLogits, targetTokenIds);
+        Pair<Float, INDArray> lossAndGradients = calculateCrossEntropyLossAndGradient(decodedLogits, targetTokenIdsBatch);
         float loss = lossAndGradients.getLeft();
         INDArray initialGradients = lossAndGradients.getRight();
-        
+    
         // Afficher la perte pour le monitoring
         System.out.println("Perte: " + loss);
-
+    
         // Étape 2: Rétropropagation à travers le Décodeur
-        // Cela ajuste les poids du décodeur basés sur les gradients calculés
         Map<String, INDArray> decoderGradients = decoder.backward(initialGradients);
+
+        // Vérifiez les clés présentes dans decoderGradients
+        // System.out.println("Keys in decoderGradients: " + decoderGradients.keySet());
         
         // Extraire les gradients pertinents pour l'encodeur à partir de decoderGradients
         Map<String, INDArray> encoderGradients = extractEncoderGradients(decoderGradients);
-        
 
         // Étape 3: Rétropropagation à travers l'Encodeur
-        // L'encodeur ajuste ses poids basé sur ses propres calculs de gradients
-        // Dans un modèle Transformer, cela pourrait impliquer des gradients venant de la couche d'attention encodeur-décodeur
-        // Pour simplifier, nous allons juste appeler backward sur l'encodeur sans passer de gradients spécifiques
-        // car dans une implémentation réelle, cela dépendrait des détails spécifiques de votre modèle
         encoder.backward(encoderGradients);
 
+        // Ajouter tous les gradients calculés aux `combinedGradients`
+        addCombinedGradients();
+    
         // Mettre à jour les poids basés sur les gradients calculés, normalement fait par l'optimiseur
         updateModelWeights();
     }
+    
 
 
     private Map<String, INDArray> extractEncoderGradients(Map<String, INDArray> decoderGradients) {
-        // Créez un nouveau Map pour contenir les gradients spécifiquement pour l'encoder.
+        // Créez un nouveau Map pour contenir les gradients spécifiquement pour l'encodeur.
         Map<String, INDArray> encoderGradients = new HashMap<>();
         
         // Extrayez les gradients par rapport aux entrées K et V de l'attention encoder-décodeur.
-        // Ces gradients sont ceux qui doivent être propagés à travers l'encoder.
-        INDArray gradK = decoderGradients.get("inputK");
-        INDArray gradV = decoderGradients.get("inputV");
+        INDArray gradAttentionOutputConcat = decoderGradients.get("gradAttentionOutputConcat");
         
-        // Ajoutez ces gradients au Map sous des clés représentant leur rôle dans l'encoder.
-        // Par exemple, vous pouvez simplement les renommer pour correspondre à la nomenclature attendue par l'encoder.
-        encoderGradients.put("gradK", gradK);
-        encoderGradients.put("gradV", gradV);
+        
+        // Vérifiez que gradAttentionOutputConcat n'est pas null
+        if (gradAttentionOutputConcat == null) {
+            throw new IllegalStateException("gradAttentionOutputConcat est null. Assurez-vous que MultiHeadAttention.backward retourne correctement ce gradient.");
+        }
+        
+        // Ajoutez gradAttentionOutputConcat au Map des gradients pour l'encodeur
+        encoderGradients.put("gradAttentionOutputConcat", gradAttentionOutputConcat);
         
         return encoderGradients;
     }
+    
 
 
+    private void updateModelWeights() {
 
+        // Log pour les tailles
+        // System.out.println("Nombre de paramètres : " + combinedParameters.size());
+        // System.out.println("Nombre de gradients : " + combinedGradients.size());
 
-	private void updateModelWeights() {
-        // Implémentez cette fonction pour mettre à jour les poids du modèle
-        // basé sur les gradients calculés. Normalement, cela est géré par votre optimiseur
+        // Vérifiez si les tailles correspondent avant de les passer à l'optimiseur
+        if (combinedParameters.size() != combinedGradients.size()) {
+            throw new IllegalArgumentException("La taille de la liste des paramètres et des gradients doit être la même.");
+        }
+    
+        // Mettre à jour les poids du modèle via l'optimiseur
+        optimizer.update(combinedParameters, combinedGradients);
     }
+    
 
 
 
@@ -2473,67 +2937,123 @@ public class TransformerModel  implements Serializable {
     }
     
     public void cleanGradients() {
-    	combinedParameters.clear();
     	combinedGradients.clear();
     }
-
-
-
 
     public String infer(String prompt, int maxLength) {
         if (!isTrained) {
             throw new IllegalStateException("Le modèle doit être entraîné avant l'inférence.");
         }
-
+    
         // Tokenisation du prompt
         List<String> promptTokens = tokenizer.tokenize(prompt);
         List<Integer> promptTokenIds = tokenizer.tokensToIds(promptTokens);
-
-        // Création du masque de padding pour l'encodeur
-        INDArray encoderPaddingMask = createPaddingMask(promptTokenIds);
-        INDArray encodedPrompt = encoder.encode(false, promptTokenIds, encoderPaddingMask);
-
-        // Initialisation des IDs de sortie avec le token de début
+    
+        // Ajout du token de début si nécessaire
+        promptTokenIds.add(0, tokenizer.getStartTokenId());
+    
+        // Déterminer la longueur maximale de séquence après ajout du token de début
+        int maxSeqLength = promptTokenIds.size();
+    
+        // Padder la séquence si nécessaire
+        List<Integer> paddedPromptTokenIds = padSequencesSingle(promptTokenIds, maxSeqLength, tokenizer.getPadTokenId());
+    
+        // Créer le masque de padding pour l'encodeur
+        INDArray encoderPaddingMask = createPaddingMaskSingle(paddedPromptTokenIds);
+    
+        // Encoder le prompt (traité comme un batch de taille 1)
+        INDArray encodedPrompt = encoder.encode(false, Arrays.asList(paddedPromptTokenIds), encoderPaddingMask);
+        // System.out.println("Encoded prompt shape: " + Arrays.toString(encodedPrompt.shape()));
+    
+        // Initialiser les IDs de sortie avec le token de début
         List<Integer> outputIds = new ArrayList<>();
         outputIds.add(tokenizer.getStartTokenId());
-
-        // Préparation des masques et du cache du décodeur
-        INDArray decoderPaddingMask = createPaddingMask(outputIds);
-        INDArray lookAheadMask = createLookAheadMask(outputIds.size());
-
-
+    
         for (int i = 0; i < maxLength; i++) {
-            // Encodage des tokens générés jusqu'à présent
-        	INDArray encodedDecoderInput = encoder.encode(false, outputIds, decoderPaddingMask);
+            // Créer les masques pour le décodeur
+            INDArray lookAheadMask = createLookAheadMask(outputIds.size());
+            INDArray crossAttnMask = encoderPaddingMask; // [1,1,1,4}
 
-            // Mise à jour des masques pour le décodeur
-            decoderPaddingMask = createPaddingMask(outputIds);
-            lookAheadMask = createLookAheadMask(outputIds.size());
-
-            // Décodage
-            INDArray logits = decoder.decode(false, encodedPrompt, encodedDecoderInput, lookAheadMask, decoderPaddingMask);
-
+            // Convertir les IDs de sortie en embeddings pour le décodeur
+            INDArray encodedDecoderInput = encoder.lookupEmbeddings(Arrays.asList(outputIds));
+            // System.out.println("Encoded decoder input shape: " + Arrays.toString(encodedDecoderInput.shape()));
+    
+            // Décoder
+            INDArray logits = decoder.decode(false, encodedPrompt, encodedDecoderInput, lookAheadMask, crossAttnMask);
+            // System.out.println("Logits shape: " + Arrays.toString(logits.shape()));
+    
             // Extraction des logits du dernier token généré
-            INDArray lastTokenLogits = logits.getRow(logits.rows() - 1);
-            int predictedTokenId = Nd4j.argMax(lastTokenLogits).getInt(0);
-
-            // Ajout du token prédit à la séquence de sortie
+            // Correction de l'utilisation de INDArrayIndex
+            int lastPosition = (int) logits.shape()[1] - 1; // seqLength - 1
+            INDArray lastTokenLogits = logits.get(
+                NDArrayIndex.point(0),                     // batch 0
+                NDArrayIndex.point(lastPosition),          // dernière position dans seqLength
+                NDArrayIndex.all()                         // tous les éléments dans vocabSize
+            ).dup(); // [vocabSize]
+    
+            // Appliquer softmax pour obtenir les probabilités
+            INDArray softmaxLogits = Transforms.softmax(lastTokenLogits, false);
+    
+            // Sélectionner le token avec la plus haute probabilité
+            int predictedTokenId = Nd4j.argMax(softmaxLogits, 0).getInt(0);
+    
+            // Ajouter le token prédit à la séquence de sortie
             outputIds.add(predictedTokenId);
-
+    
             // Vérification du token de fin
             if (predictedTokenId == tokenizer.getEndTokenId()) {
                 break;
             }
-
+    
             // (Optionnel) Implémentation d'une stratégie de décodage plus sophistiquée
             // Par exemple, beam search, échantillonnage avec température, etc.
             // Ceci nécessiterait une refonte plus approfondie de la boucle de génération.
         }
-
+    
         // Conversion des IDs en tokens
-        // Construction de la séquence finale
-        return tokenizer.idsToTokens(outputIds.subList(1, outputIds.size())); // Exclut le token de début
+        // Exclure le token de début
+        return tokenizer.idsToTokens(outputIds.subList(1, outputIds.size()));
     }
+    
+    
+    /**
+     * Pad une seule séquence à une longueur maximale avec le token de padding.
+     *
+     * @param sequence      La séquence d'IDs de tokens.
+     * @param maxLength     La longueur maximale à atteindre.
+     * @param padTokenId    L'ID du token de padding.
+     * @return La séquence padée.
+     */
+    private List<Integer> padSequencesSingle(List<Integer> sequence, int maxLength, int padTokenId) {
+        List<Integer> padded = new ArrayList<>(sequence);
+        while (padded.size() < maxLength) {
+            padded.add(padTokenId);
+        }
+        return padded;
+    }
+    
+    /**
+     * Crée un masque de padding pour une seule séquence.
+     *
+     * @param tokenIds La liste d'IDs de tokens.
+     * @return Un INDArray représentant le masque de padding.
+     */
+    public INDArray createPaddingMaskSingle(List<Integer> tokenIds) {
+        int seqLength = tokenIds.size();
+        // Créer un masque de zéros de la forme [1, 1, 1, seqLength]
+        INDArray mask = Nd4j.zeros(DataType.FLOAT, 1, 1, 1, seqLength);
+    
+        for (int j = 0; j < seqLength; j++) {
+            if (tokenIds.get(j) == tokenizer.getPadTokenId()) {
+                mask.putScalar(new int[]{0, 0, 0, j}, Float.NEGATIVE_INFINITY);
+            } else {
+                mask.putScalar(new int[]{0, 0, 0, j}, 0.0f);
+            }
+        }
+    
+        return mask;
+    }
+    
 
 
     public boolean isTrained() {
@@ -2541,43 +3061,70 @@ public class TransformerModel  implements Serializable {
     }
 
 
-    
-    protected Pair<Float, INDArray> calculateCrossEntropyLossAndGradient(List<INDArray> decodedLogits, List<Integer> targetTokenIds) {
+    protected Pair<Float, INDArray> calculateCrossEntropyLossAndGradient(List<INDArray> decodedLogits, List<List<Integer>> targetTokenIdsBatch) {
         float loss = 0.0f;
-        int N = targetTokenIds.size(); // Nombre total de tokens dans la séquence
-
+        int batchSize = targetTokenIdsBatch.size();
+        int maxSeqLength = targetTokenIdsBatch.stream().mapToInt(List::size).max().orElse(0);
+        int vocabSize = (int) decodedLogits.get(0).shape()[2];
+    
         // Assumons que decodedLogits contient une seule INDArray pour tout le batch
-        INDArray logits = decodedLogits.get(0); // Obtenez les logits
-        INDArray gradients = Nd4j.zeros(logits.shape()); // Initialiser le gradient
-
-        for (int i = 0; i < N; i++) {
-            int targetId = targetTokenIds.get(i); // L'ID attendu à la position i
-
-            // Extraire les logits pour la position i
-            INDArray logitsForPosition = logits.getRow(i); // Obtention des logits pour cette position
-            
-            // Appliquer softmax
-            INDArray softmaxLogits = Transforms.softmax(logitsForPosition, false); 
-
-            // Calculer le log softmax pour l'ID cible
-            float logSoftmaxForTarget = (float) Math.log(softmaxLogits.getDouble(targetId));
-
-            // Accumuler la perte négative log softmax
-            loss += -logSoftmaxForTarget;
-
-            // Calculer le gradient (p - y)
-            INDArray targetOneHot = Nd4j.zeros(logitsForPosition.shape());
-            targetOneHot.putScalar(targetId, 1);
-            INDArray gradForPosition = softmaxLogits.sub(targetOneHot);
-
-            // Mise à jour du gradient
-            gradients.putRow(i, gradForPosition);
+        INDArray logits = decodedLogits.get(0); // [batchSize, targetSeqLength, vocabSize]
+        INDArray gradients = Nd4j.zeros(DataType.FLOAT, logits.shape()); // [batchSize, targetSeqLength, vocabSize]
+    
+        for (int b = 0; b < batchSize; b++) {
+            List<Integer> targetTokenIds = targetTokenIdsBatch.get(b);
+            for (int i = 0; i < targetTokenIds.size(); i++) {
+                int targetId = targetTokenIds.get(i); // L'ID attendu à la position i
+    
+                // Extraire les logits pour la position i de la séquence b
+                INDArray logitsForPosition = logits.get(
+                    NDArrayIndex.point(b), 
+                    NDArrayIndex.point(i), 
+                    NDArrayIndex.all()
+                ).dup(); // [vocabSize]
+    
+                // Appliquer softmax
+                INDArray softmaxLogits = Transforms.softmax(logitsForPosition, false); 
+    
+                // Calculer le log softmax pour l'ID cible
+                double prob = softmaxLogits.getDouble(targetId);
+                // Éviter les problèmes avec log(0) en ajoutant une petite constante epsilon
+                float logSoftmaxForTarget = (float) Math.log(Math.max(prob, 1e-10));
+    
+                // Accumuler la perte négative log softmax
+                loss += -logSoftmaxForTarget;
+    
+                // Calculer le gradient (p - y)
+                INDArray targetOneHot = Nd4j.zeros(DataType.FLOAT, vocabSize);
+                targetOneHot.putScalar(targetId, 1.0f);
+                INDArray gradForPosition = softmaxLogits.sub(targetOneHot); // [vocabSize]
+    
+                // Assignation correcte des gradients
+                gradients.put(
+                    new INDArrayIndex[]{
+                        NDArrayIndex.point(b), 
+                        NDArrayIndex.point(i), 
+                        NDArrayIndex.all()
+                    },
+                    gradForPosition
+                );
+            }
         }
-
-        return Pair.of(loss / N, gradients); // Moyenne de la perte et gradients accumulés
+    
+        // Calculer le nombre total de tokens
+        int totalTokens = targetTokenIdsBatch.stream().mapToInt(List::size).sum();
+    
+        // Moyenne de la perte sur tous les tokens
+        loss /= totalTokens;
+    
+        // Moyenne des gradients sur tous les tokens
+        gradients.divi(totalTokens);
+    
+        return Pair.of(loss, gradients); // Moyenne de la perte et gradients accumulés
     }
-
-
+    
+    
+    
     
     
     public void saveState(String filePath) throws IOException {
@@ -2617,7 +3164,7 @@ public class TransformerModel  implements Serializable {
             // Charger l'état de l'optimiseur
             int currentStep = (int) ois.readObject();
             int epoch = (int) ois.readObject();
-            double learningRate = (double) ois.readObject();
+            float learningRate = (float) ois.readObject();
             optimizer.setCurrentStep(currentStep);
             optimizer.setEpoch(epoch);
             optimizer.setLearningRate(learningRate);
@@ -2667,9 +3214,28 @@ public class TransformerModel  implements Serializable {
 	}
 
 
-	public static INDArray getPretrainedEmbeddings() {
-		return pretrainedEmbeddings;
-	}
+    /**
+     * Initialise les embeddings pré-entraînés.
+     *
+     * @param vocabSize Taille du vocabulaire
+     * @param dModel    Dimension du modèle
+     */
+    public static void initializeEmbeddings(int vocabSize, int dModel) {
+        // Exemple : initialisation aléatoire des embeddings avec normalisation
+        pretrainedEmbeddings = Nd4j.randn(DataType.FLOAT, vocabSize, dModel).divi(Math.sqrt(dModel));
+    }
+
+    /**
+     * Récupère les embeddings pré-entraînés.
+     *
+     * @return INDArray contenant les embeddings [vocabSize, dModel]
+     */
+    public static INDArray getPretrainedEmbeddings() {
+        if (pretrainedEmbeddings == null) {
+            throw new IllegalStateException("Les embeddings pré-entraînés ne sont pas initialisés. Appelez initializeEmbeddings() d'abord.");
+        }
+        return pretrainedEmbeddings;
+    }
 
 
 	public List<INDArray> getCombinedParameters() {
@@ -2680,6 +3246,11 @@ public class TransformerModel  implements Serializable {
 	public List<INDArray> getCombinedGradients() {
 		return combinedGradients;
 	}
+
+
+
+
+
 
 
 }

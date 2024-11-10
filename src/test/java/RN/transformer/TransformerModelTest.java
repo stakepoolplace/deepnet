@@ -41,8 +41,13 @@ public class TransformerModelTest {
         // Créer une instance du modèle
         TransformerModel originalModel = new TransformerModel();
 
+        // Création d'un DataGenerator fictif avec des paires d'entrée-cible simples
+        List<String> data = Arrays.asList("hello world");
+        List<String> targets = Arrays.asList("hello output");
+        DataGenerator mockDataGenerator = new MockDataGenerator(data, targets, originalModel.tokenizer, 2, 50, 1); // 1 batch
+
         // Simuler un entraînement en modifiant quelques paramètres
-        originalModel.train(new MockDataGenerator(), 1); // Supposons que vous avez une implémentation mock de DataGenerator pour les tests
+        originalModel.train(mockDataGenerator, 1); // Supposons que vous avez une implémentation mock de DataGenerator pour les tests
         
         // Sauvegarder l'état du modèle
         String filePath = "test_transformer_state.ser";
@@ -101,28 +106,16 @@ public class TransformerModelTest {
         return true;
     }
     
-    // Classe mock pour DataGenerator
-    private class MockDataGenerator extends DataGenerator {
-        public MockDataGenerator() throws IOException {
-            super("src/test/resources/mock_data.txt", "src/test/resources/mock_target.txt", new Tokenizer(Arrays.asList("tutu", "toto")), 1, 100);
-        }
-        
-        @Override
-        public boolean hasNextBatch() {
-            return false; // Pour simplifier, on suppose qu'il n'y a pas de batch à traiter
-        }
-        
-        @Override
-        public Batch nextBatch() {
-            return new Batch(List.of("mock input"), List.of("mock target"));
-        }
-    }
 
     @Test
     public void testTrainingChangesModelToTrained() throws Exception {
+        
         // Utilisation de DummyDataGenerator pour simuler l'entraînement
-        DataGenerator dummyDataGenerator = new DummyDataGenerator("src/test/resources/dummy-data.txt", "src/test/resources/dummy-data-target.txt", model.tokenizer, 32, 512, 5);
-        model.train(dummyDataGenerator, 1);
+        List<String> data = Arrays.asList("hello world", "test input");
+        List<String> targets = Arrays.asList("hello output", "test output");
+        DataGenerator mockDataGenerator = new MockDataGenerator(data, targets, model.tokenizer, 32, 512, 3); // 3 batches
+
+        model.train(mockDataGenerator, 1);
         assertTrue("Le modèle devrait être marqué comme entraîné après l'entraînement", model.isTrained());
     }
 
@@ -136,9 +129,14 @@ public class TransformerModelTest {
 
     @Test
     public void testInferenceAfterTraining() throws Exception {
+        
         // Simuler l'entraînement
-        DataGenerator dummyDataGenerator = new DummyDataGenerator("src/test/resources/dummy-data.txt", "src/test/resources/dummy-data-target.txt", model.tokenizer, 32, 512, 5);
-        model.train(dummyDataGenerator, 1);
+        // Création d'un DataGenerator avec plusieurs batches pour simuler plusieurs epochs
+        List<String> data = Arrays.asList("hello world", "test input");
+        List<String> targets = Arrays.asList("hello output", "test output");
+        DataGenerator mockDataGenerator = new MockDataGenerator(data, targets, model.tokenizer, 32, 512, 3); // 3 batches
+
+        model.train(mockDataGenerator, 1);
         
         String inputPrompt = "Some input text";
         String response = model.infer(inputPrompt, 45);
@@ -155,29 +153,27 @@ public class TransformerModelTest {
     @Test
     public void testInferenceAfterTraining2() throws Exception {
         // Initialiser le tokenizer et le modèle
-        TransformerModel model = new TransformerModel(2, 300, 6, 2048, 0.1); // Utiliser 2 layers pour le test
+        //TransformerModel model = new TransformerModel(2, 300, 6, 2048, 0.1); // Utiliser 2 layers pour le test
 
-        // Créer un DummyDataGenerator avec 3 batches par epoch
-        DummyDataGenerator dataGenerator = new DummyDataGenerator(
-            "src/test/resources/dummy-data.txt",
-            "src/test/resources/dummy-data-target.txt",
-            model.tokenizer,
-            2,  // batchSize
-            50, // maxTokensPerBatch
-            3   // maxBatchesPerEpoch
-        );
+        // Création d'un DataGenerator avec plusieurs batches pour simuler plusieurs epochs
+        List<String> data = Arrays.asList("hello", "input");
+        List<String> targets = Arrays.asList("world", "output");
+        DataGenerator mockDataGenerator = new MockDataGenerator(data, targets, model.tokenizer, 1, 50, 3); // 3 batches
+
 
         // Simuler l'entraînement
-        model.train(dataGenerator, 1);
+        model.train(mockDataGenerator, 1);
 
         // Effectuer l'inférence
-        String response1 = model.infer("Some input text", 45);
+        String inputPrompt = "hello";
+        String response1 = model.infer(inputPrompt, 1);
         assertNotNull("L'inférence devrait retourner une réponse non-null", response1);
-        System.out.println("Inference Response 1: " + response1);
+        System.out.println("Inference Response 1: " + inputPrompt + " : " + response1);
 
-        String response2 = model.infer("This is a dummy sentence", 32);
+        inputPrompt = "input";
+        String response2 = model.infer(inputPrompt, 1);
         assertNotNull("L'inférence devrait retourner une réponse non-null", response2);
-        System.out.println("Inference Response 2: " + response2);
+        System.out.println("Inference Response 2: " + inputPrompt + " : " + response2);
     }
 
 

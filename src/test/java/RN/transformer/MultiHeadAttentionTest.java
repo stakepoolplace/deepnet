@@ -26,8 +26,6 @@ public class MultiHeadAttentionTest {
         numHeads = 6;
         vocabSize = 10000; // Exemple de taille de vocabulaire
 
-        // Initialisation des embeddings pré-entraînés
-        TransformerModel.initializeEmbeddings(vocabSize, dModel);
     }
 
     @Test

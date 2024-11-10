@@ -1,24 +1,22 @@
+// Tokenizer.java
 package RN.transformer;
 
-
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
+import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 
 public class Tokenizer implements Serializable {
     private static final long serialVersionUID = -1691008595018974489L;
-    private Map<String, Integer> tokenToId;
-    private Map<Integer, String> idToToken;
+    private final Map<String, Integer> tokenToId;
+    private final Map<Integer, String> idToToken;
     private int vocabSize;
     private INDArray pretrainedEmbeddings;
+    private final int embeddingSize;
 
     // Tokens spéciaux
     private static final String PAD_TOKEN = "<PAD>";
@@ -26,118 +24,162 @@ public class Tokenizer implements Serializable {
     private static final String START_TOKEN = "<START>";
     private static final String END_TOKEN = "<END>";
     
-    // Les embeddings pour les tokens spéciaux seront initialisés de manière spécifique
-    private static final int EMBEDDING_SIZE = 300; // dModel
-
-    public Tokenizer(WordVectors wordVectors) {
+    // Constructeur utilisant des WordVectors
+    public Tokenizer(WordVectors wordVectors, int embeddingSize) {
+        this.embeddingSize = embeddingSize;
         this.tokenToId = new HashMap<>();
         this.idToToken = new HashMap<>();
         
-        // Étape 1: Initialiser les tokens spéciaux en premier
-        // Cela garantit que leurs IDs sont constants (0, 1, 2, 3)
+        // Initialiser les tokens spéciaux
         initializeSpecialTokens();
         
-        // Étape 2: Ajouter tous les mots du vocabulaire Word2Vec
+        // Ajouter tous les mots du vocabulaire Word2Vec
         Collection<String> words = wordVectors.vocab().words();
         for (String word : words) {
-            if (!tokenToId.containsKey(word)) {
-                addToken(word);
-            }
+            addToken(word);
         }
         
         this.vocabSize = tokenToId.size();
         
-        // Étape 3: Créer la matrice d'embeddings avec les tokens spéciaux
+        // Initialiser les embeddings avec WordVectors
         initializeEmbeddings(wordVectors);
     }
     
-    public Tokenizer(List<String> words) {
+    // Constructeur utilisant une liste de mots
+    public Tokenizer(List<String> words, int embeddingSize) {
+        this.embeddingSize = embeddingSize;
         this.tokenToId = new HashMap<>();
         this.idToToken = new HashMap<>();
         
-        // Étape 1: Initialiser les tokens spéciaux en premier
-        // Cela garantit que leurs IDs sont constants (0, 1, 2, 3)
+        // Initialiser les tokens spéciaux
         initializeSpecialTokens();
         
-        // Étape 2: Ajouter tous les mots du vocabulaire Word2Vec
+        // Ajouter tous les mots du vocabulaire fourni
         for (String word : words) {
-            if (!tokenToId.containsKey(word)) {
-                addToken(word);
-            }
+            addToken(word);
         }
         
         this.vocabSize = tokenToId.size();
         
-        // Étape 3: Créer la matrice d'embeddings avec les tokens spéciaux
-//        initializeEmbeddings(words);
+        // Initialiser les embeddings avec des vecteurs aléatoires
+        initializeEmbeddings();
     }
 
-    private void initializeSpecialTokens() {
-        // Les tokens spéciaux sont toujours ajoutés dans le même ordre
-        addSpecialToken(PAD_TOKEN);    // ID = 0
-        addSpecialToken(UNK_TOKEN);    // ID = 1
-        addSpecialToken(START_TOKEN);  // ID = 2
-        addSpecialToken(END_TOKEN);    // ID = 3
-    }
 
-    private void initializeEmbeddings(WordVectors wordVectors) {
-        // Créer une nouvelle matrice d'embeddings avec la taille du vocabulaire complet
-        pretrainedEmbeddings = Nd4j.zeros(vocabSize, EMBEDDING_SIZE);
+    public INDArray tokensToINDArray(List<String> tokens) {
+        // System.out.println("Tokens to convert: " + tokens);
+        int[] ids = tokens.stream()
+                          .mapToInt(token -> tokenToId.getOrDefault(token, getUnkTokenId()))
+                          .toArray();
+        // System.out.println("Token to ID Mapping in tokensToINDArray: " + Arrays.toString(ids));
         
-        // Calculer le vecteur moyen pour l'initialisation des tokens spéciaux
+        // Utiliser createFromArray et reshape pour garantir la forme [1, N]
+        INDArray arr = Nd4j.createFromArray(ids).castTo(DataType.INT32).reshape(1, ids.length);
+        // System.out.println("Shape of INDArray: " + Arrays.toString(arr.shape()));
+        return arr;
+    }
+
+   /**
+     * Recherche les embeddings pour un batch de séquences d'IDs de tokens.
+     *
+     * @param tokenIdsBatch INDArray contenant les IDs des tokens du batch [batchSize, seqLength].
+     * @return Embeddings du batch [batchSize, seqLength, dModel].
+     */
+    public INDArray lookupEmbeddings(INDArray tokenIdsBatch) {
+        // Vérifier que tokenIdsBatch est de type entier
+        if (!tokenIdsBatch.dataType().isIntType()) {
+            throw new IllegalArgumentException("tokenIdsBatch doit être de type entier.");
+        }
+
+        // tokenIdsBatch shape: [batchSize, seqLength]
+        int batchSize = (int) tokenIdsBatch.shape()[0];
+        int seqLength = (int) tokenIdsBatch.shape()[1];
+        
+        // Aplatir les IDs de tokens pour récupérer les embeddings en une seule opération
+        INDArray flattenedTokenIds = tokenIdsBatch.reshape(batchSize * seqLength); // [batchSize * seqLength]
+        
+        // Convertir flattenedTokenIds en int[]
+        int[] tokenIds = flattenedTokenIds.toIntVector();
+        
+        // Récupérer les embeddings: [batchSize * seqLength, dModel]
+        INDArray batchEmbeddings = getPretrainedEmbeddings().getRows(tokenIds); 
+        
+        // Calculer dModel en obtenant la taille de la dernière dimension de batchEmbeddings
+        int dModel = (int) batchEmbeddings.shape()[1];
+
+        // Reshaper en [batchSize, seqLength, dModel]
+        batchEmbeddings = batchEmbeddings.reshape(batchSize, seqLength, dModel);
+        
+        return batchEmbeddings;
+    }
+    
+    // Initialisation des tokens spéciaux avec des IDs fixes
+    private void initializeSpecialTokens() {
+        addSpecialToken(PAD_TOKEN);    
+        addSpecialToken(UNK_TOKEN);    
+        addSpecialToken(START_TOKEN);  
+        addSpecialToken(END_TOKEN);    
+    }
+
+    // Initialisation des embeddings avec WordVectors
+    private void initializeEmbeddings(WordVectors wordVectors) {
+        pretrainedEmbeddings = Nd4j.zeros(vocabSize, embeddingSize);
+        
+        // Calculer le vecteur moyen pour les tokens spéciaux
         INDArray meanVector = calculateMeanVector(wordVectors);
         
         // Initialiser les embeddings des tokens spéciaux
-        // PAD_TOKEN: vecteur de zéros (déjà initialisé par défaut)
-        // UNK_TOKEN: vecteur moyen
         pretrainedEmbeddings.putRow(getUnkTokenId(), meanVector);
-        // START_TOKEN: vecteur moyen + bruit gaussien
-        pretrainedEmbeddings.putRow(getStartTokenId(), meanVector.add(Nd4j.randn(1, EMBEDDING_SIZE).mul(0.1)));
-        // END_TOKEN: vecteur moyen + bruit gaussien
-        pretrainedEmbeddings.putRow(getEndTokenId(), meanVector.add(Nd4j.randn(1, EMBEDDING_SIZE).mul(0.1)));
+        pretrainedEmbeddings.putRow(getStartTokenId(), meanVector.add(Nd4j.randn(1, embeddingSize).mul(0.1)));
+        pretrainedEmbeddings.putRow(getEndTokenId(), meanVector.add(Nd4j.randn(1, embeddingSize).mul(0.1)));
         
-        // Copier les embeddings pour tous les autres tokens
+        // Copier les embeddings pour les autres tokens
         for (Map.Entry<String, Integer> entry : tokenToId.entrySet()) {
             String token = entry.getKey();
             int id = entry.getValue();
-            
-            // Ignorer les tokens spéciaux déjà traités
             if (isSpecialToken(token)) continue;
-            
             if (wordVectors.hasWord(token)) {
-                INDArray wordVector = wordVectors.getWordVectorMatrix(token);
-                pretrainedEmbeddings.putRow(id, wordVector);
+                pretrainedEmbeddings.putRow(id, wordVectors.getWordVectorMatrix(token));
             } else {
-                // Utiliser le vecteur moyen pour les mots inconnus
                 pretrainedEmbeddings.putRow(id, meanVector);
             }
         }
     }
 
+    // Initialisation des embeddings pour les tests
+    private void initializeEmbeddings() {
+        pretrainedEmbeddings = Nd4j.randn(vocabSize, embeddingSize).divi(Math.sqrt(embeddingSize));
+        pretrainedEmbeddings.putRow(getUnkTokenId(), Nd4j.randn(1, embeddingSize));
+        pretrainedEmbeddings.putRow(getStartTokenId(), Nd4j.randn(1, embeddingSize));
+        pretrainedEmbeddings.putRow(getEndTokenId(), Nd4j.randn(1, embeddingSize));
+    }
+
+    // Calcul du vecteur moyen pour les WordVectors
     private INDArray calculateMeanVector(WordVectors wordVectors) {
-        INDArray sum = Nd4j.zeros(EMBEDDING_SIZE);
+        INDArray sum = Nd4j.zeros(embeddingSize);
         int count = 0;
-        
         Collection<String> words = wordVectors.vocab().words();
         for (String word : words) {
             sum.addi(wordVectors.getWordVectorMatrix(word));
             count++;
         }
-        
         return sum.div(count);
     }
 
+    // Vérification des tokens spéciaux
     private boolean isSpecialToken(String token) {
         return token.equals(PAD_TOKEN) || token.equals(UNK_TOKEN) || 
                token.equals(START_TOKEN) || token.equals(END_TOKEN);
     }
 
+    // Ajout de tokens spéciaux
     private void addSpecialToken(String token) {
         int id = tokenToId.size();
         tokenToId.put(token, id);
         idToToken.put(id, token);
     }
 
+    // Ajout de tokens non spéciaux
     private void addToken(String token) {
         if (!tokenToId.containsKey(token)) {
             int id = tokenToId.size();
@@ -146,40 +188,35 @@ public class Tokenizer implements Serializable {
         }
     }
 
+    // Conversion de texte en tokens
     public List<String> tokenize(String text) {
-        // Cette regex simple sépare les mots et la ponctuation, ce qui est une amélioration par rapport à la séparation par espace.
-        // Pour des règles plus complexes, envisagez d'utiliser une librairie de tokenisation spécialisée.
         String[] tokens = text.split("\\s+|(?=\\p{Punct})|(?<=\\p{Punct})");
-        List<String> tokenList = new ArrayList<>();
-        for (String token : tokens) {
-            if (!token.trim().isEmpty()) { // Ignorer les chaînes vides
-                tokenList.add(token);
-            }
-        }
-        return tokenList;
+        return Arrays.stream(tokens)
+                     .filter(token -> !token.trim().isEmpty())
+                     .collect(Collectors.toList());
     }
 
-
-    private boolean isPunctuation(String token) {
-        // Une vérification simple de la ponctuation basée sur regex; ajustez selon vos besoins
-        return token.matches("\\p{Punct}");
-    }
-
+    // Conversion de tokens en IDs
     public List<Integer> tokensToIds(List<String> tokens) {
         return tokens.stream()
-                .map(token -> tokenToId.getOrDefault(token, tokenToId.get(UNK_TOKEN)))
-                .collect(Collectors.toList());
+                     .map(token -> tokenToId.getOrDefault(token, getUnkTokenId()))
+                     .collect(Collectors.toList());
     }
 
+    // Conversion d'une liste d'IDs en chaîne de tokens
     public String idsToTokens(List<Integer> ids) {
         return ids.stream()
-                .map(id -> idToToken.getOrDefault(id, UNK_TOKEN))
-                .collect(Collectors.joining(" "));
+                  .map(id -> idToToken.getOrDefault(id, UNK_TOKEN))
+                  .collect(Collectors.joining(" "));
     }
 
-    // Nouvelles méthodes pour gérer les tokens spéciaux
+    // Méthodes pour obtenir les IDs des tokens spéciaux
     public int getPadTokenId() {
         return tokenToId.get(PAD_TOKEN);
+    }
+
+    public Map<String, Integer> getTokenToId(){
+        return tokenToId;
     }
 
     public int getUnkTokenId() {
@@ -194,19 +231,17 @@ public class Tokenizer implements Serializable {
         return tokenToId.get(END_TOKEN);
     }
 
+    // Taille du vocabulaire
     public int getVocabSize() {
         return vocabSize;
     }
 
-    public String getToken(int id) {
-        return idToToken.getOrDefault(id, UNK_TOKEN);
-    }
-    
+    // Gestion des embeddings
     public INDArray getPretrainedEmbeddings() {
         return pretrainedEmbeddings;
     }
     
+    public void setPretrainedEmbeddings(INDArray embeddings) {
+        this.pretrainedEmbeddings = embeddings;
+    }
 }
-
-
-

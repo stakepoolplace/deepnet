@@ -1,97 +1,110 @@
+// DataGenerator.java
 package RN.transformer;
 
-import java.io.BufferedReader;
-import java.io.FileReader;
-import java.io.IOException;
-import java.util.ArrayList;
+import org.nd4j.linalg.api.buffer.DataType;
+import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.factory.Nd4j;
+
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class DataGenerator {
-    private BufferedReader dataReader;
-    private BufferedReader targetReader;
-    protected Tokenizer tokenizer;
+    private List<List<Integer>> inputSequences;
+    private List<List<Integer>> targetSequences;
+    private Tokenizer tokenizer;
     private int batchSize;
-    private int maxTokensPerBatch;
-	private String targetFilePath;
-	private String dataFilePath;
+    private int sequenceLength;
+    private int currentBatch;
 
-    public DataGenerator(String dataFilePath, String targetFilePath, Tokenizer tokenizer, int batchSize, int maxTokensPerBatch) throws IOException {
-        this.dataReader = new BufferedReader(new FileReader(dataFilePath));
-        this.targetReader = new BufferedReader(new FileReader(targetFilePath));
-        this.targetFilePath = targetFilePath;
-        this.dataFilePath = dataFilePath;
+    public DataGenerator(List<String> data, List<String> targets, Tokenizer tokenizer, int batchSize, int sequenceLength) {
         this.tokenizer = tokenizer;
         this.batchSize = batchSize;
-        this.maxTokensPerBatch = maxTokensPerBatch;
+        this.sequenceLength = sequenceLength;
+        this.currentBatch = 0;
+        this.inputSequences = data.stream()
+                                  .map(this::preprocess)
+                                  .collect(Collectors.toList());
+        this.targetSequences = targets.stream()
+                                      .map(this::preprocess)
+                                      .collect(Collectors.toList());
     }
 
-    public boolean hasNextBatch() throws IOException {
-        return dataReader.ready() && targetReader.ready();
-    }
-
-    // public Batch nextBatch() throws IOException {
-    //     List<String> dataBatch = new ArrayList<>();
-    //     List<String> targetBatch = new ArrayList<>();
-    //     StringBuilder dataBuffer = new StringBuilder();
-    //     StringBuilder targetBuffer = new StringBuilder();
-
-    //     while (dataBatch.size() < batchSize && hasNextBatch()) {
-    //         int dataChar;
-    //         while ((dataChar = dataReader.read()) != -1) {
-    //             dataBuffer.append((char) dataChar);
-    //             if (dataBuffer.length() >= maxTokensPerBatch) break;
-    //         }
-
-    //         int targetChar;
-    //         while ((targetChar = targetReader.read()) != -1) {
-    //             targetBuffer.append((char) targetChar);
-    //             if (targetBuffer.length() >= maxTokensPerBatch) break;
-    //         }
-
-    //         if (dataBuffer.length() > 0 && targetBuffer.length() > 0) {
-    //             List<String> dataTokens = tokenizer.tokenize(dataBuffer.toString());
-    //             List<String> targetTokens = tokenizer.tokenize(targetBuffer.toString());
-    //             dataBatch.add(String.join(" ", dataTokens));
-    //             targetBatch.add(String.join(" ", targetTokens));
-    //             dataBuffer = new StringBuilder(); // Réinitialiser les buffers pour le prochain segment
-    //             targetBuffer = new StringBuilder();
-    //         }
-    //     }
-
-    //     return new Batch(dataBatch, targetBatch);
-    // }
-
-    
-    public Batch nextBatch() throws IOException {
-        List<String> dataBatch = new ArrayList<>();
-        List<String> targetBatch = new ArrayList<>();
-    
-        for (int i = 0; i < batchSize; i++) {
-            String dataLine = dataReader.readLine();
-            String targetLine = targetReader.readLine();
-    
-            if (dataLine == null || targetLine == null) {
-                break;
-            }
-    
-            List<String> dataTokens = tokenizer.tokenize(dataLine);
-            List<String> targetTokens = tokenizer.tokenize(targetLine);
-            dataBatch.add(String.join(" ", dataTokens));
-            targetBatch.add(String.join(" ", targetTokens));
+    private List<Integer> preprocess(String text) {
+        List<String> tokens = tokenizer.tokenize(text);
+        List<Integer> ids = tokenizer.tokensToIds(tokens);
+        ids.add(0, tokenizer.getStartTokenId());
+        ids.add(tokenizer.getEndTokenId());
+        while (ids.size() < sequenceLength) {
+            ids.add(tokenizer.getPadTokenId());
         }
-    
-        return new Batch(dataBatch, targetBatch);
-    }
-    
-    
-
-    public void close() throws IOException {
-        dataReader.close();
-        targetReader.close();
+        if (ids.size() > sequenceLength) {
+            ids = ids.subList(0, sequenceLength);
+        }
+        return ids;
     }
 
-    public void init() throws IOException {
-        this.dataReader = new BufferedReader(new FileReader(dataFilePath));
-        this.targetReader = new BufferedReader(new FileReader(targetFilePath));
-    }    
+    public boolean hasNextBatch() {
+        return currentBatch * batchSize < inputSequences.size();
+    }
+
+    public Batch nextBatch() {
+        return getNextBatch();
+    }
+
+    public Batch getNextBatch() {
+        if (!hasNextBatch()) {
+            return null; // Aucun batch restant
+        }
+
+        int start = currentBatch * batchSize;
+        int end = Math.min(start + batchSize, inputSequences.size());
+
+        List<List<Integer>> batchInputs = inputSequences.subList(start, end);
+        List<List<Integer>> batchTargets = targetSequences.subList(start, end);
+
+        int actualBatchSize = batchInputs.size();
+
+        // Créer un INDArray de type entier pour les inputs
+        INDArray inputs = Nd4j.create(DataType.INT32, actualBatchSize, sequenceLength);
+
+        // Créer un INDArray de type entier pour les targets
+        INDArray targets = Nd4j.create(DataType.INT32, actualBatchSize, sequenceLength);
+
+        for (int i = 0; i < batchInputs.size(); i++) {
+            for (int j = 0; j < batchInputs.get(i).size(); j++) {
+                inputs.putScalar(new int[]{i, j}, batchInputs.get(i).get(j));
+                targets.putScalar(new int[]{i, j}, batchTargets.get(i).get(j));
+            }
+        }
+
+        INDArray mask = generateMask(inputs);
+        currentBatch++;
+        return new Batch(inputs, targets, mask);
+    }
+
+    private INDArray generateMask(INDArray inputs) {
+        INDArray mask = Nd4j.ones(inputs.shape());
+
+        for (int i = 0; i < inputs.size(0); i++) {
+            for (int j = 0; j < inputs.size(1); j++) {
+                if (inputs.getDouble(i, j) == tokenizer.getPadTokenId()) {
+                    mask.putScalar(new int[]{i, j}, 0.0);
+                }
+            }
+        }
+        mask = mask.reshape(new int[]{(int) mask.size(0), 1, 1, (int) mask.size(1)});
+        return mask;
+    }
+
+    public void init() {
+        reset();
+    }
+
+    public void reset() {
+        currentBatch = 0;
+    }
+
+    public Tokenizer getTokenizer() {
+        return tokenizer;
+    }
 }
