@@ -315,20 +315,17 @@ public class TransformerTest {
     }
     
 
-    
-
     @Test
     public void testParameterUpdates() throws IOException {
     	
- 
         // Création d'un DataGenerator fictif avec des paires d'entrée-cible simples sans fichiers
         List<String> data = Arrays.asList("hello world");
         List<String> targets = Arrays.asList("hello output");
         DataGenerator mockDataGenerator = new DataGenerator(data, targets, model.tokenizer, 1, 50);
 
-        INDArray initialWeights = model.getCombinedParameters().get(0).dup();
+        INDArray initialWeights = model.getCombinedParameters().get(5).dup();
         model.train(mockDataGenerator, 1);
-        INDArray updatedWeights = model.getCombinedParameters().get(0);
+        INDArray updatedWeights = model.getCombinedParameters().get(5);
         assertFalse(initialWeights.equalsWithEps(updatedWeights, 1e-6), "Weights should be updated after training.");
     }
 

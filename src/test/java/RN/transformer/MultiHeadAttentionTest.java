@@ -1,5 +1,8 @@
 package RN.transformer;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.BeforeAll;
@@ -27,6 +30,46 @@ public class MultiHeadAttentionTest {
         vocabSize = 10000; // Exemple de taille de vocabulaire
 
     }
+
+    @Test
+    public void testSoftmaxGrad() {
+
+        int depth = dModel / numHeads;
+        int seqLength = 1;
+        int batchSize = 1;
+
+        // Création d'une instance de MultiHeadAttention
+        MultiHeadAttention mha = new MultiHeadAttention(dModel, numHeads);
+
+        // Créer un softmaxOutput connu
+        INDArray softmaxOutput = Nd4j.create(new double[][]{
+            {0.3, 0.7},
+            {0.6, 0.4}
+        }).reshape(1, 1, 2, 2); // [batchSize=1, numHeads=1, seqLength=2, seqLength=2]
+    
+        // Créer un gradOutput connu
+        INDArray gradOutput = Nd4j.create(new double[][]{
+            {1.0, 2.0},
+            {3.0, 4.0}
+        }).reshape(1, 1, 2, 2); // [batchSize=1, numHeads=1, seqLength=2, seqLength=2]
+    
+        // Calculer gradScores
+        INDArray gradScores = mha.softmaxGrad(softmaxOutput, gradOutput);
+    
+        // Calculer gradScores manuellement pour comparaison
+        // gradScores = S * dL/dS - S * sum(S * dL/dS, axis=-1)
+        INDArray expectedSum = Nd4j.create(new double[][]{
+            {0.3 * 1.0 + 0.7 * 2.0}, // For first row
+            {0.6 * 3.0 + 0.4 * 4.0}  // For second row
+        }).reshape(1, 1, 2, 1); // [1,1,2,1]
+    
+        INDArray expectedGradScores = softmaxOutput.mul(gradOutput).sub(softmaxOutput.mul(expectedSum));
+    
+        // Assert que gradScores est égal à expectedGradScores avec une tolérance
+        // Assert que gradScores est égal à expectedGradScores avec une tolérance
+        assertTrue("gradScores should match the expected gradients.",
+                   expectedGradScores.equalsWithEps(gradScores, 1e-6));    }
+    
 
     @Test
     public void backward0Test() {
@@ -122,6 +165,46 @@ public class MultiHeadAttentionTest {
         // Vérifier les dimensions de la sortie
         assertEquals(3, output.rank(), "Le tenseur devrait être d'ordre 3");
         assertArrayEquals(new long[]{batchSize, seqLength, dModel}, output.shape(), "La forme de la sortie est incorrecte");
+    }
+
+    @Test
+    public void testBackward() {
+        // Initialiser les paramètres avec des valeurs aléatoires
+        int batchSize = 1;
+        int seqLength = 6;
+        int numHeads = 2;
+        int depth = 150;
+        int dModel = numHeads * depth;
+
+        MultiHeadAttention mha = new MultiHeadAttention(dModel, numHeads);
+        mha.initializeWeights(); // Méthode pour initialiser Wq, Wk, Wv, Wo
+
+
+        // Créer des entrées simples avec forme [batchSize, seqLength, dModel]
+        INDArray inputQ = Nd4j.randn(batchSize, seqLength, dModel);
+        INDArray inputK = Nd4j.randn(batchSize, seqLength, dModel);
+        INDArray inputV = Nd4j.randn(batchSize, seqLength, dModel);
+
+        // Effectuer la passe forward
+        INDArray output = mha.forward(inputQ, inputK, inputV, null);
+
+        // Créer un gradient de sortie simple
+        INDArray gradOutput = Nd4j.randn(batchSize, seqLength, dModel);
+
+        // Effectuer la passe backward
+        Map<String, INDArray> gradients = mha.backward(gradOutput);
+
+        // Vérifier que les gradients pour Wq, Wk, Wv, Wo ne sont pas nuls
+        assertNotNull("Gradient Wq ne doit pas être null.", gradients.get("Wq"));
+        assertNotNull("Gradient Wk ne doit pas être null.", gradients.get("Wk"));
+        assertNotNull("Gradient Wv ne doit pas être null.", gradients.get("Wv"));
+        assertNotNull("Gradient Wo ne doit pas être null.", gradients.get("Wo"));
+
+        // Vérifier que les gradients ne sont pas tous à zéro
+        assertTrue("Gradient Wq ne doit pas être zéro.", gradients.get("Wq").sumNumber().doubleValue() != 0.0);
+        assertTrue("Gradient Wk ne doit pas être zéro.", gradients.get("Wk").sumNumber().doubleValue() != 0.0);
+        assertTrue("Gradient Wv ne doit pas être zéro.", gradients.get("Wv").sumNumber().doubleValue() != 0.0);
+        assertTrue("Gradient Wo ne doit pas être zéro.", gradients.get("Wo").sumNumber().doubleValue() != 0.0);
     }
 
     @Test

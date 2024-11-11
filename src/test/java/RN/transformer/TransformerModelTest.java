@@ -3,6 +3,7 @@ package RN.transformer;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.File;
 import java.io.IOException;
@@ -119,11 +120,15 @@ public class TransformerModelTest {
         assertTrue("Le modèle devrait être marqué comme entraîné après l'entraînement", model.isTrained());
     }
 
-    @Test(expected = IllegalStateException.class)
+
+
+    @Test
     public void testInferenceBeforeTrainingThrowsException() {
-        // Tentative d'inférence avant l'entraînement devrait lancer une exception
-        model.infer("Some input text", 30);
+        assertThrows(IllegalStateException.class, () -> {
+            model.infer("Some input text", 30);
+        });
     }
+
     
 
 

@@ -1,5 +1,7 @@
 package RN.transformer;
 
+
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -222,7 +224,28 @@ public class TransformerModel implements Serializable {
                 addCombinedGradients();
 
                 // Mettre à jour les poids du modèle via l'optimiseur
+                //optimizer.update(combinedParameters, combinedGradients);
+
+                // for (int i = 0; i < combinedGradients.size(); i++) {
+                //     INDArray grad = combinedGradients.get(i);
+                //     if (grad == null) {
+                //         throw new IllegalStateException("Le gradient " + i + " est nul.");
+                //     }
+                // }
+                
+
+                // for (int i = 0; i < combinedParameters.size(); i++) {
+                //     INDArray paramBefore = combinedParameters.get(i).dup();
+                //     optimizer.update(combinedParameters, combinedGradients);
+                //     INDArray paramAfter = combinedParameters.get(i);
+                //     System.out.println("Param " + i + " avant: " + paramBefore);
+                //     System.out.println("Param " + i + " après: " + paramAfter);
+                //     //assertFalse(paramBefore.equalsWithEps(paramAfter, 1e-6), "Le paramètre " + i + " devrait avoir été mis à jour.");
+                // }
+
                 optimizer.update(combinedParameters, combinedGradients);
+
+
             }
 
             // Calculer la perte moyenne pour l'epoch
@@ -458,33 +481,45 @@ public class TransformerModel implements Serializable {
      * @return Map contenant les gradients spécifiques à l'encodeur.
      */
     private Map<String, INDArray> extractEncoderGradients(Map<String, INDArray> decoderGradients) {
-        // Créez un nouveau Map pour contenir les gradients spécifiquement pour l'encodeur.
         Map<String, INDArray> encoderGradients = new HashMap<>();
-
-        // Extrayez les gradients par rapport aux entrées K et V de l'attention encoder-décodeur.
+    
+        // Extrayez les gradients pertinents
         INDArray gradAttentionOutputConcat = decoderGradients.get("gradAttentionOutputConcat");
-
-        // Vérifiez que gradAttentionOutputConcat n'est pas null
-        if (gradAttentionOutputConcat == null) {
-            throw new IllegalStateException(
-                    "gradAttentionOutputConcat est null. Assurez-vous que MultiHeadAttention.backward retourne correctement ce gradient.");
+        INDArray gradInputQ = decoderGradients.get("gradInputQ");
+        INDArray gradInputK = decoderGradients.get("gradInputK");
+        INDArray gradInputV = decoderGradients.get("gradInputV");
+    
+        if (gradAttentionOutputConcat == null || gradInputQ == null || gradInputK == null || gradInputV == null) {
+            throw new IllegalStateException("Un ou plusieurs gradients nécessaires sont null.");
         }
-
-        // Ajoutez gradAttentionOutputConcat au Map des gradients pour l'encodeur
+    
+        // Ajoutez les gradients au Map
         encoderGradients.put("gradAttentionOutputConcat", gradAttentionOutputConcat);
-
+        encoderGradients.put("gradInputQ", gradInputQ);
+        encoderGradients.put("gradInputK", gradInputK);
+        encoderGradients.put("gradInputV", gradInputV);
+    
         return encoderGradients;
     }
+    
 
     /**
      * Ajoute les paramètres de l'encodeur et du décodeur à la liste combinée.
      */
     public void addCombinedParameters() {
-        // Ajoute les paramètres de l'encoder
-        combinedParameters.addAll(encoder.getParameters());
+        // Ajoute les paramètres de l'encodeur
+        List<INDArray> encoderParams = encoder.getParameters();
+        for (int i = 0; i < encoderParams.size(); i++) {
+            combinedParameters.add(encoderParams.get(i));
+            // System.out.println("Parameter " + (combinedParameters.size() - 1) + ": Encoder Param " + i);
+        }
 
         // Ajoute les paramètres du decoder
-        combinedParameters.addAll(decoder.getParameters());
+        List<INDArray> decoderParams = decoder.getParameters();
+        for (int i = 0; i < decoderParams.size(); i++) {
+            combinedParameters.add(decoderParams.get(i));
+            // System.out.println("Parameter " + (combinedParameters.size() - 1) + ": Decoder Param " + i);
+        }
     }
 
     /**
