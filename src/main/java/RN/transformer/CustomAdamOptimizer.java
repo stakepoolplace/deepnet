@@ -149,38 +149,42 @@ public class CustomAdamOptimizer implements Serializable {
 
     // Calcul du taux d'apprentissage avec warmup et décroissance
     float calculateLearningRate() {
-        float step = Math.max(1.0f, (float) currentStep);  // Commencer à 1 pour éviter la division par zéro
-
-        // Learning rate de base
-        float lr = initialLr;
-
-        // Calculer le facteur de warmup (0 à 1 pendant la période de warmup)
-        float warmupFactor = Math.min(1.0f, step / warmupSteps);
-
-        // Calculer le facteur de décroissance (diminue après la période de warmup)
-        float decayFactor;
-        if (step <= warmupSteps) {
-            decayFactor = 1.0f;
-        } else {
-            // Décroissance en racine carrée inverse après le warmup
-            decayFactor = (float) Math.sqrt(warmupSteps / step);
-        }
-
-        // Calculer le learning rate final
-        this.learningRate = lr * warmupFactor * decayFactor;
-
-        // Appliquer des limites pour éviter des valeurs extrêmes
-        this.learningRate = Math.max(this.learningRate, initialLr * 0.1f);   // Pas moins de 10% du lr initial
-        this.learningRate = Math.min(this.learningRate, initialLr);         // Pas plus que le lr initial
-
-        // Log des valeurs pour debugging
-        if (currentStep % 100 == 0) {
-            System.out.printf("Step: %d, Warmup: %.3f, Decay: %.3f, LR: %.6f%n",
-                currentStep, warmupFactor, decayFactor, this.learningRate);
-        }
-
+        this.learningRate = initialLr;
         return this.learningRate;
     }
+    // float calculateLearningRate() {
+    //     float step = Math.max(1.0f, (float) currentStep);  // Commencer à 1 pour éviter la division par zéro
+
+    //     // Learning rate de base
+    //     float lr = initialLr;
+
+    //     // Calculer le facteur de warmup (0 à 1 pendant la période de warmup)
+    //     float warmupFactor = Math.min(1.0f, step / warmupSteps);
+
+    //     // Calculer le facteur de décroissance (diminue après la période de warmup)
+    //     float decayFactor;
+    //     if (step <= warmupSteps) {
+    //         decayFactor = 1.0f;
+    //     } else {
+    //         // Décroissance en racine carrée inverse après le warmup
+    //         decayFactor = (float) Math.sqrt(warmupSteps / step);
+    //     }
+
+    //     // Calculer le learning rate final
+    //     this.learningRate = lr * warmupFactor * decayFactor;
+
+    //     // Appliquer des limites pour éviter des valeurs extrêmes
+    //     this.learningRate = Math.max(this.learningRate, initialLr * 0.1f);   // Pas moins de 10% du lr initial
+    //     this.learningRate = Math.min(this.learningRate, initialLr);         // Pas plus que le lr initial
+
+    //     // Log des valeurs pour debugging
+    //     if (currentStep % 100 == 0) {
+    //         System.out.printf("Step: %d, Warmup: %.3f, Decay: %.3f, LR: %.6f%n",
+    //             currentStep, warmupFactor, decayFactor, this.learningRate);
+    //     }
+
+    //     return this.learningRate;
+    // }
 
     // Getters et setters
     public void setCurrentStep(int step) {

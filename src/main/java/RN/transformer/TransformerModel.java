@@ -67,7 +67,7 @@ public class TransformerModel implements Serializable {
 
         // Définir un vocabulaire par défaut si nécessaire
         List<String> defaultVocab = Arrays.asList("hello", "world", "test", "input", "output", "<PAD>", "<UNK>", "<START>", "<END>");
-        this.tokenizer = new Tokenizer(defaultVocab, 300);
+        this.tokenizer = new Tokenizer(defaultVocab, dModel);
         this.pretrainedEmbeddings = this.tokenizer.getPretrainedEmbeddings();
         
         // Initialiser les autres composants
@@ -275,6 +275,76 @@ public class TransformerModel implements Serializable {
         return trainEpoch(dataGenerator);
     }
 
+    // public float trainEpoch(DataGenerator dataGenerator) throws IOException {
+    //     float totalLoss = 0.0f;
+    //     int totalTokens = 0;
+    
+    //     // Initialiser pour l'epoch
+    //     optimizer.setEpoch(optimizer.getEpoch() + 1);
+    //     System.out.println("Epoch " + optimizer.getEpoch());
+    
+    //     while (dataGenerator.hasNextBatch()) {
+    //         // Nettoyer les gradients précédents
+    //         cleanGradients();
+    
+    //         Batch batch = dataGenerator.nextBatch();
+    //         INDArray data = batch.getData();
+    //         INDArray target = batch.getTarget();
+    
+    //         // Créer les masques de padding pour le batch
+    //         INDArray encoderPaddingMask = createPaddingMask(data);
+    //         INDArray decoderPaddingMask = createPaddingMask(target);
+    //         INDArray lookAheadMask = createLookAheadMask((int) data.shape()[0], (int) target.shape()[1]);
+    
+    //         // Encoder les données du batch
+    //         INDArray encoded = encoder.encode(true, data, encoderPaddingMask);
+    
+    //         // Décoder les données encodées
+    //         INDArray decodedOutput = decoder.decode(true, encoded, encoded, lookAheadMask, encoderPaddingMask);
+    
+    //         // Calculer la perte et les gradients
+    //         List<INDArray> decodedLogits = Arrays.asList(decodedOutput);
+    //         Pair<Float, INDArray> lossAndGradients = calculateCrossEntropyLossAndGradient(decodedLogits, target);
+    //         float loss = lossAndGradients.getLeft();
+    //         INDArray initialGradients = lossAndGradients.getRight();
+    
+    //         totalLoss += loss;
+    //         totalTokens += target.sumNumber().intValue();
+    
+    //         // Afficher la perte pour le monitoring
+    //         System.out.println("Perte pour ce batch: " + loss);
+    
+    //         // Étape 2: Rétropropagation à travers le Décodeur
+    //         Map<String, INDArray> decoderGradients = decoder.backward(initialGradients);
+    
+    //         // Extraire les gradients pertinents pour l'encodeur à partir de decoderGradients
+    //         Map<String, INDArray> encoderGradients = extractEncoderGradients(decoderGradients);
+    
+    //         // Étape 3: Rétropropagation à travers l'Encodeur
+    //         encoder.backward(encoderGradients);
+    
+    //         // Ajouter tous les gradients calculés aux `combinedGradients`
+    //         addCombinedGradients();
+    //     }
+    
+    //     // Calculer la perte moyenne
+    //     float averageLoss = totalLoss / totalTokens;
+    
+    //     // Mettre à jour les poids du modèle via l'optimiseur
+    //     optimizer.update(combinedParameters, combinedGradients);
+    
+    //     // Réinitialiser le générateur de données pour le prochain epoch
+    //     dataGenerator.reset();
+    //     System.out.println("Epoch " + optimizer.getEpoch() + " completed with average loss: " + averageLoss);
+    
+    //     // Marquer le modèle comme entraîné après le premier epoch
+    //     if (optimizer.getEpoch() >= 1) {
+    //         isTrained = true;
+    //     }
+    
+    //     return averageLoss;
+    // }
+
     public float trainEpoch(DataGenerator dataGenerator) throws IOException {
         float totalLoss = 0.0f;
         int totalTokens = 0;
@@ -300,6 +370,10 @@ public class TransformerModel implements Serializable {
             int targetSeqLength = (int) target.shape()[1];
             INDArray lookAheadMask = createLookAheadMask(batchSize, targetSeqLength); // Longueur max du target
     
+            System.out.println("Encoder Mask: " + encoderPaddingMask);
+            System.out.println("Decoder Mask: " + decoderPaddingMask);
+            System.out.println("Look-Ahead Mask: " + lookAheadMask);
+
             // Encoder les données du batch
             INDArray encoded = encoder.encode(true, data, encoderPaddingMask);
             // System.out.println("Encoded output shape: " + Arrays.toString(encoded.shape()));
@@ -331,7 +405,36 @@ public class TransformerModel implements Serializable {
     
             // Ajouter tous les gradients calculés aux `combinedGradients`
             addCombinedGradients();
-    
+
+            for (INDArray grad : combinedGradients) {
+                if (grad.isNaN().any() || grad.isInfinite().any()) {
+                    throw new RuntimeException("Gradient contains NaN or Infinite values.");
+                }
+            }
+
+
+            // for (int i = 0; i < combinedGradients.size(); i++) {
+            //     INDArray grad = combinedGradients.get(i);
+            //     double norm = grad.norm2Number().doubleValue();
+            //     System.out.println("Gradient " + i + " Norm: " + norm);
+            //     if (norm < 1e-6) {
+            //         throw new RuntimeException("Gradient " + i + " est trop petit.");
+            //     }
+            // }
+
+            // for (int i = 0; i < combinedParameters.size(); i++) {
+            //         INDArray paramBefore = combinedParameters.get(i).dup();
+            //         // Mise à jour des paramètres
+            //         optimizer.update(combinedParameters, combinedGradients);
+            //         INDArray paramAfter = combinedParameters.get(i);
+            //         System.out.println("Param " + i + " Before Update: " + paramBefore);
+            //         System.out.println("Param " + i + " After Update: " + paramAfter);
+                    
+            //     }
+
+            // Avant l'appel à l'optimiseur
+            clipGradients(combinedGradients, 0.5);
+
             // Mettre à jour les poids du modèle via l'optimiseur
             optimizer.update(combinedParameters, combinedGradients);
     
@@ -353,6 +456,23 @@ public class TransformerModel implements Serializable {
     
         return averageLoss;
     }
+
+    private void clipGradients(List<INDArray> gradients, double maxNorm) {
+        double totalNorm = 0.0;
+        for (INDArray grad : gradients) {
+            totalNorm += Math.pow(grad.norm2Number().doubleValue(), 2);
+        }
+        totalNorm = Math.sqrt(totalNorm);
+        if (totalNorm > maxNorm) {
+            double scale = maxNorm / totalNorm;
+            for (INDArray grad : gradients) {
+                grad.muli(scale);
+            }
+            System.out.println("Gradients clipped. Scale factor: " + scale);
+        }
+    }
+    
+    
     
 
     /**
@@ -449,8 +569,33 @@ public class TransformerModel implements Serializable {
         int seqLength = (int) logits.shape()[1];
         int vocabSize = (int) logits.shape()[2]; // Assurez-vous que dModel correspond au vocabSize
 
+        // Exemple de vérification
+        System.out.println("Logits Shape: " + Arrays.toString(logits.shape()));
+
+        INDArray probabilities = NDArrayUtils.softmax(logits, 2); // [batchSize, seqLength, vocabSize]
+        
+        // Trace des logits et probabilités
+        System.out.println("Logits: " + logits);
+        System.out.println("Probabilities: " + probabilities);
+        System.out.println("Probabilities Shape: " + Arrays.toString(probabilities.shape()));
+        for (int i = 0; i < probabilities.size(0); i++) { // Itère sur le batch
+            for (int j = 0; j < probabilities.size(1); j++) { // Itère sur la séquence
+                // Sélectionne la slice [i, j, :]
+                INDArray slice = probabilities.get(NDArrayIndex.point(i), NDArrayIndex.point(j), NDArrayIndex.all());
+                
+                // Calcule la somme des probabilités pour cette slice
+                double sum = slice.sumNumber().doubleValue();
+                
+                // Vérifie que la somme est proche de 1
+                if (Math.abs(sum - 1.0) > 1e-4) {
+                    throw new RuntimeException("Probabilities pour l'échantillon " + i + ", token " + j + " ne somment pas à 1. Somme = " + sum);
+                }
+            }
+        }
+
+
         // Appliquer softmax sur la dernière dimension (vocabSize)
-        INDArray softmaxLogits = NDArrayUtils.softmax(logits, 2); // [batchSize, seqLength, vocabSize]
+        //INDArray softmaxLogits = NDArrayUtils.softmax(logits, 2); // [batchSize, seqLength, vocabSize]
 
         // Créer une INDArray one-hot pour les cibles
         INDArray targetOneHot = Nd4j.zeros(DataType.FLOAT, batchSize, seqLength, vocabSize);
@@ -463,12 +608,12 @@ public class TransformerModel implements Serializable {
 
         // Calculer la perte d'entropie croisée
         // log(softmax) * targetOneHot, puis somme et moyenne
-        INDArray logSoftmax = Transforms.log(softmaxLogits.add(1e-10)); // éviter log(0)
+        INDArray logSoftmax = Transforms.log(probabilities.add(1e-10)); // éviter log(0)
         INDArray crossEntropy = logSoftmax.mul(targetOneHot).neg(); // [batchSize, seqLength, vocabSize]
         float loss = crossEntropy.sumNumber().floatValue() / (batchSize * seqLength);
 
         // Calculer les gradients (softmax - targetOneHot) / (batchSize * seqLength)
-        INDArray gradients = softmaxLogits.sub(targetOneHot).div(batchSize * seqLength); // [batchSize, seqLength, vocabSize]
+        INDArray gradients = probabilities.sub(targetOneHot).div(batchSize * seqLength); // [batchSize, seqLength, vocabSize]
 
         return Pair.of(loss, gradients);
 
@@ -708,6 +853,16 @@ public class TransformerModel implements Serializable {
         return combinedGradients;
     }
 
+    // Méthode pour récupérer tous les paramètres du modèle
+    public List<INDArray> getParameters() {
+        return getCombinedParameters(); 
+    }
+
+    // Méthode pour récupérer les gradients
+    public List<INDArray> getGradients() {
+        return getCombinedGradients();
+    }
+
     /**
      * Effectue une inférence sur un prompt donné.
      *
@@ -821,6 +976,10 @@ public class TransformerModel implements Serializable {
      */
     public boolean isTrained() {
         return isTrained;
+    }
+
+    public void setOptimizer(CustomAdamOptimizer optimizer) {
+        this.optimizer = optimizer;
     }
 
 

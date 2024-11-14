@@ -1,6 +1,9 @@
 package RN.transformer;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
@@ -33,6 +36,32 @@ public class CustomAdamOptimizerTest {
         
         optimizer = new CustomAdamOptimizer(initialLr, dModel, warmupSteps, parameters);
 
+    }
+
+
+    @Test
+    public void testAdamUpdate() {
+        // Initialisation des paramètres
+        INDArray param = Nd4j.create(new double[]{1.0, 2.0, 3.0});
+        INDArray grad = Nd4j.create(new double[]{0.1, 0.2, 0.3});
+        List<INDArray> params = Arrays.asList(param);
+        List<INDArray> grads = Arrays.asList(grad);
+
+        // Initialisation de l'optimiseur
+        CustomAdamOptimizer optimizer = new CustomAdamOptimizer(0.001f, 16, 10, params);
+
+        // Sauvegarder les valeurs initiales
+        INDArray paramBefore = param.dup();
+
+        // Mise à jour
+        optimizer.update(params, grads);
+
+        // Vérifier que les paramètres ont changé
+        assertFalse(paramBefore.equals(param));
+
+        // Afficher les changements
+        System.out.println("Param before update: " + paramBefore);
+        System.out.println("Param after update: " + param);
     }
 
 

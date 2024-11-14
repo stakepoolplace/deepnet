@@ -134,6 +134,17 @@ public class LayerNorm extends Layer implements Serializable {
                             .add( gradVariance.mul(normalized.mul(2)).div(dModel))
                             .add( gradMean.div(dModel)); // [batchSize, seqLength, dModel]
 
+
+        if (gradGamma.isNaN().any() || gradGamma.isInfinite().any()) {
+            throw new RuntimeException("GradGamma contient des valeurs NaN ou infinies.");
+        }
+        if (gradBeta.isNaN().any() || gradBeta.isInfinite().any()) {
+            throw new RuntimeException("GradBeta contient des valeurs NaN ou infinies.");
+        }
+        if (gradInput.isNaN().any() || gradInput.isInfinite().any()) {
+            throw new RuntimeException("GradInput contient des valeurs NaN ou infinies.");
+        }
+
         // Stockage des gradients
         NDArrayUtils.addGradient(gradients,"gamma", gradGamma);
         NDArrayUtils.addGradient(gradients,"beta", gradBeta);
@@ -200,5 +211,18 @@ public class LayerNorm extends Layer implements Serializable {
      */
     public long getNumberOfGradients() {
         return gradients.get("gamma").length() + gradients.get("beta").length();
+    }
+
+    public INDArray getGradGamma() {
+        return gradients.get("gamma");
+    }
+
+    public INDArray getGradBeta() {
+        return gradients.get("beta");
+    }
+
+    public double computeLoss() {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'computeLoss'");
     }
 }

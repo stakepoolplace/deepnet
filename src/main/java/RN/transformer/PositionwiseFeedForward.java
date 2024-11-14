@@ -36,12 +36,14 @@ public class PositionwiseFeedForward implements Serializable {
     public PositionwiseFeedForward(int modelSize, int ffSize) {
         this.dModel = modelSize;
         this.ffSize = ffSize;
-        // Initialisation des poids avec une distribution normale et He Initialization
-        this.W1 = Nd4j.randn(modelSize, ffSize).div(Math.sqrt(modelSize)); // [dModel, ffSize]
+        // He Initialization pour W1
+        this.W1 = Nd4j.randn(modelSize, ffSize).mul(Math.sqrt(2.0 / modelSize)); // [dModel, ffSize]
         this.b1 = Nd4j.zeros(1, ffSize); // [1, ffSize]
-        this.W2 = Nd4j.randn(ffSize, modelSize).div(Math.sqrt(ffSize)); // [ffSize, dModel]
+        // Xavier Initialization pour W2
+        this.W2 = Nd4j.randn(ffSize, modelSize).mul(Math.sqrt(1.0 / ffSize)); // [ffSize, dModel]
         this.b2 = Nd4j.zeros(1, modelSize); // [1, dModel]
     }
+    
 
     /**
      * Passe forward du réseau Feed-Forward positionnel.

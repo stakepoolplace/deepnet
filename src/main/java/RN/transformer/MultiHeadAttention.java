@@ -47,10 +47,11 @@ public class MultiHeadAttention implements Serializable {
 
     public void initializeWeights() {
         // Initialize weights with appropriate normalization
-        Wq = Nd4j.randn(DataType.FLOAT, dModel, numHeads * depth).div(Math.sqrt(dModel));
-        Wk = Nd4j.randn(DataType.FLOAT, dModel, numHeads * depth).div(Math.sqrt(dModel));
-        Wv = Nd4j.randn(DataType.FLOAT, dModel, numHeads * depth).div(Math.sqrt(dModel));
-        Wo = Nd4j.randn(DataType.FLOAT, numHeads * depth, dModel).div(Math.sqrt(numHeads * depth));
+       // Initialisation des poids Wq, Wk, Wv, Wo avec Xavier Initialization
+       this.Wq = Nd4j.randn(DataType.FLOAT, dModel, dModel).mul(1.0 / Math.sqrt(dModel)); // [dModel, dModel]
+       this.Wk = Nd4j.randn(DataType.FLOAT, dModel, dModel).mul(1.0 / Math.sqrt(dModel)); // [dModel, dModel]
+       this.Wv = Nd4j.randn(DataType.FLOAT, dModel, dModel).mul(1.0 / Math.sqrt(dModel)); // [dModel, dModel]
+       this.Wo = Nd4j.randn(DataType.FLOAT, dModel, dModel).mul(1.0 / Math.sqrt(dModel)); // [dModel, dModel]
     }
 
     public INDArray forward(INDArray query, INDArray key, INDArray value, INDArray mask) {
@@ -485,6 +486,15 @@ public class MultiHeadAttention implements Serializable {
         NDArrayUtils.addGradient(gradients, "input", gradInputFinal);
         // System.out.println("gradInput shape: " +
         // Arrays.toString(gradInputFinal.shape()));
+
+        for (Map.Entry<String, INDArray> entry : gradients.entrySet()) {
+            String key = entry.getKey();
+            INDArray grad = entry.getValue();
+            if (grad.isNaN().any() || grad.isInfinite().any()) {
+                throw new RuntimeException("Gradient " + key + " contient des valeurs NaN ou infinies.");
+            }
+        }
+        
 
         // Retourner les gradients des inputs séparément
         return gradients;
