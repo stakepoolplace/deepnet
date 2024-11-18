@@ -1,3 +1,4 @@
+// LayerNorm.java
 package RN.transformer;
 
 import java.io.Serializable;
@@ -33,9 +34,10 @@ public class LayerNorm extends Layer implements Serializable {
      */
     public LayerNorm(int dModel) {
         this.dModel = dModel;
-        // Initialisation de gamma à des uns et de beta à des zéros avec la forme [1, 1, dModel]
-        gamma = Nd4j.ones(DataType.FLOAT, 1, 1, dModel); // [1, 1, dModel]
-        beta = Nd4j.zeros(DataType.FLOAT, 1, 1, dModel); // [1, 1, dModel]
+        // Initialisation de gamma avec Xavier
+        gamma = Nd4j.randn(DataType.FLOAT, 1, 1, dModel).muli(Math.sqrt(2.0 / (dModel + dModel)));
+        // Initialisation de beta à des zéros
+        beta = Nd4j.zeros(DataType.FLOAT, 1, 1, dModel);
 
         // Log des formes pour vérification
         // System.out.println("Initialized gamma shape: " + Arrays.toString(gamma.shape()));
@@ -64,14 +66,16 @@ public class LayerNorm extends Layer implements Serializable {
         INDArray std = Transforms.sqrt(variance.add(epsilon)).reshape(x.shape()[0], x.shape()[1], 1); // [batchSize, seqLength, 1]
 
         if (mean.isNaN().any() || mean.isInfinite().any()) {
+            System.out.println("Mean contains NaN or Infinite values: " + mean);
             throw new RuntimeException("NaN or Infinite values encountered in mean calculation.");
         }
         if (std.isNaN().any() || std.isInfinite().any()) {
+            System.out.println("Std contains NaN or Infinite values: " + std);
             throw new RuntimeException("NaN or Infinite values encountered in standard deviation calculation.");
         }
 
         // Normalisation avec broadcast explicite
-        INDArray normalized = x.sub(mean).div(std); // [batchSize, seqLength, dModel] / [batchSize, seqLength, 1]
+        INDArray normalized = x.sub(mean).div(std); // [batchSize, seqLength, dModel]
 
         // Reshape gamma et beta pour le broadcasting correct
         INDArray gammaBroadcast = gamma.reshape(1, 1, dModel);  // [1, 1, dModel]
@@ -81,6 +85,7 @@ public class LayerNorm extends Layer implements Serializable {
         INDArray output = normalized.mul(gammaBroadcast).add(betaBroadcast); // [batchSize, seqLength, dModel]
 
         if (output.isNaN().any() || output.isInfinite().any()) {
+            System.out.println("Output contains NaN or Infinite values: " + output);
             throw new RuntimeException("NaN or Infinite values produced by LayerNorm normalization.");
         }
 
@@ -106,10 +111,9 @@ public class LayerNorm extends Layer implements Serializable {
         }
 
         // Récupération des valeurs du forward
-        INDArray input = this.inputCache; // [batchSize, seqLength, dModel]
+        INDArray input = this.inputCache.dup(); // [batchSize, seqLength, dModel]
         long batchSize = input.size(0);
         long seqLength = input.size(1);
-        // Note: On suppose que les dimensions intermédiaires sont maintenues
 
         // Recalcul de la moyenne et de la variance comme dans le forward
         INDArray mean = input.mean(true, input.rank() - 1); // [batchSize, seqLength, 1]
@@ -119,36 +123,50 @@ public class LayerNorm extends Layer implements Serializable {
 
         INDArray normalized = input.sub(mean).mul(stdInv); // [batchSize, seqLength, dModel]
 
-        // Calcul des gradients pour gamma et beta
-        INDArray gradGamma = gradOutput.mul(normalized).sum(new int[]{0, 1}); // [1, 1, dModel]
-        INDArray gradBeta = gradOutput.sum(new int[]{0, 1}); // [1, 1, dModel]
+        // Calcul des gradients pour gamma et beta avec la moyenne
+        INDArray gradGamma = gradOutput.mul(normalized).mean(new int[]{0, 1}); // [1, 1, dModel]
+        INDArray gradBeta = gradOutput.mean(new int[]{0, 1}); // [1, 1, dModel]
 
         // Calcul du gradient par rapport à l'entrée
         INDArray gradNormalized = gradOutput.mul(gamma); // [batchSize, seqLength, dModel]
 
         INDArray gradVariance = gradNormalized.mul(normalized).mul(-0.5).div(Transforms.pow(variance.add(epsilon), 1.5)).sum(2).reshape(batchSize, seqLength, 1); // [batchSize, seqLength, 1]
         INDArray gradMean = gradNormalized.mul(-1).div(Transforms.sqrt(variance.add(epsilon))).sum(2).reshape(batchSize, seqLength, 1)
-                            .add( gradVariance.mul(normalized.mul(-2)).sum(2).reshape(batchSize, seqLength, 1)); // [batchSize, seqLength, 1]
+                            .add(gradVariance.mul(normalized.mul(-2)).sum(2).reshape(batchSize, seqLength, 1)); // [batchSize, seqLength, 1]
 
         INDArray gradInput = gradNormalized.div(Transforms.sqrt(variance.add(epsilon)))
-                            .add( gradVariance.mul(normalized.mul(2)).div(dModel))
-                            .add( gradMean.div(dModel)); // [batchSize, seqLength, dModel]
+                            .add(gradVariance.mul(normalized.mul(2)).div(dModel))
+                            .add(gradMean.div(dModel)); // [batchSize, seqLength, dModel]
+
+        System.out.println("Shape of mean: " + Arrays.toString(mean.shape()));
+        System.out.println("Shape of variance: " + Arrays.toString(variance.shape()));
+        System.out.println("Shape of stdInv: " + Arrays.toString(stdInv.shape()));
+        System.out.println("Shape of normalized: " + Arrays.toString(normalized.shape()));
+        System.out.println("Shape of gradGamma: " + Arrays.toString(gradGamma.shape()));
+
+        System.out.println("input: " + input);
+        System.out.println("gradOutput: " + gradOutput);
+        System.out.println("normalized: " + normalized);
 
 
+        // Vérification des gradients
         if (gradGamma.isNaN().any() || gradGamma.isInfinite().any()) {
+            System.out.println("gradGamma: " + gradGamma);
             throw new RuntimeException("GradGamma contient des valeurs NaN ou infinies.");
         }
         if (gradBeta.isNaN().any() || gradBeta.isInfinite().any()) {
+            System.out.println("gradBeta: " + gradBeta);
             throw new RuntimeException("GradBeta contient des valeurs NaN ou infinies.");
         }
         if (gradInput.isNaN().any() || gradInput.isInfinite().any()) {
+            System.out.println("gradInput: " + gradInput);
             throw new RuntimeException("GradInput contient des valeurs NaN ou infinies.");
         }
 
         // Stockage des gradients
-        NDArrayUtils.addGradient(gradients,"gamma", gradGamma);
-        NDArrayUtils.addGradient(gradients,"beta", gradBeta);
-        NDArrayUtils.addGradient(gradients,"input", gradInput);// Gradient à propager vers les couches précédentes
+        NDArrayUtils.addGradient(gradients, "gamma", gradGamma);
+        NDArrayUtils.addGradient(gradients, "beta", gradBeta);
+        NDArrayUtils.addGradient(gradients, "input", gradInput); // Gradient à propager vers les couches précédentes
 
         return gradients;
     }
@@ -163,7 +181,7 @@ public class LayerNorm extends Layer implements Serializable {
         list.add(gradients.get("gamma"));
         list.add(gradients.get("beta"));
         if (list.contains(null)) {
-            throw new IllegalArgumentException(" gradients contains null ");
+            throw new IllegalArgumentException("gradients contains null ");
         }
         return list;  
     }

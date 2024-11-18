@@ -18,7 +18,7 @@ import org.nd4j.linalg.indexing.NDArrayIndex;
 public class Encoder implements Serializable {
     
     private static final long serialVersionUID = -5716799542280937448L;
-    private List<EncoderLayer> layers;
+    List<EncoderLayer> layers;
     private int dModel;
     private PositionalEncoding positionalEncoding;
     private LayerNorm layerNorm;
@@ -228,6 +228,10 @@ public class Encoder implements Serializable {
             this.layerNorm2 = new LayerNorm(dModel);
             this.dropout1 = new Dropout(dropoutRate);
             this.dropout2 = new Dropout(dropoutRate);
+        }
+
+        public MultiHeadAttention getSelfAttention() {
+            return this.selfAttention;
         }
         
         /**

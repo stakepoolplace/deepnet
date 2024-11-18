@@ -41,4 +41,12 @@ public class Batch {
     public INDArray getMask() {
         return mask;
     }
+
+    public INDArray getInputs() {
+        return data;
+    }
+
+    public INDArray getTargets() {
+        return target;
+    }
 }

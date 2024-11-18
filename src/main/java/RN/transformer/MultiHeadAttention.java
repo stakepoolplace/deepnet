@@ -191,6 +191,16 @@ public class MultiHeadAttention implements Serializable {
         // Stocker l'attentionOutput pour la passe backward
         this.attentionOutput = attentionConcat; // ou `output` selon ce qui est nécessaire pour backward
 
+        // System.out.println("MultiHeadAttention Forward Pass:");
+        // System.out.println("Q: " + Q);
+        // System.out.println("K: " + K);
+        // System.out.println("V: " + V);
+        // System.out.println("Scores: " + scores);
+        // System.out.println("Attention Weights: " + attentionWeights);
+        // System.out.println("Attention Output: " + attentionOutput);
+        // System.out.println("Output after Wo: " + output);
+
+
         return output;
     }
 
@@ -603,5 +613,66 @@ public class MultiHeadAttention implements Serializable {
     public void setWo(INDArray wo) {
         Wo = wo;
     }
+
+
+    public INDArray getAttentionWeights() {
+        return this.attentionWeights;
+    }
+
+
+
+     /**
+     * Méthode pour afficher les poids d'attention sous forme de tableau croisé.
+     *
+     * @param inputTokens Liste des tokens d'entrée pour l'affichage des relations.
+     */
+    public void printAttentionWeights(List<String> inputTokens) {
+        if (this.attentionWeights == null) {
+            System.out.println("Attention weights are not available. Perform a forward pass first.");
+            return;
+        }
+
+        // Supposons que batchSize = 1
+        int batchSize = (int) attentionWeights.size(0);
+        int numHeads = (int) attentionWeights.size(1);
+        int seqLength_q = (int) attentionWeights.size(2);
+        int seqLength_k = (int) attentionWeights.size(3);
+
+        // Limiter l'affichage à un seul batch pour simplifier
+        for (int b = 0; b < batchSize; b++) {
+            for (int h = 0; h < numHeads; h++) {
+                System.out.println("===== Head " + (h + 1) + " =====");
+
+                // Afficher les en-têtes (tokens clés)
+                System.out.print(String.format("%-10s", "Query"));
+                for (String keyToken : inputTokens) {
+                    System.out.print(String.format("%-10s", keyToken));
+                }
+                System.out.println();
+
+                // Afficher une ligne séparatrice
+                int totalWidth = 10 + 10 * inputTokens.size();
+                for (int i = 0; i < totalWidth; i++) {
+                    System.out.print("-");
+                }
+                System.out.println();
+
+                // Afficher les lignes du tableau (tokens de requête et leurs poids d'attention)
+                for (int q = 0; q < seqLength_q; q++) {
+                    String queryToken = (q < inputTokens.size()) ? inputTokens.get(q) : "Unknown";
+                    System.out.print(String.format("%-10s", queryToken));
+                    for (int k = 0; k < seqLength_k; k++) {
+                        String keyToken = (k < inputTokens.size()) ? inputTokens.get(k) : "Unknown";
+                        float weight = attentionWeights.getFloat(b, h, q, k);
+                        System.out.print(String.format("%-10.4f", weight));
+                    }
+                    System.out.println();
+                }
+
+                System.out.println(); // Ligne vide entre les têtes
+            }
+        }
+    }
+
 
 }

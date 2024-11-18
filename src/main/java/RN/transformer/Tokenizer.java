@@ -12,23 +12,32 @@ import org.nd4j.linalg.factory.Nd4j;
 
 public class Tokenizer implements Serializable {
     private static final long serialVersionUID = -1691008595018974489L;
-    private final Map<String, Integer> tokenToId;
-    private final Map<Integer, String> idToToken;
+    
+    // Utiliser LinkedHashMap pour préserver l'ordre d'insertion
+    private final LinkedHashMap<String, Integer> tokenToId;
+    private final LinkedHashMap<Integer, String> idToToken;
     private int vocabSize;
     private INDArray pretrainedEmbeddings;
     private final int embeddingSize;
+    private final int maxSequenceLength;
+
 
     // Tokens spéciaux
-    private static final String PAD_TOKEN = "<PAD>";
-    private static final String UNK_TOKEN = "<UNK>";
-    private static final String START_TOKEN = "<START>";
-    private static final String END_TOKEN = "<END>";
+    public static final String PAD_TOKEN = "<PAD>";
+    public static final String UNK_TOKEN = "<UNK>";
+    public static final String START_TOKEN = "<START>";
+    public static final String END_TOKEN = "<END>";
+    
+    // WordVectors membre
+    private WordVectors wordVectors;
     
     // Constructeur utilisant des WordVectors
-    public Tokenizer(WordVectors wordVectors, int embeddingSize) {
+    public Tokenizer(WordVectors wordVectors, int embeddingSize, int maxSequenceLength) {
         this.embeddingSize = embeddingSize;
-        this.tokenToId = new HashMap<>();
-        this.idToToken = new HashMap<>();
+        this.maxSequenceLength = maxSequenceLength;
+        this.tokenToId = new LinkedHashMap<>();
+        this.idToToken = new LinkedHashMap<>();
+        this.wordVectors = wordVectors;
         
         // Initialiser les tokens spéciaux
         initializeSpecialTokens();
@@ -36,7 +45,7 @@ public class Tokenizer implements Serializable {
         // Ajouter tous les mots du vocabulaire Word2Vec
         Collection<String> words = wordVectors.vocab().words();
         for (String word : words) {
-            addToken(word);
+            addToken(word); // Maintenant, addToken ne modifie plus pretrainedEmbeddings
         }
         
         this.vocabSize = tokenToId.size();
@@ -46,10 +55,12 @@ public class Tokenizer implements Serializable {
     }
     
     // Constructeur utilisant une liste de mots
-    public Tokenizer(List<String> words, int embeddingSize) {
+    public Tokenizer(List<String> words, int embeddingSize, int maxSequenceLength) {
         this.embeddingSize = embeddingSize;
-        this.tokenToId = new HashMap<>();
-        this.idToToken = new HashMap<>();
+        this.maxSequenceLength = maxSequenceLength;
+        this.tokenToId = new LinkedHashMap<>();
+        this.idToToken = new LinkedHashMap<>();
+        this.wordVectors = null; // Pas de WordVectors fourni
         
         // Initialiser les tokens spéciaux
         initializeSpecialTokens();
@@ -65,21 +76,19 @@ public class Tokenizer implements Serializable {
         initializeEmbeddings();
     }
 
-
+    /**
+     * Convertit une liste de tokens en INDArray d'IDs.
+     */
     public INDArray tokensToINDArray(List<String> tokens) {
-        // System.out.println("Tokens to convert: " + tokens);
         int[] ids = tokens.stream()
                           .mapToInt(token -> tokenToId.getOrDefault(token, getUnkTokenId()))
                           .toArray();
-        // System.out.println("Token to ID Mapping in tokensToINDArray: " + Arrays.toString(ids));
-        
-        // Utiliser createFromArray et reshape pour garantir la forme [1, N]
+        // Assurer la forme [1, N]
         INDArray arr = Nd4j.createFromArray(ids).castTo(DataType.INT32).reshape(1, ids.length);
-        // System.out.println("Shape of INDArray: " + Arrays.toString(arr.shape()));
         return arr;
     }
 
-   /**
+    /**
      * Recherche les embeddings pour un batch de séquences d'IDs de tokens.
      *
      * @param tokenIdsBatch INDArray contenant les IDs des tokens du batch [batchSize, seqLength].
@@ -104,12 +113,9 @@ public class Tokenizer implements Serializable {
         // Récupérer les embeddings: [batchSize * seqLength, dModel]
         INDArray batchEmbeddings = getPretrainedEmbeddings().getRows(tokenIds); 
         
-        // Calculer dModel en obtenant la taille de la dernière dimension de batchEmbeddings
-        int dModel = (int) batchEmbeddings.shape()[1];
-
         // Reshaper en [batchSize, seqLength, dModel]
-        batchEmbeddings = batchEmbeddings.reshape(batchSize, seqLength, dModel);
-        
+        batchEmbeddings = batchEmbeddings.reshape(batchSize, seqLength, embeddingSize);
+
         return batchEmbeddings;
     }
     
@@ -121,14 +127,27 @@ public class Tokenizer implements Serializable {
         addSpecialToken(END_TOKEN);    
     }
 
+    // Imprimer le vocabulaire avec le mapping token-ID
+    public void printVocabulary() {
+        System.out.println("Vocabulaire du Tokenizer:");
+        for (Map.Entry<String, Integer> entry : tokenToId.entrySet()) {
+            System.out.printf("Token: '%s' -> ID: %d%n", entry.getKey(), entry.getValue());
+        }
+    }
+
     // Initialisation des embeddings avec WordVectors
-    private void initializeEmbeddings(WordVectors wordVectors) {
-        pretrainedEmbeddings = Nd4j.zeros(vocabSize, embeddingSize);
+    public void initializeEmbeddings(WordVectors wordVectors) { // Rendue publique
+        if (wordVectors == null) {
+            throw new IllegalArgumentException("WordVectors ne peut pas être null.");
+        }
         
-        // Calculer le vecteur moyen pour les tokens spéciaux
+        this.pretrainedEmbeddings = Nd4j.zeros(vocabSize, embeddingSize);
+        
+        // Calculer le vecteur moyen pour les tokens inconnus
         INDArray meanVector = calculateMeanVector(wordVectors);
         
         // Initialiser les embeddings des tokens spéciaux
+        pretrainedEmbeddings.putRow(getPadTokenId(), Nd4j.zeros(embeddingSize)); // <PAD> est généralement un vecteur nul
         pretrainedEmbeddings.putRow(getUnkTokenId(), meanVector);
         pretrainedEmbeddings.putRow(getStartTokenId(), meanVector.add(Nd4j.randn(1, embeddingSize).mul(0.1)));
         pretrainedEmbeddings.putRow(getEndTokenId(), meanVector.add(Nd4j.randn(1, embeddingSize).mul(0.1)));
@@ -146,12 +165,13 @@ public class Tokenizer implements Serializable {
         }
     }
 
-    // Initialisation des embeddings pour les tests
-    private void initializeEmbeddings() {
-        pretrainedEmbeddings = Nd4j.randn(vocabSize, embeddingSize).divi(Math.sqrt(embeddingSize));
-        pretrainedEmbeddings.putRow(getUnkTokenId(), Nd4j.randn(1, embeddingSize));
-        pretrainedEmbeddings.putRow(getStartTokenId(), Nd4j.randn(1, embeddingSize));
-        pretrainedEmbeddings.putRow(getEndTokenId(), Nd4j.randn(1, embeddingSize));
+    // Initialisation des embeddings avec des vecteurs aléatoires (pour les tests ou l'utilisation sans WordVectors)
+    public void initializeEmbeddings() { // Rendue publique
+        this.pretrainedEmbeddings = Nd4j.randn(vocabSize, embeddingSize).divi(Math.sqrt(embeddingSize));
+        pretrainedEmbeddings.putRow(getPadTokenId(), Nd4j.zeros(embeddingSize)); // <PAD> est un vecteur nul
+        pretrainedEmbeddings.putRow(getUnkTokenId(), Nd4j.zeros(1, embeddingSize));
+        pretrainedEmbeddings.putRow(getStartTokenId(), Nd4j.zeros(1, embeddingSize));
+        pretrainedEmbeddings.putRow(getEndTokenId(), Nd4j.zeros(1, embeddingSize));
     }
 
     // Calcul du vecteur moyen pour les WordVectors
@@ -172,28 +192,52 @@ public class Tokenizer implements Serializable {
                token.equals(START_TOKEN) || token.equals(END_TOKEN);
     }
 
-    // Ajout de tokens spéciaux
+    // Ajout de tokens spéciaux avec des IDs fixes
     private void addSpecialToken(String token) {
         int id = tokenToId.size();
         tokenToId.put(token, id);
         idToToken.put(id, token);
     }
 
-    // Ajout de tokens non spéciaux
-    private void addToken(String token) {
+    // Ajout de tokens non spéciaux et initialisation de leur embedding
+    public void addToken(String token) { // Rendue publique
         if (!tokenToId.containsKey(token)) {
             int id = tokenToId.size();
             tokenToId.put(token, id);
             idToToken.put(id, token);
+            // Embeddings ne sont pas modifiés ici; ils doivent être initialisés ultérieurement
+            vocabSize = tokenToId.size();
         }
     }
 
-    // Conversion de texte en tokens
+    // Conversion de texte en tokens avec ajout des tokens spéciaux et padding
     public List<String> tokenize(String text) {
         String[] tokens = text.split("\\s+|(?=\\p{Punct})|(?<=\\p{Punct})");
-        return Arrays.stream(tokens)
-                     .filter(token -> !token.trim().isEmpty())
-                     .collect(Collectors.toList());
+        List<String> tokenList = new ArrayList<>();
+        
+        // Ajouter le token <START>
+        tokenList.add(START_TOKEN);
+        
+        // Ajouter les tokens de la phrase
+        tokenList.addAll(Arrays.stream(tokens)
+                             .filter(token -> !token.trim().isEmpty())
+                             .collect(Collectors.toList()));
+        
+        // Ajouter le token <END>
+        tokenList.add(END_TOKEN);
+        
+        
+        // Ajouter le padding <PAD> si nécessaire
+        while (tokenList.size() < maxSequenceLength) {
+            tokenList.add(PAD_TOKEN);
+        }
+        
+        // Troncature si la séquence dépasse la longueur maximale
+        if (tokenList.size() > maxSequenceLength) {
+            tokenList = tokenList.subList(0, maxSequenceLength);
+        }
+        
+        return tokenList;
     }
 
     // Conversion de tokens en IDs

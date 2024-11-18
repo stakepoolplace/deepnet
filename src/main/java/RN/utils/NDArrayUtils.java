@@ -125,6 +125,14 @@ public class NDArrayUtils {
         gradients.put(key, value);
     }
 
+    public static INDArray stableSoftmax(INDArray logits, int axis) {
+        INDArray max = logits.max(true, axis);
+        INDArray shifted = logits.sub(max);
+        INDArray exp = Transforms.exp(shifted);
+        INDArray sumExp = exp.sum(true, axis);
+        return exp.div(sumExp);
+    }
+
 
 
 }

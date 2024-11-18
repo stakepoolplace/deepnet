@@ -46,7 +46,7 @@ public class DataGeneratorTest {
     public void testTokenizerConversion() {
         // Initialisez le vocabulaire
         List<String> vocab = Arrays.asList("data", "sample", "target", "<PAD>", "<UNK>");
-        Tokenizer tokenizer = new Tokenizer(vocab, 50);
+        Tokenizer tokenizer = new Tokenizer(vocab, 50, 50);
 
         // Vérifiez le mappage tokenToId
         System.out.println("Mapping tokenToId: " + tokenizer.getTokenToId());
@@ -75,7 +75,7 @@ public class DataGeneratorTest {
     public void testDataAndTargetAssignment() throws IOException {
         // Initialisez le vocabulaire avec tous les mots nécessaires
         List<String> vocab = Arrays.asList("data", "sample", "target", "<PAD>", "<UNK>");
-        Tokenizer tokenizer = new Tokenizer(vocab, 50);
+        Tokenizer tokenizer = new Tokenizer(vocab, 50, 50);
 
         // Tokenize les phrases en listes de tokens individuels
         List<String> dataTokens = tokenizer.tokenize("data sample");      // ["data", "sample"]

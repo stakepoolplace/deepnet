@@ -5,6 +5,7 @@ import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -29,19 +30,57 @@ public class DataGenerator {
                                       .collect(Collectors.toList());
     }
 
+    /**
+     * Constructeur secondaire qui prend une liste de Batch préexistants.
+     *
+     * @param batchList Liste des Batch contenant les inputs, targets et masks.
+     */
+    public DataGenerator(List<Batch> batchList) {
+        this.inputSequences = new ArrayList<>();
+        this.targetSequences = new ArrayList<>();
+        this.tokenizer = null; // Pas nécessaire si les séquences sont déjà tokenisées
+        this.batchSize = 0;
+        this.sequenceLength = 0;
+        this.currentBatch = 0;
+
+        for (Batch batch : batchList) {
+            INDArray inputs = batch.getInputs();   // [batchSize, sequenceLength]
+            INDArray targets = batch.getTargets(); // [batchSize, sequenceLength]
+
+            // Initialiser batchSize et sequenceLength si non définis
+            if (this.batchSize == 0 && this.sequenceLength == 0) {
+                this.batchSize = (int) inputs.shape()[0];
+                this.sequenceLength = (int) inputs.shape()[1];
+            }
+
+            for (int i = 0; i < inputs.size(0); i++) { // Itère sur le batch
+                List<Integer> inputSeq = new ArrayList<>();
+                List<Integer> targetSeq = new ArrayList<>();
+                for (int j = 0; j < inputs.size(1); j++) { // Itère sur la séquence
+                    inputSeq.add((int) inputs.getDouble(i, j));
+                    targetSeq.add((int) targets.getDouble(i, j));
+                }
+                inputSequences.add(inputSeq);
+                targetSequences.add(targetSeq);
+            }
+        }
+    }
+
     private List<Integer> preprocess(String text) {
         List<String> tokens = tokenizer.tokenize(text);
         List<Integer> ids = tokenizer.tokensToIds(tokens);
-        ids.add(0, tokenizer.getStartTokenId());
-        ids.add(tokenizer.getEndTokenId());
+        //ids.add(0, tokenizer.getStartTokenId());
+        //ids.add(tokenizer.getEndTokenId());
         while (ids.size() < sequenceLength) {
             ids.add(tokenizer.getPadTokenId());
         }
         if (ids.size() > sequenceLength) {
             ids = ids.subList(0, sequenceLength);
         }
+        System.out.printf("Texte: '%s'%nTokens: %s%nIDs: %s%n", text, tokens, ids);
         return ids;
     }
+    
 
     public boolean hasNextBatch() {
         return currentBatch * batchSize < inputSequences.size();
@@ -77,8 +116,13 @@ public class DataGenerator {
             }
         }
 
-        INDArray mask = generateMask(inputs);
+        INDArray mask = null;
+
+        if(this.tokenizer != null)
+            mask = generateMask(inputs);
+        
         currentBatch++;
+
         return new Batch(inputs, targets, mask);
     }
 

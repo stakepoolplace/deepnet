@@ -17,12 +17,12 @@ public class TransformerGradientCheck {
         int dff = 12;
         double dropoutRate = 0.1;
         int vocabSize = 10;
-        
+        int maxSequenceLength = 50;
         float learningRate = 0.001f;
 
         // Initialiser le Tokenizer avec un vocabulaire simple
         List<String> vocab = Arrays.asList("<PAD>", "<UNK>", "<START>", "<END>", "hello", "world", "test", "input", "output", "RN");
-        Tokenizer tokenizer = new Tokenizer(vocab, dModel);
+        Tokenizer tokenizer = new Tokenizer(vocab, dModel, maxSequenceLength);
         INDArray pretrainedEmbeddings = Nd4j.randn(vocabSize, dModel).divi(Math.sqrt(dModel));
         tokenizer.setPretrainedEmbeddings(pretrainedEmbeddings);
         

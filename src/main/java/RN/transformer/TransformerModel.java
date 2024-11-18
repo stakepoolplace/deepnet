@@ -12,6 +12,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -25,6 +26,8 @@ import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.indexing.NDArrayIndex;
 import org.nd4j.linalg.ops.transforms.Transforms;
 
+import RN.transformer.Decoder.DecoderLayer;
+import RN.transformer.Encoder.EncoderLayer;
 import RN.utils.NDArrayUtils;
 
 public class TransformerModel implements Serializable {
@@ -37,12 +40,13 @@ public class TransformerModel implements Serializable {
     public Decoder decoder;
     public CustomAdamOptimizer optimizer;
     public Tokenizer tokenizer;
-    private double dropoutRate = 0.1; // Exemple de taux de dropout fixe
+    private double dropoutRate = 0.01; // Exemple de taux de dropout fixe
     private transient static WordVectors wordVectors; // Chargé une fois, accessible statiquement
     private int dModel = 300; // dModel must be divisible by numHeads
     private int numLayers = 6;
     private int numHeads = 6;
     private int dff = 2048;
+    private int maxSequenceLength = 50; // Définissez cette valeur selon votre analyse
     private INDArray pretrainedEmbeddings = null; // Maintenant non statique
     private List<INDArray> combinedParameters = new ArrayList<>();
     private List<INDArray> combinedGradients = new ArrayList<>();
@@ -60,14 +64,14 @@ public class TransformerModel implements Serializable {
      *
      * @throws IOException en cas d'erreur de chargement des embeddings.
      */
-    public TransformerModel() throws IOException {
+    public TransformerModel(float initialLr, int warmupSteps) throws IOException {
 
         // Garantit la compatibilité et les performances optimales
         Nd4j.setDefaultDataTypes(DataType.FLOAT, DataType.FLOAT);
 
         // Définir un vocabulaire par défaut si nécessaire
         List<String> defaultVocab = Arrays.asList("hello", "world", "test", "input", "output", "<PAD>", "<UNK>", "<START>", "<END>");
-        this.tokenizer = new Tokenizer(defaultVocab, dModel);
+        this.tokenizer = new Tokenizer(defaultVocab, dModel, maxSequenceLength);
         this.pretrainedEmbeddings = this.tokenizer.getPretrainedEmbeddings();
         
         // Initialiser les autres composants
@@ -76,7 +80,7 @@ public class TransformerModel implements Serializable {
 
         addCombinedParameters();
 
-        this.optimizer = new CustomAdamOptimizer(0.001f, dModel, 1000, combinedParameters); // Initialisation hypothétique
+        this.optimizer = new CustomAdamOptimizer(initialLr, dModel, warmupSteps, combinedParameters); // Initialisation hypothétique
     }
 
     /**
@@ -88,7 +92,7 @@ public class TransformerModel implements Serializable {
      * @param dff          Dimension de la couche Feed-Forward.
      * @param dropoutRate  Taux de dropout.
      */
-    public TransformerModel(int numLayers, int dModel, int numHeads, int dff, double dropoutRate) {
+    public TransformerModel(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, float initialLr, int warmupSteps) {
         this.numLayers = numLayers;
         this.dModel = dModel;
         this.numHeads = numHeads;
@@ -100,12 +104,12 @@ public class TransformerModel implements Serializable {
 
         // Initialiser le Tokenizer avec WordVectors
         if (wordVectors != null) {
-            this.tokenizer = new Tokenizer(wordVectors, dModel);
+            this.tokenizer = new Tokenizer(wordVectors, dModel, maxSequenceLength);
             this.pretrainedEmbeddings = tokenizer.getPretrainedEmbeddings();
         } else {
             // Si les WordVectors ne sont pas chargés, initialiser avec un vocabulaire vide ou par défaut
             List<String> defaultVocab = Arrays.asList("<PAD>", "<UNK>", "<START>", "<END>");
-            this.tokenizer = new Tokenizer(defaultVocab, dModel);
+            this.tokenizer = new Tokenizer(defaultVocab, dModel, maxSequenceLength);
             this.pretrainedEmbeddings = tokenizer.getPretrainedEmbeddings();
         }
 
@@ -116,7 +120,7 @@ public class TransformerModel implements Serializable {
         addCombinedParameters();
 
         // Initialiser l'optimiseur avec les paramètres combinés
-        this.optimizer = new CustomAdamOptimizer(0.001f, dModel, 1000, combinedParameters);
+        this.optimizer = new CustomAdamOptimizer(initialLr, dModel, warmupSteps, combinedParameters);
     }
 
     /**
@@ -130,7 +134,7 @@ public class TransformerModel implements Serializable {
      * @param vocabSize    Taille du vocabulaire.
      * @param tokenizer    Instance de Tokenizer personnalisée.
      */
-    public TransformerModel(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, int vocabSize, Tokenizer tokenizer) {
+    public TransformerModel(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, int vocabSize, Tokenizer tokenizer, float initialLr, int warmupSteps) {
         this.numLayers = numLayers;
         this.dModel = dModel;
         this.numHeads = numHeads;
@@ -158,7 +162,14 @@ public class TransformerModel implements Serializable {
         addCombinedParameters();
 
         // Initialiser l'optimiseur avec les paramètres combinés
-        this.optimizer = new CustomAdamOptimizer(0.001f, dModel, 1000, combinedParameters);
+        this.optimizer = new CustomAdamOptimizer(initialLr, dModel, warmupSteps, combinedParameters);
+    }
+
+    // Méthode pour initialiser l'optimiseur après avoir collecté tous les paramètres
+    public void initializeOptimizer(float learningRate, int warmupSteps) {
+        List<INDArray> combinedParameters = this.encoder.getParameters();
+        combinedParameters.addAll(this.decoder.getParameters());
+        this.optimizer = new CustomAdamOptimizer(learningRate, dModel, warmupSteps, combinedParameters);
     }
 
     /**
@@ -169,6 +180,9 @@ public class TransformerModel implements Serializable {
      * @throws IOException En cas d'erreur d'E/S.
      */
     public void train(DataGenerator dataGenerator, int epochNum) throws IOException {
+        
+        freezeSpecialTokenEmbeddings();
+
         for (int epoch = 0; epoch < epochNum; epoch++) {
             // Définir le numéro d'epoch actuel (commence à 1)
             optimizer.setEpoch(epoch + 1);
@@ -189,7 +203,7 @@ public class TransformerModel implements Serializable {
 
                 // Créer les masques de padding pour l'encodeur et le décodeur
                 INDArray encoderPaddingMask = createPaddingMask(data);       // [batchSize, 1, 1, seqLength]
-                INDArray decoderPaddingMask = createPaddingMask(target);    // [batchSize, 1, 1, seqLength]
+                //INDArray decoderPaddingMask = createPaddingMask(target);    // [batchSize, 1, 1, seqLength]
 
                 // Créer le masque look-ahead pour le décodeur (taille basée sur la séquence cible)
                 // Créer le masque look-ahead avec le batch size
@@ -223,8 +237,11 @@ public class TransformerModel implements Serializable {
                 // Ajouter tous les gradients calculés aux `combinedGradients`
                 addCombinedGradients();
 
+                // Clip gradients
+                clipGradients(combinedGradients, 0.5f); // Exemple avec maxNorm = 0.5
+
                 // Mettre à jour les poids du modèle via l'optimiseur
-                //optimizer.update(combinedParameters, combinedGradients);
+                optimizer.update(combinedParameters, combinedGradients);
 
                 // for (int i = 0; i < combinedGradients.size(); i++) {
                 //     INDArray grad = combinedGradients.get(i);
@@ -243,7 +260,6 @@ public class TransformerModel implements Serializable {
                 //     //assertFalse(paramBefore.equalsWithEps(paramAfter, 1e-6), "Le paramètre " + i + " devrait avoir été mis à jour.");
                 // }
 
-                optimizer.update(combinedParameters, combinedGradients);
 
 
             }
@@ -364,15 +380,15 @@ public class TransformerModel implements Serializable {
     
             // Créer les masques de padding pour le batch
             INDArray encoderPaddingMask = createPaddingMask(data);
-            INDArray decoderPaddingMask = createPaddingMask(target);
+            //INDArray decoderPaddingMask = createPaddingMask(target);
             // Créer le masque look-ahead avec le batch size
             int batchSize = (int) data.shape()[0];
             int targetSeqLength = (int) target.shape()[1];
             INDArray lookAheadMask = createLookAheadMask(batchSize, targetSeqLength); // Longueur max du target
     
-            System.out.println("Encoder Mask: " + encoderPaddingMask);
-            System.out.println("Decoder Mask: " + decoderPaddingMask);
-            System.out.println("Look-Ahead Mask: " + lookAheadMask);
+            // System.out.println("Encoder Mask: " + encoderPaddingMask);
+            // System.out.println("Decoder Mask: " + decoderPaddingMask);
+            // System.out.println("Look-Ahead Mask: " + lookAheadMask);
 
             // Encoder les données du batch
             INDArray encoded = encoder.encode(true, data, encoderPaddingMask);
@@ -457,18 +473,27 @@ public class TransformerModel implements Serializable {
         return averageLoss;
     }
 
+    // private void clipGradients(List<INDArray> gradients, double maxNorm) {
+    //     double totalNorm = 0.0;
+    //     for (INDArray grad : gradients) {
+    //         totalNorm += Math.pow(grad.norm2Number().doubleValue(), 2);
+    //     }
+    //     totalNorm = Math.sqrt(totalNorm);
+    //     if (totalNorm > maxNorm) {
+    //         double scale = maxNorm / totalNorm;
+    //         for (INDArray grad : gradients) {
+    //             grad.muli(scale);
+    //         }
+    //         // System.out.println("Gradients clipped. Scale factor: " + scale);
+    //     }
+    // }
+
     private void clipGradients(List<INDArray> gradients, double maxNorm) {
-        double totalNorm = 0.0;
         for (INDArray grad : gradients) {
-            totalNorm += Math.pow(grad.norm2Number().doubleValue(), 2);
-        }
-        totalNorm = Math.sqrt(totalNorm);
-        if (totalNorm > maxNorm) {
-            double scale = maxNorm / totalNorm;
-            for (INDArray grad : gradients) {
-                grad.muli(scale);
+            double norm = grad.norm2Number().doubleValue();
+            if (norm > maxNorm) {
+                grad.divi(norm).muli(maxNorm);
             }
-            System.out.println("Gradients clipped. Scale factor: " + scale);
         }
     }
     
@@ -501,29 +526,32 @@ public class TransformerModel implements Serializable {
      * @param data INDArray contenant les IDs de tokens du batch [batchSize, seqLength].
      * @return INDArray représentant le masque de padding [batchSize, 1, 1, seqLength].
      */
-    public INDArray createPaddingMask(INDArray data) {
-        // Vérifier les dimensions
-        if (data.rank() != 2) {
-            throw new IllegalArgumentException("Data doit être de rang 2 [batchSize, seqLength], mais a la forme: " + Arrays.toString(data.shape()));
-        }
-
-        int batchSize = (int) data.shape()[0];
-        int seqLength = (int) data.shape()[1];
+    public INDArray createPaddingMask(INDArray tokens) {
+        // tokens : [batchSize, seqLength]
+        // output mask : [batchSize, 1, 1, seqLength]
         
-        // Créer un masque de padding initialisé à zéro
-        INDArray mask = Nd4j.zeros(DataType.FLOAT, batchSize, 1, 1, seqLength);
-
-        // Identifier les positions de padding et les marquer
-        for (int i = 0; i < batchSize; i++) {
-            for (int j = 0; j < seqLength; j++) {
-                if (data.getInt(i, j) == tokenizer.getPadTokenId()) {
-                    mask.putScalar(new int[] { i, 0, 0, j }, Float.NEGATIVE_INFINITY); // Masquer les positions de padding
+        // Identifier les positions de padding
+        INDArray paddingPositions = tokens.eq(tokenizer.getPadTokenId()).castTo(DataType.FLOAT); // [batchSize, seqLength]
+        System.out.println("Padding Positions:\n" + paddingPositions);
+        
+        // Créer un masque initial rempli de 0.0f
+        INDArray paddingMask = Nd4j.zeros(DataType.FLOAT, tokens.size(0), 1, 1, tokens.size(1)); // [batchSize, 1, 1, seqLength]
+        
+        // Boucler sur chaque élément pour remplacer 1.0f par -Infinity
+        for (int i = 0; i < tokens.size(0); i++) { // Itérer sur batchSize
+            for (int j = 0; j < tokens.size(1); j++) { // Itérer sur seqLength
+                if (paddingPositions.getFloat(i, j) == 1.0f) {
+                    paddingMask.putScalar(new int[]{i, 0, 0, j}, Float.NEGATIVE_INFINITY);
+                } else {
+                    paddingMask.putScalar(new int[]{i, 0, 0, j}, 0.0f);
                 }
             }
         }
-
-        return mask;
+        
+        System.out.println("Generated Padding Mask:\n" + paddingMask);
+        return paddingMask;
     }
+
 
     /**
      * Crée un masque look-ahead pour le décodeur.
@@ -532,26 +560,27 @@ public class TransformerModel implements Serializable {
      * @return INDArray représentant le masque look-ahead [1, 1, size, size].
      */
     public INDArray createLookAheadMask(int batchSize, int size) {
-        // Créer une matrice triangulaire inférieure
-        INDArray mask = Nd4j.ones(DataType.FLOAT, size, size);
-        INDArray lowerTriangle = Nd4j.tri(size, size, 0);
-        mask.subi(lowerTriangle);
-    
-        // Appliquer le masquage infini pour softmax
+        // Créer une matrice triangulaire inférieure remplie de 0.0f
+        INDArray lookAheadMask = Nd4j.zeros(DataType.FLOAT, size, size); // [size, size]
+        
+        // Remplir le masque avec 0.0f où j <= i et -Infinity où j > i
         for (int i = 0; i < size; i++) {
-            for (int j = i + 1; j < size; j++) {
-                mask.putScalar(new int[] { i, j }, Float.NEGATIVE_INFINITY);
+            for (int j = 0; j < size; j++) {
+                if (j > i) {
+                    lookAheadMask.putScalar(new int[]{i, j}, Float.NEGATIVE_INFINITY);
+                } else {
+                    lookAheadMask.putScalar(new int[]{i, j}, 0.0f);
+                }
             }
         }
-    
+        
         // Reshaper pour correspondre aux dimensions attendues [1, 1, size, size]
-        mask = mask.reshape(1, 1, size, size);
-    
+        lookAheadMask = lookAheadMask.reshape(1, 1, size, size); // [1, 1, size, size]
+        
         // Répéter le masque pour chaque exemple du batch
-        // Utiliser tile() au lieu de repeat()
-        mask = Nd4j.tile(mask, batchSize, 1, 1, 1);
-    
-        return mask;
+        INDArray repeatedMask = Nd4j.tile(lookAheadMask, batchSize, 1, 1, 1); // [batchSize, 1, size, size]
+        
+        return repeatedMask;
     }
     
 
@@ -563,40 +592,13 @@ public class TransformerModel implements Serializable {
      * @return Un Pair contenant la perte moyenne et les gradients [batchSize, seqLength, vocabSize].
      */
     protected Pair<Float, INDArray> calculateCrossEntropyLossAndGradient(List<INDArray> decodedLogits, INDArray targetBatch) {
-        // Supposons que decodedLogits contient une seule INDArray pour tout le batch
         INDArray logits = decodedLogits.get(0); // [batchSize, seqLength, vocabSize]
         int batchSize = (int) logits.shape()[0];
         int seqLength = (int) logits.shape()[1];
-        int vocabSize = (int) logits.shape()[2]; // Assurez-vous que dModel correspond au vocabSize
-
-        // Exemple de vérification
-        System.out.println("Logits Shape: " + Arrays.toString(logits.shape()));
-
-        INDArray probabilities = NDArrayUtils.softmax(logits, 2); // [batchSize, seqLength, vocabSize]
+        int vocabSize = (int) logits.shape()[2];
+    
+        INDArray probabilities = NDArrayUtils.stableSoftmax(logits, 2); // [batchSize, seqLength, vocabSize]
         
-        // Trace des logits et probabilités
-        System.out.println("Logits: " + logits);
-        System.out.println("Probabilities: " + probabilities);
-        System.out.println("Probabilities Shape: " + Arrays.toString(probabilities.shape()));
-        for (int i = 0; i < probabilities.size(0); i++) { // Itère sur le batch
-            for (int j = 0; j < probabilities.size(1); j++) { // Itère sur la séquence
-                // Sélectionne la slice [i, j, :]
-                INDArray slice = probabilities.get(NDArrayIndex.point(i), NDArrayIndex.point(j), NDArrayIndex.all());
-                
-                // Calcule la somme des probabilités pour cette slice
-                double sum = slice.sumNumber().doubleValue();
-                
-                // Vérifie que la somme est proche de 1
-                if (Math.abs(sum - 1.0) > 1e-4) {
-                    throw new RuntimeException("Probabilities pour l'échantillon " + i + ", token " + j + " ne somment pas à 1. Somme = " + sum);
-                }
-            }
-        }
-
-
-        // Appliquer softmax sur la dernière dimension (vocabSize)
-        //INDArray softmaxLogits = NDArrayUtils.softmax(logits, 2); // [batchSize, seqLength, vocabSize]
-
         // Créer une INDArray one-hot pour les cibles
         INDArray targetOneHot = Nd4j.zeros(DataType.FLOAT, batchSize, seqLength, vocabSize);
         for (int b = 0; b < batchSize; b++) {
@@ -605,19 +607,27 @@ public class TransformerModel implements Serializable {
                 targetOneHot.putScalar(new int[] { b, i, targetId }, 1.0f);
             }
         }
-
-        // Calculer la perte d'entropie croisée
-        // log(softmax) * targetOneHot, puis somme et moyenne
+    
+        // Créer un masque pour ignorer les `<PAD>`
+        INDArray paddingMask = createPaddingMask(targetBatch); // [batchSize, 1, 1, seqLength]
+        INDArray paddingMaskReshaped = paddingMask.reshape(batchSize, 1, seqLength); // [batchSize, 1, seqLength]
+    
+        // Calculer la perte d'entropie croisée en masquant les `<PAD>`
         INDArray logSoftmax = Transforms.log(probabilities.add(1e-10)); // éviter log(0)
         INDArray crossEntropy = logSoftmax.mul(targetOneHot).neg(); // [batchSize, seqLength, vocabSize]
-        float loss = crossEntropy.sumNumber().floatValue() / (batchSize * seqLength);
+        INDArray maskedCrossEntropy = crossEntropy.mul(paddingMaskReshaped.broadcast(batchSize, vocabSize, seqLength).permute(0, 2, 1));
+        
+        // Corriger la division en convertissant le masque booléen en FLOAT
+        float loss = maskedCrossEntropy.sumNumber().floatValue() / targetBatch.neq(tokenizer.getPadTokenId()).castTo(DataType.FLOAT).sumNumber().floatValue();
 
-        // Calculer les gradients (softmax - targetOneHot) / (batchSize * seqLength)
-        INDArray gradients = probabilities.sub(targetOneHot).div(batchSize * seqLength); // [batchSize, seqLength, vocabSize]
-
+        // Calculer les gradients (softmax - targetOneHot) en masquant les `<PAD>`
+        INDArray gradients = probabilities.sub(targetOneHot)
+            .mul(paddingMaskReshaped.broadcast(batchSize, vocabSize, seqLength).permute(0, 2, 1))
+            .div(targetBatch.neq(tokenizer.getPadTokenId()).castTo(DataType.FLOAT).sumNumber().floatValue());
+    
         return Pair.of(loss, gradients);
-
     }
+    
 
     /**
      * Rétropropagation des gradients à travers l'encodeur et le décodeur.
@@ -654,16 +664,39 @@ public class TransformerModel implements Serializable {
     public void addCombinedParameters() {
         // Ajoute les paramètres de l'encodeur
         List<INDArray> encoderParams = encoder.getParameters();
-        for (int i = 0; i < encoderParams.size(); i++) {
-            combinedParameters.add(encoderParams.get(i));
-            // System.out.println("Parameter " + (combinedParameters.size() - 1) + ": Encoder Param " + i);
+        for (INDArray param : encoderParams) {
+            if (!isSpecialTokenParameter(param)) {
+                combinedParameters.add(param);
+            }
         }
-
+    
         // Ajoute les paramètres du decoder
         List<INDArray> decoderParams = decoder.getParameters();
-        for (int i = 0; i < decoderParams.size(); i++) {
-            combinedParameters.add(decoderParams.get(i));
-            // System.out.println("Parameter " + (combinedParameters.size() - 1) + ": Decoder Param " + i);
+        for (INDArray param : decoderParams) {
+            if (!isSpecialTokenParameter(param)) {
+                combinedParameters.add(param);
+            }
+        }
+    }
+    
+    private boolean isSpecialTokenParameter(INDArray param) {
+        // Implémenter une logique pour vérifier si le param correspond à un token spécial
+        // Par exemple, comparer les adresses des objets ou les indices des embeddings
+        // Cette implémentation dépend de votre structure de paramètres
+        // Voici un exemple simplifié :
+        return param.equals(tokenizer.getPretrainedEmbeddings().getRow(tokenizer.getPadTokenId())) ||
+               param.equals(tokenizer.getPretrainedEmbeddings().getRow(tokenizer.getStartTokenId())) ||
+               param.equals(tokenizer.getPretrainedEmbeddings().getRow(tokenizer.getEndTokenId())) ||
+               param.equals(tokenizer.getPretrainedEmbeddings().getRow(tokenizer.getUnkTokenId()));
+    }
+
+    public void freezeSpecialTokenEmbeddings() {
+        int[] specialTokenIds = { tokenizer.getPadTokenId(), tokenizer.getStartTokenId(), tokenizer.getEndTokenId(), tokenizer.getUnkTokenId() };
+        
+        for (int tokenId : specialTokenIds) {
+            INDArray embedding = tokenizer.getPretrainedEmbeddings().getRow(tokenId);
+            embedding.assign(Nd4j.zeros(dModel)); // Exemple pour <PAD>
+            // Ou assigner une valeur spécifique
         }
     }
 
@@ -892,9 +925,7 @@ public class TransformerModel implements Serializable {
         INDArray data = Nd4j.create(DataType.INT, 1, maxSeqLength);
         for (int j = 0; j < paddedPromptTokenIds.size(); j++) {
             data.putScalar(new int[] {0, j}, (int) paddedPromptTokenIds.get(j));
-        }        for (int j = 0; j < paddedPromptTokenIds.size(); j++) {
-            data.putScalar(new int[] {0, j}, (int) paddedPromptTokenIds.get(j));
-        }
+        }        
 
 
         // Créer le masque de padding pour l'encodeur
@@ -967,6 +998,35 @@ public class TransformerModel implements Serializable {
             padded.add(padTokenId);
         }
         return padded;
+    }
+
+    /**
+     * Méthode pour afficher les relations entre les tokens en utilisant les poids
+     * d'attention stockés.
+     *
+     * @param inputTokens Liste des tokens d'entrée.
+     */
+    public void displayAttentionRelations(List<String> inputTokens) {
+        // Afficher les poids d'attention de l'encodeur
+        for (int i = 0; i < encoder.layers.size(); i++) {
+            EncoderLayer layer = encoder.layers.get(i);
+            MultiHeadAttention selfAttn = layer.getSelfAttention();
+            System.out.println("===== Encoder Layer " + (i + 1) + " Attention Weights =====");
+            selfAttn.printAttentionWeights(inputTokens);
+        }
+
+        // Afficher les poids d'attention du décodeur
+        for (int i = 0; i < decoder.layers.size(); i++) {
+            DecoderLayer layer = decoder.layers.get(i);
+            MultiHeadAttention selfAttn = layer.getSelfAttention();
+            MultiHeadAttention crossAttn = layer.getCrossAttention();
+
+            System.out.println("===== Decoder Layer " + (i + 1) + " Self Attention Weights =====");
+            selfAttn.printAttentionWeights(inputTokens);
+
+            System.out.println("===== Decoder Layer " + (i + 1) + " Cross Attention Weights =====");
+            crossAttn.printAttentionWeights(inputTokens);
+        }
     }
 
     /**

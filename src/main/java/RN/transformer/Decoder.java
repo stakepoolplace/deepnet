@@ -212,6 +212,14 @@ public class Decoder implements Serializable {
             this.dropout3 = new Dropout(dropoutRate);
         }
 
+        public MultiHeadAttention getSelfAttention() {
+            return this.selfAttention;
+        }
+        
+        public MultiHeadAttention getCrossAttention() {
+            return this.encoderDecoderAttention;
+        }
+
         /**
          * Passe forward à travers la couche du décodeur.
          *

@@ -33,7 +33,7 @@ public class TransformerTest {
     @Before
     public void setUp() throws Exception {
         // Initialisation de TransformerModel sans lancer d'exception
-        model = new TransformerModel(); 
+        model = new TransformerModel( 0.0001f, 10); 
     }
     
     // @After
@@ -62,7 +62,6 @@ public class TransformerTest {
         
         // Appeler createPaddingMask avec le batch de tokens
         INDArray paddingMask = model.createPaddingMask(tokensINDArray);
-        
         // Afficher le masque généré pour le débogage
         System.out.println("paddingMask: " + paddingMask);
         
@@ -150,7 +149,7 @@ public class TransformerTest {
     @Test
     public void testTokenizationAndDetokenization() {
         String originalText = "The quick brown fox jumps over the lazy dog";
-        Tokenizer tokenizer = new Tokenizer(Arrays.asList(originalText.split(" ")), 300);
+        Tokenizer tokenizer = new Tokenizer(Arrays.asList(originalText.split(" ")), 300, 50);
         List<String> tokens = tokenizer.tokenize(originalText);
         List<Integer> tokenIds = tokenizer.tokensToIds(tokens);
         String reconstructedText = tokenizer.idsToTokens(tokenIds);
@@ -169,11 +168,14 @@ public class TransformerTest {
         int numHeads = 6;
         int dff = 512;
         int vocabSize = vocabulary.size();
+        int maxSequenceLength = 50;
+        float learningRate = 0.0001f;
+        int warmupSteps = 10;
         
-        Tokenizer tokenizer = new Tokenizer(vocabulary, dModel);
+        Tokenizer tokenizer = new Tokenizer(vocabulary, dModel, maxSequenceLength);
         
         // Utiliser le constructeur qui prend un Tokenizer personnalisé
-        TransformerModel model = new TransformerModel(numLayers, dModel, numHeads, dff, 0.1, vocabSize, tokenizer);
+        TransformerModel model = new TransformerModel(numLayers, dModel, numHeads, dff, 0.1, vocabSize, tokenizer, learningRate, warmupSteps);
         
         String testInput = "le chat est sur le tapis les chiens dans le jardin";
         String testExpected = "les chiens aiment le jardin";
@@ -381,7 +383,7 @@ public class TransformerTest {
     @Test
     public void testInference() throws IOException {
         // Initialiser le tokenizer et le modèle
-        TransformerModel model = new TransformerModel(2, 300, 6, 2048, 0.1);
+        TransformerModel model = new TransformerModel(2, 300, 6, 2048, 0.1, 0.001f, 10);
 
         // Simuler un entraînement (optionnel)
         model.setTrained(true); // Assurez-vous d'avoir un setter pour cette variable si elle est privée
@@ -412,7 +414,7 @@ public class TransformerTest {
         model.saveState(filePath);
         
         // Créer un nouveau modèle et charger l'état
-        TransformerModel loadedModel = new TransformerModel();
+        TransformerModel loadedModel = new TransformerModel(0.0001f,10);
         loadedModel.loadState(filePath);
         
         // Vérifier que l'état chargé correspond à l'état sauvegardé

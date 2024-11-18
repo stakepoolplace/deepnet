@@ -158,7 +158,7 @@ public class TransformerModelTest {
     @Test
     public void testInferenceAfterTraining2() throws Exception {
         // Initialiser le tokenizer et le modèle
-        //TransformerModel model = new TransformerModel(2, 300, 6, 2048, 0.1); // Utiliser 2 layers pour le test
+        TransformerModel model = new TransformerModel(2, 300, 6, 2048, 0.0); // Utiliser 2 layers pour le test
 
         // Création d'un DataGenerator avec plusieurs batches pour simuler plusieurs epochs
         List<String> data = Arrays.asList("hello", "input");
@@ -167,7 +167,7 @@ public class TransformerModelTest {
 
 
         // Simuler l'entraînement
-        model.train(mockDataGenerator, 1);
+        model.train(mockDataGenerator, 10);
 
         // Effectuer l'inférence
         String inputPrompt = "hello";
