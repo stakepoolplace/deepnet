@@ -11,7 +11,7 @@ import static org.junit.Assert.*;
 import java.util.ArrayList;
 import java.util.List;
 
-public class calculateLearningRateOptimizerTest {
+public class CalculateLearningRateOptimizerTest {
 
     private CustomAdamOptimizer optimizer;
     private final float initialLr = 0.001f;
