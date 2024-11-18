@@ -29,7 +29,7 @@ public class TransformerInferenceTest {
         int dff = 1024;
         double dropoutRate = 0.0;
         int vocabSize = 16;
-        int maxSequenceLength = 50;
+        int maxSequenceLength = 5;
         float learningRate = 0.0001f;
         int warmupSteps = 10;
     
@@ -80,7 +80,7 @@ public class TransformerInferenceTest {
         transformer.optimizer = new CustomAdamOptimizer(learningRate, dModel, warmupSteps, transformer.getCombinedParameters());
         
         // Entraîner le modèle sur plusieurs epochs
-        int epochs = 150;
+        int epochs = 50;
         float previousLoss = Float.MAX_VALUE;
         for (int epoch = 1; epoch <= epochs; epoch++) {
             float averageLoss = transformer.trainEpoch(dataGenerator);
@@ -99,15 +99,16 @@ public class TransformerInferenceTest {
         
         // Effectuer une inférence sur la même entrée
         String prompt = "hello";
-        String inferredOutput = transformer.infer(prompt, 1);
+        String inferredOutput = transformer.infer(prompt, 3);
         System.out.println("Inferred Output: " + inferredOutput);
         
-        // Vérifier que l'inférence correspond à la cible attendue
-        assertEquals("L'inférence devrait correspondre à la cible.", targetSentences.get(0), inferredOutput);
-    
         // Afficher les relations entre les tokens après l'entraînement
         List<String> inputTokens = tokenizer.tokenize(prompt); // Ex: ["hello", "world", "input"]
         transformer.displayAttentionRelations(inputTokens);
+
+        // Vérifier que l'inférence correspond à la cible attendue
+        assertEquals("L'inférence devrait correspondre à la cible.", targetSentences.get(0), inferredOutput);
+
     }
 
 
@@ -180,7 +181,7 @@ public class TransformerInferenceTest {
     
         // Effectuer une inférence sur la même entrée et stocker les poids d'attention
         String prompt = "hello";
-        String inferredOutput = transformer.infer(prompt, 3); // Ajuster la longueur maximale si nécessaire
+        String inferredOutput = transformer.infer(prompt, maxSequenceLength); // Ajuster la longueur maximale si nécessaire
         System.out.println("Inferred Output: " + inferredOutput);
     
 
@@ -208,7 +209,7 @@ public class TransformerInferenceTest {
         int vocabSize = 6;  // Taille du vocabulaire pour l'exemple
         float learningRate = 0.001f;
         int epochs = 100;
-        int maxSequenceLength = 50;
+        int maxSequenceLength = 5;
         int warmupSteps = 10;
 
         // Initialiser le Tokenizer avec un vocabulaire simple
@@ -278,7 +279,7 @@ public class TransformerInferenceTest {
         
         // Effectuer une inférence sur la même entrée
         String prompt = "hello world";
-        String inferredOutput = transformer.infer(prompt, 2);
+        String inferredOutput = transformer.infer(prompt, maxSequenceLength);
         System.out.println("Inferred Output: " + inferredOutput);
         
         // Vérifier que l'inférence correspond à la cible attendue

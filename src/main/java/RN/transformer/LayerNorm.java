@@ -138,15 +138,15 @@ public class LayerNorm extends Layer implements Serializable {
                             .add(gradVariance.mul(normalized.mul(2)).div(dModel))
                             .add(gradMean.div(dModel)); // [batchSize, seqLength, dModel]
 
-        System.out.println("Shape of mean: " + Arrays.toString(mean.shape()));
-        System.out.println("Shape of variance: " + Arrays.toString(variance.shape()));
-        System.out.println("Shape of stdInv: " + Arrays.toString(stdInv.shape()));
-        System.out.println("Shape of normalized: " + Arrays.toString(normalized.shape()));
-        System.out.println("Shape of gradGamma: " + Arrays.toString(gradGamma.shape()));
+        // System.out.println("Shape of mean: " + Arrays.toString(mean.shape()));
+        // System.out.println("Shape of variance: " + Arrays.toString(variance.shape()));
+        // System.out.println("Shape of stdInv: " + Arrays.toString(stdInv.shape()));
+        // System.out.println("Shape of normalized: " + Arrays.toString(normalized.shape()));
+        // System.out.println("Shape of gradGamma: " + Arrays.toString(gradGamma.shape()));
 
-        System.out.println("input: " + input);
-        System.out.println("gradOutput: " + gradOutput);
-        System.out.println("normalized: " + normalized);
+        // System.out.println("input: " + input);
+        // System.out.println("gradOutput: " + gradOutput);
+        // System.out.println("normalized: " + normalized);
 
 
         // Vérification des gradients

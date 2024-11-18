@@ -70,7 +70,7 @@ public class TransformerModel implements Serializable {
         Nd4j.setDefaultDataTypes(DataType.FLOAT, DataType.FLOAT);
 
         // Définir un vocabulaire par défaut si nécessaire
-        List<String> defaultVocab = Arrays.asList("hello", "world", "test", "input", "output", "<PAD>", "<UNK>", "<START>", "<END>");
+        List<String> defaultVocab = Arrays.asList("hello", "world", "test", "input", "output", "The", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog", "<PAD>", "<UNK>", "<START>", "<END>");
         this.tokenizer = new Tokenizer(defaultVocab, dModel, maxSequenceLength);
         this.pretrainedEmbeddings = this.tokenizer.getPretrainedEmbeddings();
         
@@ -532,23 +532,21 @@ public class TransformerModel implements Serializable {
         
         // Identifier les positions de padding
         INDArray paddingPositions = tokens.eq(tokenizer.getPadTokenId()).castTo(DataType.FLOAT); // [batchSize, seqLength]
-        System.out.println("Padding Positions:\n" + paddingPositions);
+        // System.out.println("Padding Positions:\n" + paddingPositions);
         
-        // Créer un masque initial rempli de 0.0f
-        INDArray paddingMask = Nd4j.zeros(DataType.FLOAT, tokens.size(0), 1, 1, tokens.size(1)); // [batchSize, 1, 1, seqLength]
+        // Créer un masque initial rempli de 1.0f
+        INDArray paddingMask = Nd4j.ones(DataType.FLOAT, tokens.size(0), 1, 1, tokens.size(1)); // [batchSize, 1, 1, seqLength]
         
-        // Boucler sur chaque élément pour remplacer 1.0f par -Infinity
+        // Boucler sur chaque élément pour remplacer 1.0f (padding) par 0.0f
         for (int i = 0; i < tokens.size(0); i++) { // Itérer sur batchSize
             for (int j = 0; j < tokens.size(1); j++) { // Itérer sur seqLength
                 if (paddingPositions.getFloat(i, j) == 1.0f) {
-                    paddingMask.putScalar(new int[]{i, 0, 0, j}, Float.NEGATIVE_INFINITY);
-                } else {
                     paddingMask.putScalar(new int[]{i, 0, 0, j}, 0.0f);
                 }
             }
         }
         
-        System.out.println("Generated Padding Mask:\n" + paddingMask);
+        // System.out.println("Generated Padding Mask:\n" + paddingMask);
         return paddingMask;
     }
 
@@ -592,21 +590,36 @@ public class TransformerModel implements Serializable {
      * @return Un Pair contenant la perte moyenne et les gradients [batchSize, seqLength, vocabSize].
      */
     protected Pair<Float, INDArray> calculateCrossEntropyLossAndGradient(List<INDArray> decodedLogits, INDArray targetBatch) {
+    
         INDArray logits = decodedLogits.get(0); // [batchSize, seqLength, vocabSize]
         int batchSize = (int) logits.shape()[0];
         int seqLength = (int) logits.shape()[1];
         int vocabSize = (int) logits.shape()[2];
     
+        // Appliquer le softmax de manière stable
         INDArray probabilities = NDArrayUtils.stableSoftmax(logits, 2); // [batchSize, seqLength, vocabSize]
-        
+        // System.out.println("Probabilités Calculées: " + probabilities);
+    
+        // Vérifier les probabilités
+        if (probabilities.isNaN().any() || probabilities.isInfinite().any()) {
+            throw new RuntimeException("Probabilités contiennent des NaN ou des valeurs infinies.");
+        }
+    
         // Créer une INDArray one-hot pour les cibles
         INDArray targetOneHot = Nd4j.zeros(DataType.FLOAT, batchSize, seqLength, vocabSize);
         for (int b = 0; b < batchSize; b++) {
             for (int i = 0; i < seqLength; i++) {
                 int targetId = targetBatch.getInt(b, i);
-                targetOneHot.putScalar(new int[] { b, i, targetId }, 1.0f);
+                if (targetId >= 0 && targetId < vocabSize) {
+                    targetOneHot.putScalar(new int[] { b, i, targetId }, 1.0f);
+                } else {
+                    throw new IllegalArgumentException("ID de cible invalide: " + targetId);
+                }
             }
         }
+    
+        // System.out.println("targetOneHot: " + targetOneHot);
+    
     
         // Créer un masque pour ignorer les `<PAD>`
         INDArray paddingMask = createPaddingMask(targetBatch); // [batchSize, 1, 1, seqLength]
@@ -615,15 +628,29 @@ public class TransformerModel implements Serializable {
         // Calculer la perte d'entropie croisée en masquant les `<PAD>`
         INDArray logSoftmax = Transforms.log(probabilities.add(1e-10)); // éviter log(0)
         INDArray crossEntropy = logSoftmax.mul(targetOneHot).neg(); // [batchSize, seqLength, vocabSize]
-        INDArray maskedCrossEntropy = crossEntropy.mul(paddingMaskReshaped.broadcast(batchSize, vocabSize, seqLength).permute(0, 2, 1));
         
-        // Corriger la division en convertissant le masque booléen en FLOAT
+        // Appliquer le masque binaire (1 pour valide, 0 pour padding)
+        INDArray maskedCrossEntropy = crossEntropy.mul(paddingMaskReshaped.broadcast(batchSize, vocabSize, seqLength).permute(0, 2, 1)); // [batchSize, seqLength, vocabSize]
+    
+        // System.out.println("Cross Entropy:\n" + crossEntropy);
+        // System.out.println("Masked Cross Entropy:\n" + maskedCrossEntropy);
+    
+        // Calculer la perte moyenne sur les tokens valides
         float loss = maskedCrossEntropy.sumNumber().floatValue() / targetBatch.neq(tokenizer.getPadTokenId()).castTo(DataType.FLOAT).sumNumber().floatValue();
-
+    
+        // System.out.println("Total Loss: " + loss);
+    
         // Calculer les gradients (softmax - targetOneHot) en masquant les `<PAD>`
         INDArray gradients = probabilities.sub(targetOneHot)
             .mul(paddingMaskReshaped.broadcast(batchSize, vocabSize, seqLength).permute(0, 2, 1))
             .div(targetBatch.neq(tokenizer.getPadTokenId()).castTo(DataType.FLOAT).sumNumber().floatValue());
+    
+        // System.out.println("Gradients:\n" + gradients);
+    
+        // Vérifier les gradients
+        if (gradients.isNaN().any() || gradients.isInfinite().any()) {
+            throw new RuntimeException("Gradients contiennent des NaN ou des valeurs infinies.");
+        }
     
         return Pair.of(loss, gradients);
     }

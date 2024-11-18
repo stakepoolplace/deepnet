@@ -16,7 +16,7 @@ public class BatchTest {
         List<String> target = Arrays.asList("target1", "target2");
 
         // Création d'un Tokenizer fictif (adapté à votre contexte réel de test)
-        Tokenizer tokenizer = new Tokenizer(Arrays.asList("data1", "data2", "target1", "target2"), 300);
+        Tokenizer tokenizer = new Tokenizer(Arrays.asList("data1", "data2", "target1", "target2"), 300, 5);
         
         // Conversion attendue des tokens en INDArrays
         INDArray expectedData = tokenizer.tokensToINDArray(data);

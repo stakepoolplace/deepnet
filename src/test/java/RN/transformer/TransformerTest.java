@@ -48,12 +48,12 @@ public class TransformerTest {
         List<List<Integer>> tokensBatch = Arrays.asList(
             Arrays.asList(1, 2, 3, 0, 0) // 0 est supposé être le token de padding
         );
-
+    
         // Convertir le batch de tokens en INDArray
         int batchSize = tokensBatch.size();
         int seqLength = tokensBatch.get(0).size();
         INDArray tokensINDArray = Nd4j.create(batchSize, seqLength);
-
+    
         for (int i = 0; i < batchSize; i++) {
             for (int j = 0; j < seqLength; j++) {
                 tokensINDArray.putScalar(new int[]{i, j}, tokensBatch.get(i).get(j));
@@ -64,11 +64,11 @@ public class TransformerTest {
         INDArray paddingMask = model.createPaddingMask(tokensINDArray);
         // Afficher le masque généré pour le débogage
         System.out.println("paddingMask: " + paddingMask);
-        
+    
         // Créer le masque attendu
-        // Comme le masque a la forme [batchSize, 1, 1, seqLength], nous devons créer un tableau 4D
+        // Avec la nouvelle implémentation, le masque doit être binaire : 1.0f pour les tokens valides, 0.0f pour le padding
         INDArray expectedMask = Nd4j.create(new float[][][][]{
-            { { { 0.0f, 0.0f, 0.0f, Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY } } }
+            { { { 1.0f, 1.0f, 1.0f, 0.0f, 0.0f } } }
         });
         
         // S'assurer que les types de données correspondent
@@ -82,31 +82,26 @@ public class TransformerTest {
                     for (int l = 0; l < shape[3]; l++) {
                         float actualValue = paddingMask.getFloat(i, j, k, l);
                         float expectedValue = expectedMask.getFloat(i, j, k, l);
-                        if (Float.isInfinite(expectedValue)) {
-                            assertTrue(Float.isInfinite(actualValue),
-                                    String.format("Position (%d,%d,%d,%d) expected Infinite but got %f", i, j, k, l, actualValue));
-                        } else {
-                            assertEquals(expectedValue, actualValue, 1e-5f,
-                                    String.format("Position (%d,%d,%d,%d) values don't match", i, j, k, l));
-                        }
+                        assertEquals(expectedValue, actualValue, 1e-5f,
+                            String.format("Position (%d,%d,%d,%d) values don't match: expected %f but got %f", i, j, k, l, expectedValue, actualValue));
                     }
                 }
             }
         }
         
         // Tester le lookAheadMask si nécessaire
-        INDArray lookAheadMask = model.createLookAheadMask(batchSize,5);
-        System.out.println("lookAheadMask " + lookAheadMask);
+        INDArray lookAheadMask = model.createLookAheadMask(batchSize, 5);
+        System.out.println("lookAheadMask: " + lookAheadMask);
         for (int i = 0; i < 5; i++) {
             for (int j = 0; j < 5; j++) {
                 float expectedValue = j > i ? Float.NEGATIVE_INFINITY : 0.0f;
                 float actualValue = lookAheadMask.getFloat(0, 0, i, j);
                 if (Float.isInfinite(expectedValue)) {
                     assertTrue(Float.isInfinite(actualValue),
-                            String.format("Position (%d,%d) expected Infinite but got %f", i, j, actualValue));
+                        String.format("Position (%d,%d) expected Infinite but got %f", i, j, actualValue));
                 } else {
                     assertEquals(expectedValue, actualValue, 1e-5f,
-                            String.format("Position (%d,%d) values don't match", i, j));
+                        String.format("Position (%d,%d) values don't match: expected %f but got %f", i, j, expectedValue, actualValue));
                 }
             }
         }
@@ -149,12 +144,12 @@ public class TransformerTest {
     @Test
     public void testTokenizationAndDetokenization() {
         String originalText = "The quick brown fox jumps over the lazy dog";
-        Tokenizer tokenizer = new Tokenizer(Arrays.asList(originalText.split(" ")), 300, 50);
+        Tokenizer tokenizer = new Tokenizer(Arrays.asList(originalText.split(" ")), 300, 11);
         List<String> tokens = tokenizer.tokenize(originalText);
         List<Integer> tokenIds = tokenizer.tokensToIds(tokens);
         String reconstructedText = tokenizer.idsToTokens(tokenIds);
         
-        org.junit.Assert.assertEquals("Text should be preserved after tokenization and detokenization", originalText, reconstructedText);
+        org.junit.Assert.assertEquals("Text should be preserved after tokenization and detokenization", "<START> " + originalText + " <END>", reconstructedText);
     }
 
     @Test

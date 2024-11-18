@@ -23,7 +23,7 @@ public class TransformerModelTest {
     @Before
     public void setUp() throws Exception {
         // Initialisation de TransformerModel sans lancer d'exception
-        model = new TransformerModel(); 
+        model = new TransformerModel(0.0001f, 10); 
     }
 
     @Test
@@ -40,7 +40,7 @@ public class TransformerModelTest {
     @Test
     public void testSaveAndLoadState() throws IOException, ClassNotFoundException {
         // Créer une instance du modèle
-        TransformerModel originalModel = new TransformerModel();
+        TransformerModel originalModel = new TransformerModel(0.0001f, 10);
 
         // Création d'un DataGenerator fictif avec des paires d'entrée-cible simples
         List<String> data = Arrays.asList("hello world");
@@ -55,7 +55,7 @@ public class TransformerModelTest {
         originalModel.saveState(filePath);
         
         // Créer une nouvelle instance du modèle
-        TransformerModel loadedModel = new TransformerModel();
+        TransformerModel loadedModel = new TransformerModel(0.0001f, 10);
         
         // Charger l'état sauvegardé
         loadedModel.loadState(filePath);
@@ -158,7 +158,7 @@ public class TransformerModelTest {
     @Test
     public void testInferenceAfterTraining2() throws Exception {
         // Initialiser le tokenizer et le modèle
-        TransformerModel model = new TransformerModel(2, 300, 6, 2048, 0.0); // Utiliser 2 layers pour le test
+        TransformerModel model = new TransformerModel(2, 300, 6, 2048, 0.0,0.0001f, 10); // Utiliser 2 layers pour le test
 
         // Création d'un DataGenerator avec plusieurs batches pour simuler plusieurs epochs
         List<String> data = Arrays.asList("hello", "input");

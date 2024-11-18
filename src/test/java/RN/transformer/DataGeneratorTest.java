@@ -74,8 +74,8 @@ public class DataGeneratorTest {
     @Test
     public void testDataAndTargetAssignment() throws IOException {
         // Initialisez le vocabulaire avec tous les mots nécessaires
-        List<String> vocab = Arrays.asList("data", "sample", "target", "<PAD>", "<UNK>");
-        Tokenizer tokenizer = new Tokenizer(vocab, 50, 50);
+        List<String> vocab = Arrays.asList("data", "sample", "target", "<START>", "<END>", "<PAD>", "<UNK>");
+        Tokenizer tokenizer = new Tokenizer(vocab, 50, 4);
 
         // Tokenize les phrases en listes de tokens individuels
         List<String> dataTokens = tokenizer.tokenize("data sample");      // ["data", "sample"]
@@ -109,8 +109,8 @@ public class DataGeneratorTest {
         System.out.println("Target text: " + targetText);
 
         // Vérifications finales
-        Assert.assertEquals("Data batch should contain expected tokens", "data sample", dataText);
-        Assert.assertEquals("Target batch should contain expected tokens", "target sample", targetText);
+        Assert.assertEquals("Data batch should contain expected tokens", "<START> data sample <END>", dataText);
+        Assert.assertEquals("Target batch should contain expected tokens", "<START> target sample <END>", targetText);
     }
     
     

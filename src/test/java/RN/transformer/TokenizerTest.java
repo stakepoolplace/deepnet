@@ -29,7 +29,7 @@ public class TokenizerTest {
     private TransformerModel model; // Assurez-vous que cette classe existe dans votre projet
     private DataGenerator mockDataGenerator; // Assurez-vous que cette classe existe dans votre projet
     private List<DataSet> trainingData;
-    private int maxSequenceLength = 50;
+    private int maxSequenceLength = 7;
 
     @BeforeAll
     public void setUp() throws IOException {
@@ -244,7 +244,7 @@ public class TokenizerTest {
 
         // Effectuer une inférence sur l'entrée d'entraînement
         String input = "chat mange la souris";
-        String actualOutput = model.infer(input, 10);
+        String actualOutput = model.infer(input, 4);
         String expectedOutput = "le chat mange";
 
         // Vérification que l'inférence n'est pas nulle et est cohérente
@@ -252,7 +252,7 @@ public class TokenizerTest {
         assertFalse("L'inférence ne devrait pas être vide", actualOutput.isEmpty());
         System.out.println(actualOutput);
         // (Optionnel) Vérifier que l'inférence est proche de la cible
-        assertEquals("L'inférence devrait correspondre à la cible", expectedOutput, actualOutput);
+        assertEquals( expectedOutput, actualOutput,"L'inférence devrait correspondre à la cible");
     }
 
     /**

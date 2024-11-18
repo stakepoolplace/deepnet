@@ -27,11 +27,13 @@ public class TransformerIntegrationTest {
         // Initialisation du modèle Transformer avec des paramètres réduits
         int numLayers = 2;
         int numHeads = 4;
-        int dff = 128;
+        int dff = 255;
         int vocabSize = vocabulary.size();
-        float dropoutRate = 0.1f;
+        float dropoutRate = 0.0f;
+        float lr = 0.0001f;
+        int warmupSteps = 10;
         
-        model = new TransformerModel(numLayers, dModel, numHeads, dff, dropoutRate, vocabSize, tokenizer);
+        model = new TransformerModel(numLayers, dModel, numHeads, dff, dropoutRate, vocabSize, tokenizer, lr, warmupSteps);
         
         // Création d'un DataGenerator fictif avec des paires d'entrée-cible simples sans fichiers
         List<String> data = Arrays.asList("hello world");
@@ -115,7 +117,7 @@ public class TransformerIntegrationTest {
 
         // Effectuer une inférence
         String input = "hello world";
-        String actualOutput = model.infer(input, 10);
+        String actualOutput = model.infer(input, 4);
 
         // Vérifier que l'inférence est proche de la cible
         // Comme c'est un jeu de données fictif et l'entraînement est limité, cela peut ne pas correspondre exactement
@@ -124,8 +126,8 @@ public class TransformerIntegrationTest {
         assertFalse("L'inférence ne devrait pas être vide", actualOutput.isEmpty());
 
         // (Optionnel) Comparer avec une sortie attendue si possible
-        // String expectedOutput = "hello output";
-        // assertEquals("L'inférence devrait correspondre à la cible", expectedOutput, actualOutput);
+        String expectedOutput = "hello output";
+        //assertEquals("L'inférence devrait correspondre à la cible", expectedOutput, actualOutput);
     }
 
     
