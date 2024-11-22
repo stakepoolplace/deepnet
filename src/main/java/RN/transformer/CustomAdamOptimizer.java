@@ -110,34 +110,37 @@ public class CustomAdamOptimizer implements Serializable {
         for (int i = 0; i < params.size(); i++) {
             INDArray param = params.get(i);
             INDArray grad = grads.get(i);
-    
+        
             AdamState state = states.get(i);
-    
-            // Afficher les valeurs avant la mise à jour
-            // System.out.println("Param " + i + " before update: " + param);
-            // System.out.println("Grad " + i + ": " + grad);
-    
+        
+            // Vérifier l'alignement
+            // if (param != combinedParameters.get(i)) {
+            //     System.err.println("Mauvais alignement des paramètres à l'index " + i);
+            // }
+        
             // Mise à jour des moments en place
             state.m.muli(beta1).addi(grad.mul(1 - beta1));
             state.v.muli(beta2).addi(grad.mul(grad).mul(1 - beta2));
-    
+        
             // Correction de biais
             INDArray mHat = state.m.mul(1.0f / (1.0f - (float) Math.pow(beta1, currentStep)));
             INDArray vHat = state.v.mul(1.0f / (1.0f - (float) Math.pow(beta2, currentStep)));
-    
+        
             // Calcul de l'étape de mise à jour
             INDArray step = mHat.mul(learningRate).div(Transforms.sqrt(vHat).add(epsilon));
-    
-            // Afficher les valeurs intermédiaires
-            // System.out.println("mHat " + i + ": " + mHat);
-            // System.out.println("vHat " + i + ": " + vHat);
-            // System.out.println("Step " + i + ": " + step);
-    
+        
+            // Log des valeurs intermédiaires
+            System.out.println("Paramètre " + i + " avant mise à jour: " + param);
+            System.out.println("Gradient " + i + ": " + grad);
+            System.out.println("mHat " + i + ": " + mHat);
+            System.out.println("vHat " + i + ": " + vHat);
+            System.out.println("Step " + i + ": " + step);
+        
             // Mise à jour du paramètre
             param.subi(step);
-    
-            // Afficher le paramètre après la mise à jour
-            //  System.out.println("Param " + i + " after update: " + param);
+        
+            // Log après mise à jour
+            System.out.println("Paramètre " + i + " après mise à jour: " + param);
         }
     
         // Mettre à jour le taux d'apprentissage si nécessaire

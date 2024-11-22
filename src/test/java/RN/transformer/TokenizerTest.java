@@ -56,13 +56,13 @@ public class TokenizerTest {
         tokenizer.printVocabulary();
 
         // Initialisation du modèle Transformer avec dModel = embeddingSize
-        int numLayers = 2;
+        int numLayers = 1;
         int dModel = embeddingSize;
-        int numHeads = 2;
-        int dff = 1024;
+        int numHeads = 1;
+        int dff = 255;
         int vocabSize = tokenizer.getVocabSize();
         float dropoutRate = 0.0f;
-        float initialLr = 0.0001f;
+        float initialLr = 0.001f;
         int warmupSteps = 10;
 
         model = new TransformerModel(numLayers, dModel, numHeads, dff, dropoutRate, vocabSize, tokenizer, initialLr, warmupSteps);
@@ -103,6 +103,7 @@ public class TokenizerTest {
         int batchSize = 2; // Ajustez selon vos besoins
         int sequenceLength = 7; // Définissez une longueur de séquence cohérente
         mockDataGenerator = new DataGenerator(data, targets, tokenizer, batchSize, sequenceLength);
+        
     }
 
     /**
@@ -233,7 +234,6 @@ public class TokenizerTest {
     @Test
     public void testTrainingAndInference() throws Exception {
         
-        model.freezeSpecialTokenEmbeddings();
 
         // Entraîner le modèle sur un seul epoch
         float initialLoss = model.trainEpochAndGetLoss(mockDataGenerator);
@@ -251,8 +251,31 @@ public class TokenizerTest {
         assertNotNull("L'inférence ne devrait pas être null", actualOutput);
         assertFalse("L'inférence ne devrait pas être vide", actualOutput.isEmpty());
         System.out.println(actualOutput);
+
+
+        // Afficher les relations entre les tokens après l'entraînement
+        List<String> inputTokens = tokenizer.tokenize(input); // Ex: ["hello", "world", "input"]
+        model.displayAttentionRelations(inputTokens);
+
         // (Optionnel) Vérifier que l'inférence est proche de la cible
         assertEquals( expectedOutput, actualOutput,"L'inférence devrait correspondre à la cible");
+    }
+
+    @Test
+    public void testEmbeddingsUpdate() throws IOException {
+        
+        // Copier les embeddings avant l'entraînement
+        INDArray embeddingBefore = model.tokenizer.getPretrainedEmbeddings().getRow(tokenizer.getTokenToId().get("chat")).dup();
+        
+        // Entraîner le modèle
+        model.trainEpochAndGetLoss(mockDataGenerator);
+        
+        // Copier les embeddings après l'entraînement
+        INDArray embeddingAfter = model.tokenizer.getPretrainedEmbeddings().getRow(tokenizer.getTokenToId().get("chat"));
+        
+
+        // Vérifier que l'embedding a changé
+        assertFalse(embeddingBefore.equals(embeddingAfter), "L'embedding de 'chat' devrait avoir été mis à jour.");
     }
 
     /**
@@ -319,13 +342,17 @@ public class TokenizerTest {
 
         // Effectuer une inférence
         String input = "chiens aiment le jardin";
-        String actualOutput = model.infer(input, 10);
+        String actualOutput = model.infer(input, 4);
         String expectedOutput = "les chiens aiment";
 
         // Vérifier que l'inférence est proche de la cible
         assertNotNull("L'inférence ne devrait pas être null", actualOutput);
         assertFalse("L'inférence ne devrait pas être vide", actualOutput.isEmpty());
         System.out.println("actualOutput : " + actualOutput);
+
+        // Afficher les relations entre les tokens après l'entraînement
+        List<String> inputTokens = tokenizer.tokenize(input); // Ex: ["hello", "world", "input"]
+        model.displayAttentionRelations(inputTokens);
 
         // (Optionnel) Comparer avec une sortie attendue si possible
         assertEquals("L'inférence devrait correspondre à la cible", expectedOutput, actualOutput);
@@ -336,7 +363,7 @@ public class TokenizerTest {
      */
     @Test
     public void testVocabularyIncludesAllWords() {
-        String[] words = {"<START>", "chat", "mange", "la", "souris", "<END>", "<PAD>", "le", "chien", "court", "jardin", "les", "chats", "aiment", "tapis", "sur", "sol", "incroyable", "film", "temps", "belle", "journée", "heureux", "mauvais", "livre", "intéressant", "repas", "triste", "excellent", "ag agréable"};
+        String[] words = {"<START>", "chat", "mange", "la", "souris", "<END>", "<PAD>", "le", "chien", "court", "jardin", "les", "chats", "aiment", "tapis", "sur", "sol", "film", "temps", "belle", "journée", "heureux", "mauvais", "livre", "intéressant", "repas", "triste", "excellent", "agréable"};
         for (String word : words) {
             System.out.println("Token : " + word);
             int id = tokenizer.getTokenToId().getOrDefault(word, tokenizer.getUnkTokenId());

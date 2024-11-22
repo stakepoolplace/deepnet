@@ -350,4 +350,228 @@ public class MultiHeadAttentionTest {
         assertFalse(gradInput.isNaN().any(), "gradInput ne devrait pas contenir de NaN");
         assertFalse(gradInput.isInfinite().any(), "gradInput ne devrait pas contenir d'Inf");
     }
+
+    @Test
+    public void testCreateLookAheadMask_Binary() {
+        int batchSize = 2;
+        int size = 3;
+        INDArray mask = TransformerModel.createLookAheadMask(batchSize, size);
+        
+        // Masque attendu pour size=3
+        // [
+        //   [
+        //     [
+        //       [1.0, 0.0, 0.0],
+        //       [1.0, 1.0, 0.0],
+        //       [1.0, 1.0, 1.0]
+        //     ]
+        //   ],
+        //   [
+        //     [
+        //       [1.0, 0.0, 0.0],
+        //       [1.0, 1.0, 0.0],
+        //       [1.0, 1.0, 1.0]
+        //     ]
+        //   ]
+        // ]
+        INDArray expectedMask = Nd4j.create(new float[][][][] {
+            {
+                {
+                    {1.0f, 0.0f, 0.0f},
+                    {1.0f, 1.0f, 0.0f},
+                    {1.0f, 1.0f, 1.0f}
+                }
+            },
+            {
+                {
+                    {1.0f, 0.0f, 0.0f},
+                    {1.0f, 1.0f, 0.0f},
+                    {1.0f, 1.0f, 1.0f}
+                }
+            }
+        }); // [2, 1, 3, 3]
+        
+        assertTrue(mask.equalsWithEps(expectedMask, 1e-6), "Le masque look-ahead binaire est incorrect.");
+    }
+
+    @Test
+    public void testCreateLookAheadMask_SingleBatch_SmallSize() {
+        int batchSize = 1;
+        int size = 3;
+
+        // Générer le masque look-ahead
+        INDArray mask = TransformerModel.createLookAheadMask(batchSize, size);
+
+        // Définir le masque attendu
+        INDArray expectedMask = Nd4j.create(new float[][][][] {
+            {
+                {
+                    {1.0f, 0f, 0f},
+                    {1.0f, 1.0f, 0f},
+                    {1.0f, 1.0f, 1.0f}
+                }
+            }
+        });
+
+        printMask(expectedMask);
+        printMask(mask);
+
+        // Vérifier la forme du masque
+        assertArrayEquals(new long[] {batchSize, 1, size, size}, mask.shape(),
+        "La forme du masque look-ahead est incorrecte.");
+
+        // Vérifier les valeurs du masque
+        for (int b = 0; b < batchSize; b++) {
+            for (int i = 0; i < size; i++) {
+                for (int j = 0; j < size; j++) {
+                    float expectedValue = expectedMask.getFloat(b, 0, i, j);
+                    float actualValue = mask.getFloat(b, 0, i, j);
+                    assertEquals(expectedValue, actualValue, 1e-6,
+                    String.format("Position [%d][%d][%d][%d] devrait être -Infinity, mais était %.2f",
+                        b, 0, i, j, actualValue));
+                }
+            }
+        }
+
+        System.out.println("Test réussi : Le masque look-ahead pour un batch unique et petite taille fonctionne correctement.");
+    }
+
+
+    /**
+     * Méthode utilitaire pour afficher un masque.
+     * Utile pour le debugging mais non utilisée dans les assertions.
+     */
+    private void printMask(INDArray mask) {
+        System.out.println("Mask Shape: " + Arrays.toString(mask.shape()));
+        System.out.println(mask);
+    }
+
+
+    @Test
+    public void testForwardWithLookAheadMask_SpecificValues() {
+        // Configuration des paramètres pour le test
+        int dModel = 4;      // Dimension du modèle
+        int numHeads = 2;    // Nombre de têtes
+        int depth = dModel / numHeads; // Profondeur par tête
+    
+        // Création d'une instance de MultiHeadAttention
+        MultiHeadAttention mha = new MultiHeadAttention(dModel, numHeads);
+    
+        // Initialisation des poids Wq, Wk, Wv, Wo à des matrices identité
+        INDArray Wq = Nd4j.eye(dModel); // [4, 4]
+        INDArray Wk = Nd4j.eye(dModel); // [4, 4]
+        INDArray Wv = Nd4j.eye(dModel); // [4, 4]
+        INDArray Wo = Nd4j.eye(numHeads * depth); // [4, 4]
+    
+        // Affecter les poids directement (assurez-vous que les champs sont accessibles)
+        mha.getWq().assign(Wq);
+        mha.getWk().assign(Wk);
+        mha.getWv().assign(Wv);
+        mha.getWo().assign(Wo);
+    
+        // Définir les entrées spécifiques
+        // inputQ, inputK, inputV : [batchSize=1, seqLength=2, dModel=4]
+        INDArray input = Nd4j.create(new float[][][] {
+            {
+                {1.0f, 0.0f, 0.0f, 0.0f}, // Premier token
+                {0.0f, 1.0f, 0.0f, 0.0f}  // Deuxième token
+            }
+        }); // [1, 2, 4]
+    
+        // Créer un masque look-ahead binaire
+        // Pour seqLength=2 : [[1, 0], [1, 1]]
+        INDArray lookAheadMask = TransformerModel.createLookAheadMask(1, 2); // [1, 1, 2, 2]
+    
+        // Appel de la méthode forward
+        INDArray output = mha.forward(input, input, input, lookAheadMask); // [1, 2, 4]
+    
+        // Définir la sortie attendue
+        INDArray expectedOutput = Nd4j.create(new float[][][] {
+            {
+                {1.0f, 0.0f, 0.0f, 0.0f}, // Sortie pour le premier token
+                {0.3302f, 0.6698f, 0.0f, 0.0f}  // Sortie pour le deuxième token
+            }
+        }); // [1, 2, 4]
+    
+        // Afficher les sorties pour debugging
+        System.out.println("Output:\n" + output);
+        System.out.println("Expected Output:\n" + expectedOutput);
+    
+        // Vérifier les dimensions de la sortie
+        assertEquals(3, output.rank(), "Le tenseur devrait être d'ordre 3");
+        assertArrayEquals(new long[]{1, 2, 4}, output.shape(), "La forme de la sortie est incorrecte");
+    
+        // Vérifier les valeurs de la sortie
+        for (int b = 0; b < 1; b++) {
+            for (int i = 0; i < 2; i++) {
+                for (int j = 0; j < 4; j++) {
+                    float expectedValue = expectedOutput.getFloat(b, i, j);
+                    float actualValue = output.getFloat(b, i, j);
+                    assertEquals(expectedValue, actualValue, 1e-4f, // Augmenter la tolérance légèrement
+                        String.format("Position [%d][%d][%d] devrait être %.4f, mais était %.4f",
+                            b, i, j, expectedValue, actualValue));
+                }
+            }
+        }
+    
+        System.out.println("Test réussi : La méthode forward fonctionne correctement avec des valeurs spécifiques et un masque look-ahead binaire.");
+    }
+
+
+    @Test
+    public void testCreatePaddingMask_SpecificValues() {
+        // Configuration du Tokenizer avec des IDs connus
+        // Supposons que <PAD> a l'ID 0
+        Tokenizer tokenizer = new Tokenizer(Arrays.asList("<PAD>", "Hello", "world"), 300, 50);
+        
+        // Créer une instance du TransformerModel avec le tokenizer
+        TransformerModel transformer = new TransformerModel(6, 300, 6, 2048, 0D, 3, tokenizer, 0.001f, 1000);
+        
+        // Définir un batch avec une séquence de longueur 4 : [1, 2, 0, 0]
+        INDArray tokens = Nd4j.create(new float[][] {
+            {1, 2, 0, 0}
+        }); // [1, 4]
+        
+        // Créer le masque de padding
+        INDArray mask = transformer.createPaddingMask(tokens); // [1, 1, 1, 4]
+        
+        // Définir le masque attendu
+        // [
+        //   [
+        //     [ [0.0, 0.0, -Infinity, -Infinity] ]
+        //   ]
+        // ]
+        INDArray expectedMask = Nd4j.create(new float[][][][] {
+            {
+                {
+                    {1f, 1f, 0f, 0f}
+                }
+            }
+        }); // [1, 1, 1, 4]
+        
+        // Vérifier la forme du masque
+        assertArrayEquals(expectedMask.shape(), mask.shape(),
+            "La forme du masque de padding n'est pas correcte.");
+        
+        // Vérifier les valeurs du masque
+        for (int b = 0; b < mask.size(0); b++) {
+            for (int h = 0; h < mask.size(1); h++) {
+                for (int i = 0; i < mask.size(2); i++) {
+                    for (int j = 0; j < mask.size(3); j++) {
+                        float expectedValue = expectedMask.getFloat(b, h, i, j);
+                        float actualValue = mask.getFloat(b, h, i, j);
+                        assertEquals(expectedValue, actualValue, 1e-6f,
+                        String.format("Position [%d][%d][%d][%d] devrait être %.1f, mais était %.2f",
+                            b, h, i, j, expectedValue, actualValue));
+                    }
+                }
+            }
+        }
+        
+        System.out.println("Test réussi : La méthode createPaddingMask génère le masque correct avec des valeurs spécifiques.");
+    }
+
+
+
+
 }

@@ -94,15 +94,10 @@ public class TransformerTest {
         System.out.println("lookAheadMask: " + lookAheadMask);
         for (int i = 0; i < 5; i++) {
             for (int j = 0; j < 5; j++) {
-                float expectedValue = j > i ? Float.NEGATIVE_INFINITY : 0.0f;
+                float expectedValue = j > i ? 0f : 1f;
                 float actualValue = lookAheadMask.getFloat(0, 0, i, j);
-                if (Float.isInfinite(expectedValue)) {
-                    assertTrue(Float.isInfinite(actualValue),
-                        String.format("Position (%d,%d) expected Infinite but got %f", i, j, actualValue));
-                } else {
-                    assertEquals(expectedValue, actualValue, 1e-5f,
-                        String.format("Position (%d,%d) values don't match: expected %f but got %f", i, j, expectedValue, actualValue));
-                }
+                assertEquals(expectedValue, actualValue, 1e-5f,
+                String.format("Position (%d,%d) values don't match: expected %f but got %f", i, j, expectedValue, actualValue));
             }
         }
     }
@@ -330,7 +325,7 @@ public class TransformerTest {
     public void testLossCalculation() {
         int batchSize = 2;
         int seqLength = 5;
-        int vocabSize = 9;
+        int vocabSize = 18;
     
         // Assurez-vous que vocabSize est correct
         assertEquals("Vocab size should match", vocabSize, model.getVocabSize());

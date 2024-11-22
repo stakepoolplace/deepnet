@@ -7,19 +7,19 @@ import java.util.List;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 
-public class Main {
+public class MainTest {
     public static void main(String[] args) {
         try {
             // Définir le vocabulaire et initialiser le Tokenizer
             List<String> vocab = Arrays.asList("<PAD>", "<UNK>", "<START>", "<END>", "hello", "world");
             int dModel = 4;
             int numLayers = 1;
-            int numHeads = 2;
+            int numHeads = 1;
             int dff = 8;
             double dropoutRate = 0.0; // Désactiver le dropout pour la simulation
             
-            Tokenizer tokenizer = new Tokenizer(vocab, dModel);
-            TransformerModel transformer = new TransformerModel(numLayers, dModel, numHeads, dff, dropoutRate, vocab.size(), tokenizer);
+            Tokenizer tokenizer = new Tokenizer(vocab, dModel,3);
+            TransformerModel transformer = new TransformerModel(numLayers, dModel, numHeads, dff, dropoutRate, vocab.size(), tokenizer, 0.001f, 10);
             
             // Créer le batch de données
             List<String> inputTokens = Arrays.asList("<START>", "hello", "world");

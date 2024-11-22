@@ -140,12 +140,24 @@ public class MultiHeadAttention implements Serializable {
                                 + Arrays.toString(mask.shape()));
             }
 
-            // Ajouter le masque aux scores
-            scores = scores.add(mask.mul(-1e9));
+            // Conversion du masque binaire en masque additive temporaire
+            // Mask : [batchSize, 1, size, size] --> [batchSize, numHeads, seqLength_q, seqLength_k]
+            INDArray additiveMask = mask.dup(); // Clone pour éviter de modifier l'original
+            // System.out.println("additiveMask:\n" + additiveMask);
+
+            additiveMask = additiveMask.eq(0.0f).castTo(DataType.FLOAT).muli(-1e9f); // 0.0f -> -1e9, 1.0f -> 0.0f
+
+            // System.out.println("additiveMask after muli:\n" + additiveMask);
+
+            // Appliquer le masque additive
+            scores = scores.add(additiveMask); // [batchSize, numHeads, seqLength_q, seqLength_k]
+            // System.out.println("Scores after masking:\n" + scores);
+
         }
 
         // Application du softmax sur le dernier axe (axis=3)
         INDArray weights = NDArrayUtils.softmax(scores, 3); // [batchSize, numHeads, seqLength_q, seqLength_k]
+        // System.out.println("Attention Weights after softmax:\n" + weights);
 
         // Stocker attentionWeights pour la passe backward
         this.attentionWeights = weights;
@@ -171,12 +183,16 @@ public class MultiHeadAttention implements Serializable {
             }
         }
 
+        // System.out.println("Attention after weights.mmul(V):\n" + attention);
+
+
         // Transposition et reshaping pour concaténer les têtes
         // [batchSize, numHeads, seqLength_q, depth] -> [batchSize, seqLength_q,
         // numHeads * depth]
         INDArray attentionConcat = attention.permute(0, 2, 1, 3).reshape(batchSize, seqLength_q, numHeads * depth); // [batchSize,
                                                                                                                     // seqLength_q,
-                                                                                                                    // dModel]
+        // System.out.println("Attention Concat:\n" + attentionConcat);
+                                                                                                // dModel]
 
         // Effectuer la multiplication matricielle avec Wo
         // Reshape attentionConcat de [batchSize, seqLength_q, dModel] à [batchSize *
@@ -187,6 +203,8 @@ public class MultiHeadAttention implements Serializable {
 
         // Reshape le résultat en [batchSize, seqLength_q, dModel]
         INDArray output = output2D.reshape(batchSize, seqLength_q, dModel); // [batchSize, seqLength_q, dModel]
+
+        // System.out.println("Output:\n" + output);
 
         // Stocker l'attentionOutput pour la passe backward
         this.attentionOutput = attentionConcat; // ou `output` selon ce qui est nécessaire pour backward

@@ -2,8 +2,10 @@ package RN.transformer;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Arrays;
 import java.util.List;
 
+import org.junit.Test;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 

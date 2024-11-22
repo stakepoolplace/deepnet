@@ -159,8 +159,10 @@ public class Tokenizer implements Serializable {
             if (isSpecialToken(token)) continue;
             if (wordVectors.hasWord(token)) {
                 pretrainedEmbeddings.putRow(id, wordVectors.getWordVectorMatrix(token));
+                System.out.println("Embedding pour le token '" + token + "' initialisé avec WordVectors.");
             } else {
                 pretrainedEmbeddings.putRow(id, meanVector);
+                System.out.println("Embedding pour le token '" + token + "' initialisé avec le vecteur moyen.");
             }
         }
     }
@@ -287,5 +289,13 @@ public class Tokenizer implements Serializable {
     
     public void setPretrainedEmbeddings(INDArray embeddings) {
         this.pretrainedEmbeddings = embeddings;
+    }
+
+    public boolean hasCalculatedEmbedding(int tokenId) {
+        INDArray embedding = getPretrainedEmbeddings().getRow(tokenId);
+        // Définir votre propre logique pour déterminer si l'embedding est calculé
+        // Par exemple, vérifier si la moyenne de l'embedding est non zéro
+        double mean = embedding.meanNumber().doubleValue();
+        return mean != 0.0;
     }
 }

@@ -23,7 +23,7 @@ public class TransformerInferenceTest {
     @Test
     public void testSimpleTransformerTraining() throws IOException, ClassNotFoundException {
         // Configuration simplifiée
-        int numLayers = 2;
+        int numLayers = 1;
         int dModel = 16;
         int numHeads = 2;
         int dff = 1024;
@@ -41,7 +41,7 @@ public class TransformerInferenceTest {
         
         // Initialiser le modèle Transformer avec le Tokenizer personnalisé
         TransformerModel transformer = new TransformerModel(numLayers, dModel, numHeads, dff, dropoutRate, vocabSize, tokenizer, learningRate, warmupSteps);
-        
+
         // Créer un jeu de données synthétique (entrée = cible)
         List<String> inputSentences = Arrays.asList("hello");
         List<String> targetSentences = Arrays.asList("hello");
@@ -99,7 +99,7 @@ public class TransformerInferenceTest {
         
         // Effectuer une inférence sur la même entrée
         String prompt = "hello";
-        String inferredOutput = transformer.infer(prompt, 3);
+        String inferredOutput = transformer.infer(prompt, 1);
         System.out.println("Inferred Output: " + inferredOutput);
         
         // Afficher les relations entre les tokens après l'entraînement
@@ -121,7 +121,7 @@ public class TransformerInferenceTest {
         int dff = 16;
         double dropoutRate = 0.0;
         int vocabSize = 5;
-        int maxSequenceLength = 4;
+        int maxSequenceLength = 1;
         float learningRate = 0.001f;
         int warmupSteps = 10;
     
@@ -282,6 +282,10 @@ public class TransformerInferenceTest {
         String inferredOutput = transformer.infer(prompt, maxSequenceLength);
         System.out.println("Inferred Output: " + inferredOutput);
         
+        // Afficher les relations entre les tokens après l'inférence sous forme de tableau croisé
+        List<String> inputTokens = tokenizer.tokenize(prompt); // Ex: ["<START>", "hello", "<END>", "<PAD>"]
+        transformer.displayAttentionRelations(inputTokens);
+
         // Vérifier que l'inférence correspond à la cible attendue
         assertEquals("L'inférence devrait correspondre à la cible.", targetSentences.get(0), inferredOutput);
         

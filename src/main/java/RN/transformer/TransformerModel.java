@@ -81,6 +81,8 @@ public class TransformerModel implements Serializable {
         addCombinedParameters();
 
         this.optimizer = new CustomAdamOptimizer(initialLr, dModel, warmupSteps, combinedParameters); // Initialisation hypothétique
+    
+        freezeSpecialTokenEmbeddings();
     }
 
     /**
@@ -121,6 +123,8 @@ public class TransformerModel implements Serializable {
 
         // Initialiser l'optimiseur avec les paramètres combinés
         this.optimizer = new CustomAdamOptimizer(initialLr, dModel, warmupSteps, combinedParameters);
+    
+        freezeSpecialTokenEmbeddings();
     }
 
     /**
@@ -163,6 +167,8 @@ public class TransformerModel implements Serializable {
 
         // Initialiser l'optimiseur avec les paramètres combinés
         this.optimizer = new CustomAdamOptimizer(initialLr, dModel, warmupSteps, combinedParameters);
+    
+        freezeSpecialTokenEmbeddings();
     }
 
     // Méthode pour initialiser l'optimiseur après avoir collecté tous les paramètres
@@ -181,8 +187,6 @@ public class TransformerModel implements Serializable {
      */
     public void train(DataGenerator dataGenerator, int epochNum) throws IOException {
         
-        freezeSpecialTokenEmbeddings();
-
         for (int epoch = 0; epoch < epochNum; epoch++) {
             // Définir le numéro d'epoch actuel (commence à 1)
             optimizer.setEpoch(epoch + 1);
@@ -374,29 +378,20 @@ public class TransformerModel implements Serializable {
             cleanGradients();
     
             Batch batch = dataGenerator.nextBatch();
-            INDArray data = batch.getData();   // Utiliser directement le format INDArray
-            INDArray target = batch.getTarget();  // Utiliser directement le format INDArray
-            // INDArray mask = batch.getMask();  // Masque de padding pour les séquences
+            INDArray data = batch.getData();   // [batchSize, seqLength]
+            INDArray target = batch.getTarget();  // [batchSize, seqLength]
     
             // Créer les masques de padding pour le batch
             INDArray encoderPaddingMask = createPaddingMask(data);
-            //INDArray decoderPaddingMask = createPaddingMask(target);
-            // Créer le masque look-ahead avec le batch size
             int batchSize = (int) data.shape()[0];
             int targetSeqLength = (int) target.shape()[1];
-            INDArray lookAheadMask = createLookAheadMask(batchSize, targetSeqLength); // Longueur max du target
+            INDArray lookAheadMask = createLookAheadMask(batchSize, targetSeqLength); // [batchSize, 1, size, size]
     
-            // System.out.println("Encoder Mask: " + encoderPaddingMask);
-            // System.out.println("Decoder Mask: " + decoderPaddingMask);
-            // System.out.println("Look-Ahead Mask: " + lookAheadMask);
-
             // Encoder les données du batch
             INDArray encoded = encoder.encode(true, data, encoderPaddingMask);
-            // System.out.println("Encoded output shape: " + Arrays.toString(encoded.shape()));
     
             // Décoder les données encodées
             INDArray decodedOutput = decoder.decode(true, encoded, encoded, lookAheadMask, encoderPaddingMask);
-            // System.out.println("Decoded output shape: " + Arrays.toString(decodedOutput.shape()));
     
             // Calculer la perte et les gradients
             List<INDArray> decodedLogits = Arrays.asList(decodedOutput);
@@ -421,41 +416,17 @@ public class TransformerModel implements Serializable {
     
             // Ajouter tous les gradients calculés aux `combinedGradients`
             addCombinedGradients();
-
-            for (INDArray grad : combinedGradients) {
-                if (grad.isNaN().any() || grad.isInfinite().any()) {
-                    throw new RuntimeException("Gradient contains NaN or Infinite values.");
-                }
-            }
-
-
-            // for (int i = 0; i < combinedGradients.size(); i++) {
-            //     INDArray grad = combinedGradients.get(i);
-            //     double norm = grad.norm2Number().doubleValue();
-            //     System.out.println("Gradient " + i + " Norm: " + norm);
-            //     if (norm < 1e-6) {
-            //         throw new RuntimeException("Gradient " + i + " est trop petit.");
-            //     }
-            // }
-
-            // for (int i = 0; i < combinedParameters.size(); i++) {
-            //         INDArray paramBefore = combinedParameters.get(i).dup();
-            //         // Mise à jour des paramètres
-            //         optimizer.update(combinedParameters, combinedGradients);
-            //         INDArray paramAfter = combinedParameters.get(i);
-            //         System.out.println("Param " + i + " Before Update: " + paramBefore);
-            //         System.out.println("Param " + i + " After Update: " + paramAfter);
-                    
-            //     }
-
-            // Avant l'appel à l'optimiseur
-            clipGradients(combinedGradients, 0.5);
-
+    
+            // Vérifier et loguer les gradients pour 'chat'
+            // int chatTokenId = tokenizer.getTokenToId().get("chat");
+            // INDArray gradChat = pretrainedEmbeddings.getRow(chatTokenId).dup(); // Assurez-vous que cette référence est correcte
+            // System.out.println("Gradient pour 'chat' embedding: " + gradChat);
+    
+            // Clip gradients
+            clipGradients(combinedGradients, 0.5f); // Exemple avec maxNorm = 0.5
+    
             // Mettre à jour les poids du modèle via l'optimiseur
             optimizer.update(combinedParameters, combinedGradients);
-    
-            // (Optionnel) Afficher la progression
-            // System.out.println("Batch processed.");
         }
     
         // Calculer la perte moyenne
@@ -552,22 +523,23 @@ public class TransformerModel implements Serializable {
 
 
     /**
-     * Crée un masque look-ahead pour le décodeur.
+     * Crée un masque look-ahead binaire pour le décodeur.
      *
-     * @param size Taille de la séquence.
-     * @return INDArray représentant le masque look-ahead [1, 1, size, size].
+     * @param batchSize Taille du batch.
+     * @param size      Taille de la séquence.
+     * @return INDArray représentant le masque look-ahead binaire [batchSize, 1, size, size].
      */
-    public INDArray createLookAheadMask(int batchSize, int size) {
-        // Créer une matrice triangulaire inférieure remplie de 0.0f
-        INDArray lookAheadMask = Nd4j.zeros(DataType.FLOAT, size, size); // [size, size]
+    public static INDArray createLookAheadMask(int batchSize, int size) {
+        // Créer une matrice triangulaire inférieure remplie de 1.0f
+        INDArray lookAheadMask = Nd4j.ones(DataType.FLOAT, size, size); // [size, size]
         
-        // Remplir le masque avec 0.0f où j <= i et -Infinity où j > i
+        // Remplir le masque avec 1.0f où j <= i et 0.0f où j > i
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
                 if (j > i) {
-                    lookAheadMask.putScalar(new int[]{i, j}, Float.NEGATIVE_INFINITY);
-                } else {
                     lookAheadMask.putScalar(new int[]{i, j}, 0.0f);
+                } else {
+                    lookAheadMask.putScalar(new int[]{i, j}, 1.0f);
                 }
             }
         }
@@ -694,6 +666,9 @@ public class TransformerModel implements Serializable {
         for (INDArray param : encoderParams) {
             if (!isSpecialTokenParameter(param)) {
                 combinedParameters.add(param);
+                System.out.println("Paramètre ajouté à combinedParameters (Encodeur): " + param);
+            } else {
+                System.out.println("Paramètre exclu (Encodeur, token spécial): " + param);
             }
         }
     
@@ -702,30 +677,53 @@ public class TransformerModel implements Serializable {
         for (INDArray param : decoderParams) {
             if (!isSpecialTokenParameter(param)) {
                 combinedParameters.add(param);
+                System.out.println("Paramètre ajouté à combinedParameters (Décodeur): " + param);
+            } else {
+                System.out.println("Paramètre exclu (Décodeur, token spécial): " + param);
             }
         }
     }
     
     private boolean isSpecialTokenParameter(INDArray param) {
-        // Implémenter une logique pour vérifier si le param correspond à un token spécial
-        // Par exemple, comparer les adresses des objets ou les indices des embeddings
-        // Cette implémentation dépend de votre structure de paramètres
-        // Voici un exemple simplifié :
-        return param.equals(tokenizer.getPretrainedEmbeddings().getRow(tokenizer.getPadTokenId())) ||
-               param.equals(tokenizer.getPretrainedEmbeddings().getRow(tokenizer.getStartTokenId())) ||
-               param.equals(tokenizer.getPretrainedEmbeddings().getRow(tokenizer.getEndTokenId())) ||
-               param.equals(tokenizer.getPretrainedEmbeddings().getRow(tokenizer.getUnkTokenId()));
+        boolean isSpecial = false;
+        for (int tokenId : Arrays.asList(tokenizer.getPadTokenId(), tokenizer.getStartTokenId(), tokenizer.getEndTokenId(), tokenizer.getUnkTokenId())) {
+            INDArray specialEmbedding = tokenizer.getPretrainedEmbeddings().getRow(tokenId);
+            if (param == specialEmbedding) { // Vérifie la référence
+                isSpecial = true;
+                break;
+            }
+        }
+        System.out.println("Paramètre est un token spécial: " + isSpecial);
+        return isSpecial;
     }
 
+    /**
+     * Gèle les embeddings des tokens spéciaux, en évitant de geler <UNK> s'il a des valeurs calculées.
+     */
     public void freezeSpecialTokenEmbeddings() {
         int[] specialTokenIds = { tokenizer.getPadTokenId(), tokenizer.getStartTokenId(), tokenizer.getEndTokenId(), tokenizer.getUnkTokenId() };
         
         for (int tokenId : specialTokenIds) {
-            INDArray embedding = tokenizer.getPretrainedEmbeddings().getRow(tokenId);
-            embedding.assign(Nd4j.zeros(dModel)); // Exemple pour <PAD>
-            // Ou assigner une valeur spécifique
+            if (tokenId == tokenizer.getUnkTokenId()) {
+                // Vérifier si <UNK> a des valeurs calculées
+                if (!tokenizer.hasCalculatedEmbedding(tokenId)) {
+                    INDArray embedding = tokenizer.getPretrainedEmbeddings().getRow(tokenId);
+                    embedding.assign(Nd4j.zeros(dModel));
+                    System.out.println("<UNK> embedding was frozen.");
+                } else {
+                    // Ne pas geler <UNK>
+                    System.out.println("<UNK> embedding has calculated values. Skipping freezing.");
+                }
+            } else {
+                // Geler les autres tokens spéciaux
+                INDArray embedding = tokenizer.getPretrainedEmbeddings().getRow(tokenId);
+                embedding.assign(Nd4j.zeros(dModel)); // Exemple pour <PAD>
+                System.out.println("Token ID " + tokenId + " embedding was frozen.");
+            }
         }
     }
+
+
 
     /**
      * Ajoute les gradients de l'encodeur et du décodeur à la liste combinée.

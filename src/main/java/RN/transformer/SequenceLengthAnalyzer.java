@@ -10,7 +10,7 @@ public class SequenceLengthAnalyzer {
         List<String> allSentences = getAllSentences();
 
         // Tokenizer sans padding/troncature pour l'analyse
-        Tokenizer tokenizer = new Tokenizer(/* paramètres appropriés */);
+        Tokenizer tokenizer = new Tokenizer(allSentences, 300, 3);
 
         // Collecter les longueurs
         List<Integer> lengths = allSentences.stream()
@@ -30,7 +30,7 @@ public class SequenceLengthAnalyzer {
     // Implémentez ces méthodes selon vos besoins
     private static List<String> getAllSentences() {
         // Retourner toutes les phrases de votre jeu de données
-        return Arrays.asList("exemple phrase 1", "exemple phrase 2", ...);
+        return Arrays.asList("exemple phrase 1", "exemple phrase 2");
     }
 
     private static double calculatePercentile(List<Integer> lengths, double percentile) {
