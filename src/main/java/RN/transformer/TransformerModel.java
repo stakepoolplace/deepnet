@@ -178,6 +178,32 @@ public class TransformerModel implements Serializable {
         this.optimizer = new CustomAdamOptimizer(learningRate, dModel, warmupSteps, combinedParameters);
     }
 
+
+    /**
+     * Rétropropagation des gradients à travers l'encodeur et le décodeur.
+     *
+     * @param gradOutput Les gradients de la perte par rapport aux sorties du décodeur.
+     */
+    public void backward(INDArray gradOutput) {
+        // Rétropropagation à travers le décodeur
+        Map<String, INDArray> decoderGradients = decoder.backward(gradOutput);
+    
+        // Extraire les gradients pertinents pour l'encodeur à partir de decoderGradients
+        Map<String, INDArray> encoderGradients = extractEncoderGradients(decoderGradients);
+    
+        // Rétropropagation à travers l'encodeur
+        Map<String, INDArray> encoderBackwardGradients = encoder.backward(encoderGradients);
+    
+        // Récupérer 'gradEmbeddings' et le passer au Tokenizer
+        INDArray gradEmbeddings = encoderBackwardGradients.get("gradEmbeddings");
+        if (gradEmbeddings == null) {
+            throw new IllegalStateException("Les gradients des embeddings sont absents.");
+        }
+    
+        // Rétropropagation à travers le tokenizer (embeddings)
+        tokenizer.backward(gradEmbeddings); // gradEmbeddings doit être de forme [batchSize, seqLength, dModel]
+    }
+
     /**
      * Entraîne le modèle sur un nombre donné d'epochs.
      *
@@ -234,18 +260,22 @@ public class TransformerModel implements Serializable {
                 System.out.println("Perte pour ce batch: " + loss);
 
                 // Rétropropagation
-                Map<String, INDArray> decoderGradients = decoder.backward(initialGradients);
-                Map<String, INDArray> encoderGradients = extractEncoderGradients(decoderGradients);
-                encoder.backward(encoderGradients);
+                backward(initialGradients);
 
-                // Ajouter tous les gradients calculés aux `combinedGradients`
-                addCombinedGradients();
+                // Collecter tous les gradients
+                collectCombinedGradients();
+
+                // Vérifier et loguer les gradients pour 'chat'
+                //logGradientForToken("chat");
 
                 // Clip gradients
                 clipGradients(combinedGradients, 0.5f); // Exemple avec maxNorm = 0.5
 
                 // Mettre à jour les poids du modèle via l'optimiseur
                 optimizer.update(combinedParameters, combinedGradients);
+
+                // Appliquer les gradients aux embeddings
+                tokenizer.applyGradients(optimizer.getLearningRate());
 
                 // for (int i = 0; i < combinedGradients.size(); i++) {
                 //     INDArray grad = combinedGradients.get(i);
@@ -284,86 +314,8 @@ public class TransformerModel implements Serializable {
         System.out.println("Training completed.");
     }
 
-   /**
-     * Méthode d'entraînement pour un epoch, retourne la perte moyenne.
-     *
-     * @param dataGenerator Générateur de données pour l'entraînement.
-     * @return Perte moyenne sur l'epoch.
-     * @throws IOException En cas d'erreur d'E/S.
-     */
-    public float trainEpochAndGetLoss(DataGenerator dataGenerator) throws IOException {
-        return trainEpoch(dataGenerator);
-    }
 
-    // public float trainEpoch(DataGenerator dataGenerator) throws IOException {
-    //     float totalLoss = 0.0f;
-    //     int totalTokens = 0;
-    
-    //     // Initialiser pour l'epoch
-    //     optimizer.setEpoch(optimizer.getEpoch() + 1);
-    //     System.out.println("Epoch " + optimizer.getEpoch());
-    
-    //     while (dataGenerator.hasNextBatch()) {
-    //         // Nettoyer les gradients précédents
-    //         cleanGradients();
-    
-    //         Batch batch = dataGenerator.nextBatch();
-    //         INDArray data = batch.getData();
-    //         INDArray target = batch.getTarget();
-    
-    //         // Créer les masques de padding pour le batch
-    //         INDArray encoderPaddingMask = createPaddingMask(data);
-    //         INDArray decoderPaddingMask = createPaddingMask(target);
-    //         INDArray lookAheadMask = createLookAheadMask((int) data.shape()[0], (int) target.shape()[1]);
-    
-    //         // Encoder les données du batch
-    //         INDArray encoded = encoder.encode(true, data, encoderPaddingMask);
-    
-    //         // Décoder les données encodées
-    //         INDArray decodedOutput = decoder.decode(true, encoded, encoded, lookAheadMask, encoderPaddingMask);
-    
-    //         // Calculer la perte et les gradients
-    //         List<INDArray> decodedLogits = Arrays.asList(decodedOutput);
-    //         Pair<Float, INDArray> lossAndGradients = calculateCrossEntropyLossAndGradient(decodedLogits, target);
-    //         float loss = lossAndGradients.getLeft();
-    //         INDArray initialGradients = lossAndGradients.getRight();
-    
-    //         totalLoss += loss;
-    //         totalTokens += target.sumNumber().intValue();
-    
-    //         // Afficher la perte pour le monitoring
-    //         System.out.println("Perte pour ce batch: " + loss);
-    
-    //         // Étape 2: Rétropropagation à travers le Décodeur
-    //         Map<String, INDArray> decoderGradients = decoder.backward(initialGradients);
-    
-    //         // Extraire les gradients pertinents pour l'encodeur à partir de decoderGradients
-    //         Map<String, INDArray> encoderGradients = extractEncoderGradients(decoderGradients);
-    
-    //         // Étape 3: Rétropropagation à travers l'Encodeur
-    //         encoder.backward(encoderGradients);
-    
-    //         // Ajouter tous les gradients calculés aux `combinedGradients`
-    //         addCombinedGradients();
-    //     }
-    
-    //     // Calculer la perte moyenne
-    //     float averageLoss = totalLoss / totalTokens;
-    
-    //     // Mettre à jour les poids du modèle via l'optimiseur
-    //     optimizer.update(combinedParameters, combinedGradients);
-    
-    //     // Réinitialiser le générateur de données pour le prochain epoch
-    //     dataGenerator.reset();
-    //     System.out.println("Epoch " + optimizer.getEpoch() + " completed with average loss: " + averageLoss);
-    
-    //     // Marquer le modèle comme entraîné après le premier epoch
-    //     if (optimizer.getEpoch() >= 1) {
-    //         isTrained = true;
-    //     }
-    
-    //     return averageLoss;
-    // }
+
 
     public float trainEpoch(DataGenerator dataGenerator) throws IOException {
         float totalLoss = 0.0f;
@@ -374,6 +326,7 @@ public class TransformerModel implements Serializable {
         System.out.println("Epoch " + optimizer.getEpoch());
     
         while (dataGenerator.hasNextBatch()) {
+
             // Nettoyer les gradients précédents
             cleanGradients();
     
@@ -405,28 +358,23 @@ public class TransformerModel implements Serializable {
             // Afficher la perte pour le monitoring
             System.out.println("Perte pour ce batch: " + loss);
     
-            // Étape 2: Rétropropagation à travers le Décodeur
-            Map<String, INDArray> decoderGradients = decoder.backward(initialGradients);
-    
-            // Extraire les gradients pertinents pour l'encodeur à partir de decoderGradients
-            Map<String, INDArray> encoderGradients = extractEncoderGradients(decoderGradients);
-    
-            // Étape 3: Rétropropagation à travers l'Encodeur
-            encoder.backward(encoderGradients);
-    
-            // Ajouter tous les gradients calculés aux `combinedGradients`
-            addCombinedGradients();
-    
+            // Backward pass
+            backward(initialGradients);
+
+            // Collecter tous les gradients
+            collectCombinedGradients();
+
             // Vérifier et loguer les gradients pour 'chat'
-            // int chatTokenId = tokenizer.getTokenToId().get("chat");
-            // INDArray gradChat = pretrainedEmbeddings.getRow(chatTokenId).dup(); // Assurez-vous que cette référence est correcte
-            // System.out.println("Gradient pour 'chat' embedding: " + gradChat);
-    
+            //logGradientForToken("chat");
+
             // Clip gradients
             clipGradients(combinedGradients, 0.5f); // Exemple avec maxNorm = 0.5
     
             // Mettre à jour les poids du modèle via l'optimiseur
             optimizer.update(combinedParameters, combinedGradients);
+            
+            // Appliquer les gradients aux embeddings
+            tokenizer.applyGradients(optimizer.getLearningRate());
         }
     
         // Calculer la perte moyenne
@@ -444,20 +392,36 @@ public class TransformerModel implements Serializable {
         return averageLoss;
     }
 
-    // private void clipGradients(List<INDArray> gradients, double maxNorm) {
-    //     double totalNorm = 0.0;
-    //     for (INDArray grad : gradients) {
-    //         totalNorm += Math.pow(grad.norm2Number().doubleValue(), 2);
-    //     }
-    //     totalNorm = Math.sqrt(totalNorm);
-    //     if (totalNorm > maxNorm) {
-    //         double scale = maxNorm / totalNorm;
-    //         for (INDArray grad : gradients) {
-    //             grad.muli(scale);
-    //         }
-    //         // System.out.println("Gradients clipped. Scale factor: " + scale);
-    //     }
-    // }
+    /**
+     * Vérifie et logue les gradients pour un token spécifique.
+     *
+     * @param token Le token à vérifier (par exemple, "chat").
+     */
+    private void logGradientForToken(String token) {
+        Integer tokenId = tokenizer.getTokenToId().get(token);
+        //System.out.println("ID de '" + token + "': " + tokenId);
+        if (tokenId == null) {
+            System.out.println("Le token '" + token + "' n'existe pas dans le vocabulaire.");
+            return;
+        }
+
+        // Trouver l'index des embeddings dans combinedParameters
+        int embeddingsParamIndex = combinedParameters.indexOf(pretrainedEmbeddings);
+        if (embeddingsParamIndex == -1) {
+            throw new IllegalStateException("Les embeddings ne sont pas trouvés dans combinedParameters.");
+        }
+
+        // Récupérer le gradient correspondant
+        INDArray embeddingsGrad = combinedGradients.get(embeddingsParamIndex); // [vocabSize, dModel]
+        INDArray gradChat = embeddingsGrad.getRow(tokenId).dup(); // [dModel]
+        System.out.println("Gradient pour '" + token + "' embedding: " + gradChat);
+
+        // Vérifier si le gradient pour le token est non nul
+        if (gradChat.sumNumber().doubleValue() == 0.0) {
+            System.out.println("Gradient pour '" + token + "' est 0");
+        }
+    }
+
 
     private void clipGradients(List<INDArray> gradients, double maxNorm) {
         for (INDArray grad : gradients) {
@@ -682,6 +646,20 @@ public class TransformerModel implements Serializable {
                 System.out.println("Paramètre exclu (Décodeur, token spécial): " + param);
             }
         }
+
+
+        // Ajoute les embeddings du tokenizer
+        List<INDArray> tokenizerParams = tokenizer.getEmbeddings(); // Assurez-vous que cette méthode retourne la liste correcte
+        for (INDArray param : tokenizerParams) {
+            if (!isSpecialTokenParameter(param)) {
+                combinedParameters.add(param);
+                System.out.println("Paramètre ajouté à combinedParameters (Tokenizer): " + param);
+            } else {
+                System.out.println("Paramètre exclu (Tokenizer, token spécial): " + param);
+            }
+        }
+
+
     }
     
     private boolean isSpecialTokenParameter(INDArray param) {
@@ -724,22 +702,20 @@ public class TransformerModel implements Serializable {
     }
 
 
-
     /**
-     * Ajoute les gradients de l'encodeur et du décodeur à la liste combinée.
+     * Collecte tous les gradients des composants du modèle.
      */
-    private void addCombinedGradients() {
-        // Ajoute les gradients de l'encoder
+    private void collectCombinedGradients() {
         combinedGradients.addAll(encoder.getGradients());
-
-        // Ajoute les gradients du decoder
         combinedGradients.addAll(decoder.getGradients());
+        combinedGradients.addAll(tokenizer.getGradients());
     }
 
     /**
      * Nettoie les gradients accumulés.
      */
     public void cleanGradients() {
+        tokenizer.resetGradients();
         combinedGradients.clear();
     }
 

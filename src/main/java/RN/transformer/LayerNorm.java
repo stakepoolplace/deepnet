@@ -34,8 +34,8 @@ public class LayerNorm extends Layer implements Serializable {
      */
     public LayerNorm(int dModel) {
         this.dModel = dModel;
-        // Initialisation de gamma avec Xavier
-        gamma = Nd4j.randn(DataType.FLOAT, 1, 1, dModel).muli(Math.sqrt(2.0 / (dModel + dModel)));
+        // Initialisation de gamma à des uns
+        gamma = Nd4j.ones(DataType.FLOAT, 1, 1, dModel);
         // Initialisation de beta à des zéros
         beta = Nd4j.zeros(DataType.FLOAT, 1, 1, dModel);
 
@@ -119,35 +119,27 @@ public class LayerNorm extends Layer implements Serializable {
         INDArray mean = input.mean(true, input.rank() - 1); // [batchSize, seqLength, 1]
         INDArray variance = input.var(false, input.rank() - 1).reshape(batchSize, seqLength, 1); // [batchSize, seqLength, 1]
 
+        INDArray std = Transforms.sqrt(variance.add(epsilon)); // [batchSize, seqLength, 1]
         INDArray stdInv = Transforms.pow(variance.add(epsilon), -0.5); // [batchSize, seqLength, 1]
 
         INDArray normalized = input.sub(mean).mul(stdInv); // [batchSize, seqLength, dModel]
-
-        // Calcul des gradients pour gamma et beta avec la moyenne
-        INDArray gradGamma = gradOutput.mul(normalized).mean(new int[]{0, 1}); // [1, 1, dModel]
-        INDArray gradBeta = gradOutput.mean(new int[]{0, 1}); // [1, 1, dModel]
+        INDArray gammaBroadcast = gamma.reshape(1, 1, dModel); // [1, 1, dModel]
+        
+        // Calcul des gradients pour gamma et beta avec la somme
+        INDArray gradGamma = gradOutput.mul(normalized).sum(new int[]{0, 1}).reshape(1, 1, dModel); // [1, 1, dModel]
+        INDArray gradBeta = gradOutput.sum(new int[]{0, 1}).reshape(1, 1, dModel); // [1, 1, dModel]
 
         // Calcul du gradient par rapport à l'entrée
-        INDArray gradNormalized = gradOutput.mul(gamma); // [batchSize, seqLength, dModel]
+        // Formule standard :
+        // gradInput = (gamma / std) * (gradOutput - mean(gradOutput, axis=-1, keepDims=true) - normalized * mean(gradOutput * normalized, axis=-1, keepDims=true))
+        INDArray gradNormalized = gradOutput.mul(gammaBroadcast); // [batchSize, seqLength, dModel]
 
-        INDArray gradVariance = gradNormalized.mul(normalized).mul(-0.5).div(Transforms.pow(variance.add(epsilon), 1.5)).sum(2).reshape(batchSize, seqLength, 1); // [batchSize, seqLength, 1]
-        INDArray gradMean = gradNormalized.mul(-1).div(Transforms.sqrt(variance.add(epsilon))).sum(2).reshape(batchSize, seqLength, 1)
-                            .add(gradVariance.mul(normalized.mul(-2)).sum(2).reshape(batchSize, seqLength, 1)); // [batchSize, seqLength, 1]
+        INDArray meanGradNormalized = gradNormalized.mean(true, 2); // [batchSize, seqLength, 1]
+        INDArray meanGradNormalizedMulNormalized = gradNormalized.mul(normalized).mean(true,2); // [batchSize, seqLength, 1]
 
-        INDArray gradInput = gradNormalized.div(Transforms.sqrt(variance.add(epsilon)))
-                            .add(gradVariance.mul(normalized.mul(2)).div(dModel))
-                            .add(gradMean.div(dModel)); // [batchSize, seqLength, dModel]
-
-        // System.out.println("Shape of mean: " + Arrays.toString(mean.shape()));
-        // System.out.println("Shape of variance: " + Arrays.toString(variance.shape()));
-        // System.out.println("Shape of stdInv: " + Arrays.toString(stdInv.shape()));
-        // System.out.println("Shape of normalized: " + Arrays.toString(normalized.shape()));
-        // System.out.println("Shape of gradGamma: " + Arrays.toString(gradGamma.shape()));
-
-        // System.out.println("input: " + input);
-        // System.out.println("gradOutput: " + gradOutput);
-        // System.out.println("normalized: " + normalized);
-
+        INDArray gradInput = gradNormalized.div(std)
+                .sub(normalized.mul(meanGradNormalizedMulNormalized))
+                .sub(meanGradNormalized);
 
         // Vérification des gradients
         if (gradGamma.isNaN().any() || gradGamma.isInfinite().any()) {
@@ -164,6 +156,7 @@ public class LayerNorm extends Layer implements Serializable {
         }
 
         // Stockage des gradients
+        gradients.clear(); // Assurez-vous que le map est vide avant d'ajouter
         NDArrayUtils.addGradient(gradients, "gamma", gradGamma);
         NDArrayUtils.addGradient(gradients, "beta", gradBeta);
         NDArrayUtils.addGradient(gradients, "input", gradInput); // Gradient à propager vers les couches précédentes

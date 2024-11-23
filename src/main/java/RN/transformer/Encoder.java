@@ -86,7 +86,7 @@ public class Encoder implements Serializable {
      *
      * @param gradOutput Gradient provenant de la couche suivante.
      */
-    public void backward(Map<String, INDArray> gradOutput) {
+    public Map<String, INDArray> backward(Map<String, INDArray> gradOutput) {
         // Récupérer gradAttentionOutputConcat
         INDArray gradAttentionOutputConcatND = gradOutput.get("gradAttentionOutputConcat"); // [batchSize, numHeads, seqLength, depth]
 
@@ -126,7 +126,11 @@ public class Encoder implements Serializable {
             }
         }
 
-        // Mettre à jour ou enregistrer les gradients selon les besoins
+        // Maintenant, gradInput est le gradient par rapport aux embeddings
+        Map<String, INDArray> gradients = new HashMap<>();
+        gradients.put("gradEmbeddings", gradInput);
+
+        return gradients;
     }
 
     /**

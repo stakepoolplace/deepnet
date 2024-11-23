@@ -9,6 +9,7 @@ import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
 import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.indexing.NDArrayIndex;
 
 public class Tokenizer implements Serializable {
     private static final long serialVersionUID = -1691008595018974489L;
@@ -30,6 +31,9 @@ public class Tokenizer implements Serializable {
     
     // WordVectors membre
     private WordVectors wordVectors;
+
+    private List<Integer> lastForwardTokenIds = new ArrayList<>();
+    private INDArray embeddingGradients = null;
     
     // Constructeur utilisant des WordVectors
     public Tokenizer(WordVectors wordVectors, int embeddingSize, int maxSequenceLength) {
@@ -52,6 +56,8 @@ public class Tokenizer implements Serializable {
         
         // Initialiser les embeddings avec WordVectors
         initializeEmbeddings(wordVectors);
+
+        this.embeddingGradients = Nd4j.zeros(vocabSize, embeddingSize);
     }
     
     // Constructeur utilisant une liste de mots
@@ -74,6 +80,9 @@ public class Tokenizer implements Serializable {
         
         // Initialiser les embeddings avec des vecteurs aléatoires
         initializeEmbeddings();
+
+        this.embeddingGradients = Nd4j.zeros(vocabSize, embeddingSize);
+
     }
 
     /**
@@ -110,13 +119,75 @@ public class Tokenizer implements Serializable {
         // Convertir flattenedTokenIds en int[]
         int[] tokenIds = flattenedTokenIds.toIntVector();
         
+        // Stocker les IDs pour le backward pass
+        lastForwardTokenIds = Arrays.stream(tokenIds).boxed().collect(Collectors.toList());
+        
         // Récupérer les embeddings: [batchSize * seqLength, dModel]
         INDArray batchEmbeddings = getPretrainedEmbeddings().getRows(tokenIds); 
         
         // Reshaper en [batchSize, seqLength, dModel]
         batchEmbeddings = batchEmbeddings.reshape(batchSize, seqLength, embeddingSize);
 
+        // Compter les occurrences de 'chat'
+        // long chatCount = lastForwardTokenIds.stream().filter(id -> id == tokenToId("chat")).count();
+        // System.out.println("Occurrences de 'chat' dans ce batch: " + chatCount);
+
         return batchEmbeddings;
+    }
+
+    public Integer tokenToId(String token){
+        return getTokenToId().get(token);
+    }
+
+    /**
+     * Effectue la rétropropagation des gradients à travers les embeddings.
+     *
+     * @param gradOutput Les gradients de la perte par rapport aux embeddings [batchSize, seqLength, dModel].
+     */
+    public void backward(INDArray gradOutput) {
+        // Vérifier la forme de gradOutput
+        if (gradOutput.rank() != 3 || gradOutput.size(2) != embeddingSize) {
+            throw new IllegalArgumentException("gradOutput doit être de forme [batchSize, seqLength, dModel].");
+        }
+    
+        int batchSize = (int) gradOutput.size(0);
+        int seqLength = (int) gradOutput.size(1);
+        
+        // Itérer sur chaque élément du batch et de la séquence
+        for (int b = 0; b < batchSize; b++) {
+            for (int s = 0; s < seqLength; s++) {
+                // Calculer l'index global dans lastForwardTokenIds
+                int index = b * seqLength + s;
+                if (index >= lastForwardTokenIds.size()) {
+                    // Gestion des cas où la séquence est plus longue que lastForwardTokenIds
+                    continue;
+                }
+                int tokenId = lastForwardTokenIds.get(index);
+                
+                // Récupérer le gradient pour ce token
+                INDArray gradForToken = gradOutput.get(NDArrayIndex.point(b), NDArrayIndex.point(s), NDArrayIndex.all());
+        
+                // Accumuler le gradient dans embeddingGradients
+                embeddingGradients.getRow(tokenId).addi(gradForToken);
+            }
+        }
+    }
+
+    /**
+     * Obtient les gradients accumulés des embeddings.
+     *
+     * @return Liste contenant la matrice de gradients des embeddings.
+     */
+    public List<INDArray> getGradients() {
+        return Collections.singletonList(embeddingGradients);
+    }
+
+
+    /**
+     * Réinitialise les gradients accumulés.
+     */
+    public void resetGradients() {
+        embeddingGradients.assign(0.0);
     }
     
     // Initialisation des tokens spéciaux avec des IDs fixes
@@ -170,10 +241,10 @@ public class Tokenizer implements Serializable {
     // Initialisation des embeddings avec des vecteurs aléatoires (pour les tests ou l'utilisation sans WordVectors)
     public void initializeEmbeddings() { // Rendue publique
         this.pretrainedEmbeddings = Nd4j.randn(vocabSize, embeddingSize).divi(Math.sqrt(embeddingSize));
-        pretrainedEmbeddings.putRow(getPadTokenId(), Nd4j.zeros(embeddingSize)); // <PAD> est un vecteur nul
-        pretrainedEmbeddings.putRow(getUnkTokenId(), Nd4j.zeros(1, embeddingSize));
-        pretrainedEmbeddings.putRow(getStartTokenId(), Nd4j.zeros(1, embeddingSize));
-        pretrainedEmbeddings.putRow(getEndTokenId(), Nd4j.zeros(1, embeddingSize));
+        this.pretrainedEmbeddings.putRow(getPadTokenId(), Nd4j.zeros(embeddingSize)); // <PAD> est un vecteur nul
+        this.pretrainedEmbeddings.putRow(getUnkTokenId(), Nd4j.zeros(1, embeddingSize));
+        this.pretrainedEmbeddings.putRow(getStartTokenId(), Nd4j.zeros(1, embeddingSize));
+        this.pretrainedEmbeddings.putRow(getEndTokenId(), Nd4j.zeros(1, embeddingSize));
     }
 
     // Calcul du vecteur moyen pour les WordVectors
@@ -298,4 +369,41 @@ public class Tokenizer implements Serializable {
         double mean = embedding.meanNumber().doubleValue();
         return mean != 0.0;
     }
+
+    /**
+     * Obtient les embeddings du Tokenizer.
+     *
+     * @return Une liste contenant la matrice d'embeddings.
+     */
+    public List<INDArray> getEmbeddings() {
+        return Collections.singletonList(pretrainedEmbeddings);
+    }
+
+
+    /**
+     * Initialise les gradients pour les embeddings.
+     */
+    public void initializeEmbeddingGradients() {
+        embeddingGradients = Nd4j.zeros(vocabSize, embeddingSize);
+    }
+
+
+    /**
+     * Applique les gradients accumulés aux embeddings.
+     * Ceci devrait être appelé après backward() et avant la mise à jour des paramètres.
+     *
+     * @param learningRate Le taux d'apprentissage.
+     */
+    public void applyGradients(float learningRate) {
+        // Mettre à jour les embeddings avec le gradient (descente de gradient simple)
+        pretrainedEmbeddings.subi(embeddingGradients.mul(learningRate));
+        
+        // Réinitialiser les gradients après mise à jour
+        embeddingGradients.assign(0.0);
+    }
+
+
+
+
+
 }

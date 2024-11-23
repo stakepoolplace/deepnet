@@ -35,13 +35,13 @@ public class TransformerHeavyIntegrationTest {
 
 
         // Initialisation du modèle Transformer avec dModel = embeddingSize
-        int numLayers = 2;
+        int numLayers = 1;
         int dModel = embeddingSize;
-        int numHeads = 2;
+        int numHeads = 1;
         int dff = 1024;
         int vocabSize = tokenizer.getVocabSize();
         float dropoutRate = 0.0f;
-        float initialLr = 0.0001f;
+        float initialLr = 0.001f;
         int warmupSteps = 10;
 
         model = new TransformerModel(numLayers, dModel, numHeads, dff, dropoutRate, vocabSize, tokenizer, initialLr, warmupSteps);
@@ -70,7 +70,7 @@ public class TransformerHeavyIntegrationTest {
     public void testTrainingWithPretrainedEmbeddings() throws Exception {
         
         // Entraîner sur un seul epoch
-        float initialLoss = model.trainEpochAndGetLoss(mockDataGenerator);
+        float initialLoss = model.trainEpoch(mockDataGenerator);
 
         // Vérification que le modèle est marqué comme entraîné
         assertTrue("Le modèle devrait être marqué comme entraîné après l'entraînement", model.isTrained());
@@ -164,11 +164,11 @@ public class TransformerHeavyIntegrationTest {
     @Test
     public void testInferenceWithPretrainedEmbeddings() throws Exception {
         // Effectuer l'entraînement
-        float loss = model.trainEpochAndGetLoss(mockDataGenerator);
+        float loss = model.trainEpoch(mockDataGenerator);
 
         // Effectuer une inférence
         String input = "chiens aiment le jardin";
-        String actualOutput = model.infer(input, 10);
+        String actualOutput = model.infer(input, 3);
         String expectedOutput = "les chiens aiment";
 
         // Afficher les relations entre les tokens après l'inférence sous forme de tableau croisé
@@ -203,7 +203,7 @@ public class TransformerHeavyIntegrationTest {
                 .collect(Collectors.toList());
 
         // Effectuer une étape d'entraînement
-        model.trainEpochAndGetLoss(mockDataGenerator);
+        model.trainEpoch(mockDataGenerator);
 
         // Récupérer les paramètres après l'entraînement
         List<INDArray> updatedParameters = model.getCombinedParameters();

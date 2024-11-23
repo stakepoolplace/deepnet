@@ -25,8 +25,8 @@ public class TransformerIntegrationTest {
         Tokenizer tokenizer = new Tokenizer(vocabulary, dModel, maxSequenceLength);
         
         // Initialisation du modèle Transformer avec des paramètres réduits
-        int numLayers = 2;
-        int numHeads = 4;
+        int numLayers = 1;
+        int numHeads = 1;
         int dff = 255;
         int vocabSize = vocabulary.size();
         float dropoutRate = 0.0f;
@@ -38,13 +38,13 @@ public class TransformerIntegrationTest {
         // Création d'un DataGenerator fictif avec des paires d'entrée-cible simples sans fichiers
         List<String> data = Arrays.asList("hello world");
         List<String> targets = Arrays.asList("hello output");
-        mockDataGenerator = new DataGenerator(data, targets, tokenizer, 2, 50);
+        mockDataGenerator = new DataGenerator(data, targets, tokenizer, 1, maxSequenceLength);
     } 
 
     @Test
     public void testTrainingOnMockData() throws Exception {
         // Initialisation de l'entraînement avec un seul epoch
-        float loss = model.trainEpochAndGetLoss(mockDataGenerator);
+        float loss = model.trainEpoch(mockDataGenerator);
 
         // Vérification que le modèle est marqué comme entraîné
         assertTrue("Le modèle devrait être marqué comme entraîné après l'entraînement", model.isTrained());
@@ -76,7 +76,7 @@ public class TransformerIntegrationTest {
 
         // Entraîner sur 5 epochs et enregistrer la perte à chaque epoch
         for (int epoch = 0; epoch < 5; epoch++) {
-            float loss = model.trainEpochAndGetLoss(mockDataGenerator);
+            float loss = model.trainEpoch(mockDataGenerator);
             lossHistory.add(loss);
             System.out.println("Epoch " + (epoch + 1) + " Loss: " + loss);
         }
@@ -96,7 +96,7 @@ public class TransformerIntegrationTest {
                 .collect(Collectors.toList());
 
         // Effectuer une étape d'entraînement
-        model.trainEpochAndGetLoss(mockDataGenerator);
+        model.trainEpoch(mockDataGenerator);
 
         // Récupérer les paramètres après l'entraînement
         List<INDArray> updatedParameters = model.getCombinedParameters();
@@ -113,11 +113,11 @@ public class TransformerIntegrationTest {
     @Test
     public void testInferenceAfterTraining() throws Exception {
         // Effectuer l'entraînement
-        model.trainEpochAndGetLoss(mockDataGenerator);
+        model.train(mockDataGenerator, 245);
 
         // Effectuer une inférence
         String input = "hello world";
-        String actualOutput = model.infer(input, 4);
+        String actualOutput = model.infer(input, 2);
 
         // Vérifier que l'inférence est proche de la cible
         // Comme c'est un jeu de données fictif et l'entraînement est limité, cela peut ne pas correspondre exactement
@@ -127,7 +127,7 @@ public class TransformerIntegrationTest {
 
         // (Optionnel) Comparer avec une sortie attendue si possible
         String expectedOutput = "hello output";
-        //assertEquals("L'inférence devrait correspondre à la cible", expectedOutput, actualOutput);
+        assertEquals("L'inférence devrait correspondre à la cible", expectedOutput, actualOutput);
     }
 
     

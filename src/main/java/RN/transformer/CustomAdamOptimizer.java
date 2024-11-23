@@ -130,17 +130,17 @@ public class CustomAdamOptimizer implements Serializable {
             INDArray step = mHat.mul(learningRate).div(Transforms.sqrt(vHat).add(epsilon));
         
             // Log des valeurs intermédiaires
-            System.out.println("Paramètre " + i + " avant mise à jour: " + param);
-            System.out.println("Gradient " + i + ": " + grad);
-            System.out.println("mHat " + i + ": " + mHat);
-            System.out.println("vHat " + i + ": " + vHat);
-            System.out.println("Step " + i + ": " + step);
+            // System.out.println("Paramètre " + i + " avant mise à jour: " + param);
+            // System.out.println("Gradient " + i + ": " + grad);
+            // System.out.println("mHat " + i + ": " + mHat);
+            // System.out.println("vHat " + i + ": " + vHat);
+            // System.out.println("Step " + i + ": " + step);
         
             // Mise à jour du paramètre
             param.subi(step);
         
             // Log après mise à jour
-            System.out.println("Paramètre " + i + " après mise à jour: " + param);
+            // System.out.println("Paramètre " + i + " après mise à jour: " + param);
         }
     
         // Mettre à jour le taux d'apprentissage si nécessaire

@@ -1,1606 +1,528 @@
-// Tokenizer.java
-package RN.transformer;
-
-import java.io.Serializable;
-import java.util.*;
-import java.util.stream.Collectors;
-
-import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
-import org.nd4j.linalg.api.buffer.DataType;
-import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.factory.Nd4j;
-
-public class Tokenizer implements Serializable {
-    private static final long serialVersionUID = -1691008595018974489L;
-    
-    // Utiliser LinkedHashMap pour préserver l'ordre d'insertion
-    private final LinkedHashMap<String, Integer> tokenToId;
-    private final LinkedHashMap<Integer, String> idToToken;
-    private int vocabSize;
-    private INDArray pretrainedEmbeddings;
-    private final int embeddingSize;
-    private final int maxSequenceLength;
-
-
-    // Tokens spéciaux
-    public static final String PAD_TOKEN = "<PAD>";
-    public static final String UNK_TOKEN = "<UNK>";
-    public static final String START_TOKEN = "<START>";
-    public static final String END_TOKEN = "<END>";
-    
-    // WordVectors membre
-    private WordVectors wordVectors;
-    
-    // Constructeur utilisant des WordVectors
-    public Tokenizer(WordVectors wordVectors, int embeddingSize, int maxSequenceLength) {
-        this.embeddingSize = embeddingSize;
-        this.maxSequenceLength = maxSequenceLength;
-        this.tokenToId = new LinkedHashMap<>();
-        this.idToToken = new LinkedHashMap<>();
-        this.wordVectors = wordVectors;
-        
-        // Initialiser les tokens spéciaux
-        initializeSpecialTokens();
-        
-        // Ajouter tous les mots du vocabulaire Word2Vec
-        Collection<String> words = wordVectors.vocab().words();
-        for (String word : words) {
-            addToken(word); // Maintenant, addToken ne modifie plus pretrainedEmbeddings
-        }
-        
-        this.vocabSize = tokenToId.size();
-        
-        // Initialiser les embeddings avec WordVectors
-        initializeEmbeddings(wordVectors);
-    }
-    
-    // Constructeur utilisant une liste de mots
-    public Tokenizer(List<String> words, int embeddingSize, int maxSequenceLength) {
-        this.embeddingSize = embeddingSize;
-        this.maxSequenceLength = maxSequenceLength;
-        this.tokenToId = new LinkedHashMap<>();
-        this.idToToken = new LinkedHashMap<>();
-        this.wordVectors = null; // Pas de WordVectors fourni
-        
-        // Initialiser les tokens spéciaux
-        initializeSpecialTokens();
-        
-        // Ajouter tous les mots du vocabulaire fourni
-        for (String word : words) {
-            addToken(word);
-        }
-        
-        this.vocabSize = tokenToId.size();
-        
-        // Initialiser les embeddings avec des vecteurs aléatoires
-        initializeEmbeddings();
-    }
-
-    /**
-     * Convertit une liste de tokens en INDArray d'IDs.
-     */
-    public INDArray tokensToINDArray(List<String> tokens) {
-        int[] ids = tokens.stream()
-                          .mapToInt(token -> tokenToId.getOrDefault(token, getUnkTokenId()))
-                          .toArray();
-        // Assurer la forme [1, N]
-        INDArray arr = Nd4j.createFromArray(ids).castTo(DataType.INT32).reshape(1, ids.length);
-        return arr;
-    }
-
-    /**
-     * Recherche les embeddings pour un batch de séquences d'IDs de tokens.
-     *
-     * @param tokenIdsBatch INDArray contenant les IDs des tokens du batch [batchSize, seqLength].
-     * @return Embeddings du batch [batchSize, seqLength, dModel].
-     */
-    public INDArray lookupEmbeddings(INDArray tokenIdsBatch) {
-        // Vérifier que tokenIdsBatch est de type entier
-        if (!tokenIdsBatch.dataType().isIntType()) {
-            throw new IllegalArgumentException("tokenIdsBatch doit être de type entier.");
-        }
-
-        // tokenIdsBatch shape: [batchSize, seqLength]
-        int batchSize = (int) tokenIdsBatch.shape()[0];
-        int seqLength = (int) tokenIdsBatch.shape()[1];
-        
-        // Aplatir les IDs de tokens pour récupérer les embeddings en une seule opération
-        INDArray flattenedTokenIds = tokenIdsBatch.reshape(batchSize * seqLength); // [batchSize * seqLength]
-        
-        // Convertir flattenedTokenIds en int[]
-        int[] tokenIds = flattenedTokenIds.toIntVector();
-        
-        // Récupérer les embeddings: [batchSize * seqLength, dModel]
-        INDArray batchEmbeddings = getPretrainedEmbeddings().getRows(tokenIds); 
-        
-        // Reshaper en [batchSize, seqLength, dModel]
-        batchEmbeddings = batchEmbeddings.reshape(batchSize, seqLength, embeddingSize);
-
-        return batchEmbeddings;
-    }
-    
-    // Initialisation des tokens spéciaux avec des IDs fixes
-    private void initializeSpecialTokens() {
-        addSpecialToken(PAD_TOKEN);    
-        addSpecialToken(UNK_TOKEN);    
-        addSpecialToken(START_TOKEN);  
-        addSpecialToken(END_TOKEN);    
-    }
-
-    // Imprimer le vocabulaire avec le mapping token-ID
-    public void printVocabulary() {
-        System.out.println("Vocabulaire du Tokenizer:");
-        for (Map.Entry<String, Integer> entry : tokenToId.entrySet()) {
-            System.out.printf("Token: '%s' -> ID: %d%n", entry.getKey(), entry.getValue());
-        }
-    }
-
-    // Initialisation des embeddings avec WordVectors
-    public void initializeEmbeddings(WordVectors wordVectors) { // Rendue publique
-        if (wordVectors == null) {
-            throw new IllegalArgumentException("WordVectors ne peut pas être null.");
-        }
-        
-        this.pretrainedEmbeddings = Nd4j.zeros(vocabSize, embeddingSize);
-        
-        // Calculer le vecteur moyen pour les tokens inconnus
-        INDArray meanVector = calculateMeanVector(wordVectors);
-        
-        // Initialiser les embeddings des tokens spéciaux
-        pretrainedEmbeddings.putRow(getPadTokenId(), Nd4j.zeros(embeddingSize)); // <PAD> est généralement un vecteur nul
-        pretrainedEmbeddings.putRow(getUnkTokenId(), meanVector);
-        pretrainedEmbeddings.putRow(getStartTokenId(), meanVector.add(Nd4j.randn(1, embeddingSize).mul(0.1)));
-        pretrainedEmbeddings.putRow(getEndTokenId(), meanVector.add(Nd4j.randn(1, embeddingSize).mul(0.1)));
-        
-        // Copier les embeddings pour les autres tokens
-        for (Map.Entry<String, Integer> entry : tokenToId.entrySet()) {
-            String token = entry.getKey();
-            int id = entry.getValue();
-            if (isSpecialToken(token)) continue;
-            if (wordVectors.hasWord(token)) {
-                pretrainedEmbeddings.putRow(id, wordVectors.getWordVectorMatrix(token));
-            } else {
-                pretrainedEmbeddings.putRow(id, meanVector);
-            }
-        }
-    }
-
-    // Initialisation des embeddings avec des vecteurs aléatoires (pour les tests ou l'utilisation sans WordVectors)
-    public void initializeEmbeddings() { // Rendue publique
-        this.pretrainedEmbeddings = Nd4j.randn(vocabSize, embeddingSize).divi(Math.sqrt(embeddingSize));
-        pretrainedEmbeddings.putRow(getPadTokenId(), Nd4j.zeros(embeddingSize)); // <PAD> est un vecteur nul
-        pretrainedEmbeddings.putRow(getUnkTokenId(), Nd4j.zeros(1, embeddingSize));
-        pretrainedEmbeddings.putRow(getStartTokenId(), Nd4j.zeros(1, embeddingSize));
-        pretrainedEmbeddings.putRow(getEndTokenId(), Nd4j.zeros(1, embeddingSize));
-    }
-
-    // Calcul du vecteur moyen pour les WordVectors
-    private INDArray calculateMeanVector(WordVectors wordVectors) {
-        INDArray sum = Nd4j.zeros(embeddingSize);
-        int count = 0;
-        Collection<String> words = wordVectors.vocab().words();
-        for (String word : words) {
-            sum.addi(wordVectors.getWordVectorMatrix(word));
-            count++;
-        }
-        return sum.div(count);
-    }
-
-    // Vérification des tokens spéciaux
-    private boolean isSpecialToken(String token) {
-        return token.equals(PAD_TOKEN) || token.equals(UNK_TOKEN) || 
-               token.equals(START_TOKEN) || token.equals(END_TOKEN);
-    }
-
-    // Ajout de tokens spéciaux avec des IDs fixes
-    private void addSpecialToken(String token) {
-        int id = tokenToId.size();
-        tokenToId.put(token, id);
-        idToToken.put(id, token);
-    }
-
-    // Ajout de tokens non spéciaux et initialisation de leur embedding
-    public void addToken(String token) { // Rendue publique
-        if (!tokenToId.containsKey(token)) {
-            int id = tokenToId.size();
-            tokenToId.put(token, id);
-            idToToken.put(id, token);
-            // Embeddings ne sont pas modifiés ici; ils doivent être initialisés ultérieurement
-            vocabSize = tokenToId.size();
-        }
-    }
-
-    // Conversion de texte en tokens avec ajout des tokens spéciaux et padding
-    public List<String> tokenize(String text) {
-        String[] tokens = text.split("\\s+|(?=\\p{Punct})|(?<=\\p{Punct})");
-        List<String> tokenList = new ArrayList<>();
-        
-        // Ajouter le token <START>
-        tokenList.add(START_TOKEN);
-        
-        // Ajouter les tokens de la phrase
-        tokenList.addAll(Arrays.stream(tokens)
-                             .filter(token -> !token.trim().isEmpty())
-                             .collect(Collectors.toList()));
-        
-        // Ajouter le token <END>
-        tokenList.add(END_TOKEN);
-        
-        
-        // Ajouter le padding <PAD> si nécessaire
-        while (tokenList.size() < maxSequenceLength) {
-            tokenList.add(PAD_TOKEN);
-        }
-        
-        // Troncature si la séquence dépasse la longueur maximale
-        if (tokenList.size() > maxSequenceLength) {
-            tokenList = tokenList.subList(0, maxSequenceLength);
-        }
-        
-        return tokenList;
-    }
-
-    // Conversion de tokens en IDs
-    public List<Integer> tokensToIds(List<String> tokens) {
-        return tokens.stream()
-                     .map(token -> tokenToId.getOrDefault(token, getUnkTokenId()))
-                     .collect(Collectors.toList());
-    }
-
-    // Conversion d'une liste d'IDs en chaîne de tokens
-    public String idsToTokens(List<Integer> ids) {
-        return ids.stream()
-                  .map(id -> idToToken.getOrDefault(id, UNK_TOKEN))
-                  .collect(Collectors.joining(" "));
-    }
-
-    // Méthodes pour obtenir les IDs des tokens spéciaux
-    public int getPadTokenId() {
-        return tokenToId.get(PAD_TOKEN);
-    }
-
-    public Map<String, Integer> getTokenToId(){
-        return tokenToId;
-    }
-
-    public int getUnkTokenId() {
-        return tokenToId.get(UNK_TOKEN);
-    }
-
-    public int getStartTokenId() {
-        return tokenToId.get(START_TOKEN);
-    }
-
-    public int getEndTokenId() {
-        return tokenToId.get(END_TOKEN);
-    }
-
-    // Taille du vocabulaire
-    public int getVocabSize() {
-        return vocabSize;
-    }
-
-    // Gestion des embeddings
-    public INDArray getPretrainedEmbeddings() {
-        return pretrainedEmbeddings;
-    }
-    
-    public void setPretrainedEmbeddings(INDArray embeddings) {
-        this.pretrainedEmbeddings = embeddings;
-    }
-
-    public boolean hasCalculatedEmbedding(int tokenId) {
-        INDArray embedding = getPretrainedEmbeddings().getRow(tokenId);
-        // Définir votre propre logique pour déterminer si l'embedding est calculé
-        // Par exemple, vérifier si la moyenne de l'embedding est non zéro
-        double mean = embedding.meanNumber().doubleValue();
-        return mean != 0.0;
-    }
-}
-
-package RN.transformer;
-
-
-
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-
-import org.apache.commons.lang3.tuple.Pair;
-import org.deeplearning4j.models.embeddings.loader.WordVectorSerializer;
-import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
-import org.nd4j.linalg.api.buffer.DataType;
-import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.factory.Nd4j;
-import org.nd4j.linalg.indexing.NDArrayIndex;
-import org.nd4j.linalg.ops.transforms.Transforms;
-
-import RN.transformer.Decoder.DecoderLayer;
-import RN.transformer.Encoder.EncoderLayer;
-import RN.utils.NDArrayUtils;
-
-public class TransformerModel implements Serializable {
-
-    private static final long serialVersionUID = -4799769434788429831L;
-
-    private static final String W2VECPATH = "pretrained-embeddings/mon_model_word2vec.txt";
-    private boolean isTrained = false;
-    public Encoder encoder;
-    public Decoder decoder;
-    public CustomAdamOptimizer optimizer;
-    public Tokenizer tokenizer;
-    private double dropoutRate = 0.01; // Exemple de taux de dropout fixe
-    private transient static WordVectors wordVectors; // Chargé une fois, accessible statiquement
-    private int dModel = 300; // dModel must be divisible by numHeads
-    private int numLayers = 6;
-    private int numHeads = 6;
-    private int dff = 2048;
-    private int maxSequenceLength = 50; // Définissez cette valeur selon votre analyse
-    private INDArray pretrainedEmbeddings = null; // Maintenant non statique
-    private List<INDArray> combinedParameters = new ArrayList<>();
-    private List<INDArray> combinedGradients = new ArrayList<>();
-
-    static {
-        try {
-            wordVectors = WordVectorSerializer.readWord2VecModel(new File(W2VECPATH), true);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    /**
-     * Constructeur par défaut du modèle Transformer.
-     *
-     * @throws IOException en cas d'erreur de chargement des embeddings.
-     */
-    public TransformerModel(float initialLr, int warmupSteps) throws IOException {
-
-        // Garantit la compatibilité et les performances optimales
-        Nd4j.setDefaultDataTypes(DataType.FLOAT, DataType.FLOAT);
-
-        // Définir un vocabulaire par défaut si nécessaire
-        List<String> defaultVocab = Arrays.asList("hello", "world", "test", "input", "output", "The", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog", "<PAD>", "<UNK>", "<START>", "<END>");
-        this.tokenizer = new Tokenizer(defaultVocab, dModel, maxSequenceLength);
-        this.pretrainedEmbeddings = this.tokenizer.getPretrainedEmbeddings();
-        
-        // Initialiser les autres composants
-        this.encoder = new Encoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer);
-        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer);
-
-        addCombinedParameters();
-
-        this.optimizer = new CustomAdamOptimizer(initialLr, dModel, warmupSteps, combinedParameters); // Initialisation hypothétique
-    
-        freezeSpecialTokenEmbeddings();
-    }
-
-    /**
-     * Constructeur principal du modèle Transformer.
-     *
-     * @param numLayers    Nombre de couches dans l'encodeur et le décodeur.
-     * @param dModel       Dimension du modèle.
-     * @param numHeads     Nombre de têtes dans l'attention multi-têtes.
-     * @param dff          Dimension de la couche Feed-Forward.
-     * @param dropoutRate  Taux de dropout.
-     */
-    public TransformerModel(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, float initialLr, int warmupSteps) {
-        this.numLayers = numLayers;
-        this.dModel = dModel;
-        this.numHeads = numHeads;
-        this.dff = dff;
-        this.dropoutRate = dropoutRate;
-
-        // Garantit la compatibilité et les performances optimales
-        Nd4j.setDefaultDataTypes(DataType.FLOAT, DataType.FLOAT);
-
-        // Initialiser le Tokenizer avec WordVectors
-        if (wordVectors != null) {
-            this.tokenizer = new Tokenizer(wordVectors, dModel, maxSequenceLength);
-            this.pretrainedEmbeddings = tokenizer.getPretrainedEmbeddings();
-        } else {
-            // Si les WordVectors ne sont pas chargés, initialiser avec un vocabulaire vide ou par défaut
-            List<String> defaultVocab = Arrays.asList("<PAD>", "<UNK>", "<START>", "<END>");
-            this.tokenizer = new Tokenizer(defaultVocab, dModel, maxSequenceLength);
-            this.pretrainedEmbeddings = tokenizer.getPretrainedEmbeddings();
-        }
-
-        // Initialiser l'encodeur et le décodeur avec le tokenizer
-        this.encoder = new Encoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer);
-        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer);
-
-        addCombinedParameters();
-
-        // Initialiser l'optimiseur avec les paramètres combinés
-        this.optimizer = new CustomAdamOptimizer(initialLr, dModel, warmupSteps, combinedParameters);
-    
-        freezeSpecialTokenEmbeddings();
-    }
-
-    /**
-     * Nouveau constructeur compatible avec le test.
-     *
-     * @param numLayers    Nombre de couches dans l'encodeur et le décodeur.
-     * @param dModel       Dimension du modèle.
-     * @param numHeads     Nombre de têtes dans l'attention multi-têtes.
-     * @param dff          Dimension de la couche Feed-Forward.
-     * @param dropoutRate  Taux de dropout.
-     * @param vocabSize    Taille du vocabulaire.
-     * @param tokenizer    Instance de Tokenizer personnalisée.
-     */
-    public TransformerModel(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, int vocabSize, Tokenizer tokenizer, float initialLr, int warmupSteps) {
-        this.numLayers = numLayers;
-        this.dModel = dModel;
-        this.numHeads = numHeads;
-        this.dff = dff;
-        this.dropoutRate = dropoutRate;
-        this.tokenizer = tokenizer;
-
-        // Garantit la compatibilité et les performances optimales
-        Nd4j.setDefaultDataTypes(DataType.FLOAT, DataType.FLOAT);
-
-        // Utiliser les embeddings du tokenizer
-        this.pretrainedEmbeddings = tokenizer.getPretrainedEmbeddings();
-
-        // Si les embeddings sont null, initialisez-les avec des embeddings aléatoires
-        if (this.pretrainedEmbeddings == null) {
-            System.out.println("Pretrained embeddings are null. Initializing random embeddings.");
-            this.pretrainedEmbeddings = Nd4j.randn(DataType.FLOAT, vocabSize, dModel).divi(Math.sqrt(dModel));
-            tokenizer.setPretrainedEmbeddings(this.pretrainedEmbeddings); // Assurez-vous que Tokenizer peut définir les embeddings
-        }
-
-        // Initialiser l'encodeur et le décodeur avec le tokenizer personnalisé
-        this.encoder = new Encoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer);
-        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer);
-
-        addCombinedParameters();
-
-        // Initialiser l'optimiseur avec les paramètres combinés
-        this.optimizer = new CustomAdamOptimizer(initialLr, dModel, warmupSteps, combinedParameters);
-    
-        freezeSpecialTokenEmbeddings();
-    }
-
-    // Méthode pour initialiser l'optimiseur après avoir collecté tous les paramètres
-    public void initializeOptimizer(float learningRate, int warmupSteps) {
-        List<INDArray> combinedParameters = this.encoder.getParameters();
-        combinedParameters.addAll(this.decoder.getParameters());
-        this.optimizer = new CustomAdamOptimizer(learningRate, dModel, warmupSteps, combinedParameters);
-    }
-
-    /**
-     * Entraîne le modèle sur un nombre donné d'epochs.
-     *
-     * @param dataGenerator Générateur de données pour l'entraînement.
-     * @param epochNum      Nombre d'epochs à entraîner.
-     * @throws IOException En cas d'erreur d'E/S.
-     */
-    public void train(DataGenerator dataGenerator, int epochNum) throws IOException {
-        
-        for (int epoch = 0; epoch < epochNum; epoch++) {
-            // Définir le numéro d'epoch actuel (commence à 1)
-            optimizer.setEpoch(epoch + 1);
-            System.out.println("Epoch " + (epoch + 1) + " / " + epochNum);
-
-            float totalLoss = 0.0f;
-            int totalTokens = 0;
-
-            while (dataGenerator.hasNextBatch()) {
-                // Nettoyer les gradients précédents
-                cleanGradients();
-
-                // Obtenir le prochain batch
-                Batch batch = dataGenerator.nextBatch();
-                INDArray data = batch.getData();     // [batchSize, seqLength]
-                INDArray target = batch.getTarget(); // [batchSize, seqLength]
-                // INDArray mask = batch.getMask();     // [batchSize, 1, 1, seqLength] (Non utilisé directement ici)
-
-                // Créer les masques de padding pour l'encodeur et le décodeur
-                INDArray encoderPaddingMask = createPaddingMask(data);       // [batchSize, 1, 1, seqLength]
-                //INDArray decoderPaddingMask = createPaddingMask(target);    // [batchSize, 1, 1, seqLength]
-
-                // Créer le masque look-ahead pour le décodeur (taille basée sur la séquence cible)
-                // Créer le masque look-ahead avec le batch size
-                int batchSize = (int) data.shape()[0];
-                int targetSeqLength = (int) target.shape()[1];
-                INDArray lookAheadMask = createLookAheadMask(batchSize, targetSeqLength); // [1, 1, seqLength, seqLength]
-
-                // Encoder les données du batch
-                INDArray encoded = encoder.encode(true, data, encoderPaddingMask); // [batchSize, seqLength, dModel]
-
-                // Décoder les données encodées
-                INDArray decodedOutput = decoder.decode(true, encoded, encoded, lookAheadMask, encoderPaddingMask); // [batchSize, seqLength, dModel]
-
-                // Calculer la perte et les gradients
-                List<INDArray> decodedLogits = Arrays.asList(decodedOutput);
-                Pair<Float, INDArray> lossAndGradients = calculateCrossEntropyLossAndGradient(decodedLogits, target);
-                float loss = lossAndGradients.getLeft();
-                INDArray initialGradients = lossAndGradients.getRight();
-
-                totalLoss += loss;
-                totalTokens += target.sumNumber().intValue(); // Total de tokens cibles pour normaliser la perte
-
-                // Afficher la perte pour ce batch
-                System.out.println("Perte pour ce batch: " + loss);
-
-                // Rétropropagation
-                Map<String, INDArray> decoderGradients = decoder.backward(initialGradients);
-                Map<String, INDArray> encoderGradients = extractEncoderGradients(decoderGradients);
-                encoder.backward(encoderGradients);
-
-                // Ajouter tous les gradients calculés aux `combinedGradients`
-                addCombinedGradients();
-
-                // Clip gradients
-                clipGradients(combinedGradients, 0.5f); // Exemple avec maxNorm = 0.5
-
-                // Mettre à jour les poids du modèle via l'optimiseur
-                optimizer.update(combinedParameters, combinedGradients);
-
-                // for (int i = 0; i < combinedGradients.size(); i++) {
-                //     INDArray grad = combinedGradients.get(i);
-                //     if (grad == null) {
-                //         throw new IllegalStateException("Le gradient " + i + " est nul.");
-                //     }
-                // }
-                
-
-                // for (int i = 0; i < combinedParameters.size(); i++) {
-                //     INDArray paramBefore = combinedParameters.get(i).dup();
-                //     optimizer.update(combinedParameters, combinedGradients);
-                //     INDArray paramAfter = combinedParameters.get(i);
-                //     System.out.println("Param " + i + " avant: " + paramBefore);
-                //     System.out.println("Param " + i + " après: " + paramAfter);
-                //     //assertFalse(paramBefore.equalsWithEps(paramAfter, 1e-6), "Le paramètre " + i + " devrait avoir été mis à jour.");
-                // }
-
-
-
-            }
-
-            // Calculer la perte moyenne pour l'epoch
-            float averageLoss = totalLoss / totalTokens;
-            System.out.println("Epoch " + (epoch + 1) + " completed with average loss: " + averageLoss);
-
-            // Réinitialiser le générateur de données pour le prochain epoch
-            dataGenerator.init();
-
-            // Marquer le modèle comme entraîné après le premier epoch
-            if (epoch + 1 >= 1) {
-                isTrained = true;
-            }
-        }
-
-        System.out.println("Training completed.");
-    }
-
-   /**
-     * Méthode d'entraînement pour un epoch, retourne la perte moyenne.
-     *
-     * @param dataGenerator Générateur de données pour l'entraînement.
-     * @return Perte moyenne sur l'epoch.
-     * @throws IOException En cas d'erreur d'E/S.
-     */
-    public float trainEpochAndGetLoss(DataGenerator dataGenerator) throws IOException {
-        return trainEpoch(dataGenerator);
-    }
-
-    // public float trainEpoch(DataGenerator dataGenerator) throws IOException {
-    //     float totalLoss = 0.0f;
-    //     int totalTokens = 0;
-    
-    //     // Initialiser pour l'epoch
-    //     optimizer.setEpoch(optimizer.getEpoch() + 1);
-    //     System.out.println("Epoch " + optimizer.getEpoch());
-    
-    //     while (dataGenerator.hasNextBatch()) {
-    //         // Nettoyer les gradients précédents
-    //         cleanGradients();
-    
-    //         Batch batch = dataGenerator.nextBatch();
-    //         INDArray data = batch.getData();
-    //         INDArray target = batch.getTarget();
-    
-    //         // Créer les masques de padding pour le batch
-    //         INDArray encoderPaddingMask = createPaddingMask(data);
-    //         INDArray decoderPaddingMask = createPaddingMask(target);
-    //         INDArray lookAheadMask = createLookAheadMask((int) data.shape()[0], (int) target.shape()[1]);
-    
-    //         // Encoder les données du batch
-    //         INDArray encoded = encoder.encode(true, data, encoderPaddingMask);
-    
-    //         // Décoder les données encodées
-    //         INDArray decodedOutput = decoder.decode(true, encoded, encoded, lookAheadMask, encoderPaddingMask);
-    
-    //         // Calculer la perte et les gradients
-    //         List<INDArray> decodedLogits = Arrays.asList(decodedOutput);
-    //         Pair<Float, INDArray> lossAndGradients = calculateCrossEntropyLossAndGradient(decodedLogits, target);
-    //         float loss = lossAndGradients.getLeft();
-    //         INDArray initialGradients = lossAndGradients.getRight();
-    
-    //         totalLoss += loss;
-    //         totalTokens += target.sumNumber().intValue();
-    
-    //         // Afficher la perte pour le monitoring
-    //         System.out.println("Perte pour ce batch: " + loss);
-    
-    //         // Étape 2: Rétropropagation à travers le Décodeur
-    //         Map<String, INDArray> decoderGradients = decoder.backward(initialGradients);
-    
-    //         // Extraire les gradients pertinents pour l'encodeur à partir de decoderGradients
-    //         Map<String, INDArray> encoderGradients = extractEncoderGradients(decoderGradients);
-    
-    //         // Étape 3: Rétropropagation à travers l'Encodeur
-    //         encoder.backward(encoderGradients);
-    
-    //         // Ajouter tous les gradients calculés aux `combinedGradients`
-    //         addCombinedGradients();
-    //     }
-    
-    //     // Calculer la perte moyenne
-    //     float averageLoss = totalLoss / totalTokens;
-    
-    //     // Mettre à jour les poids du modèle via l'optimiseur
-    //     optimizer.update(combinedParameters, combinedGradients);
-    
-    //     // Réinitialiser le générateur de données pour le prochain epoch
-    //     dataGenerator.reset();
-    //     System.out.println("Epoch " + optimizer.getEpoch() + " completed with average loss: " + averageLoss);
-    
-    //     // Marquer le modèle comme entraîné après le premier epoch
-    //     if (optimizer.getEpoch() >= 1) {
-    //         isTrained = true;
-    //     }
-    
-    //     return averageLoss;
-    // }
-
-    public float trainEpoch(DataGenerator dataGenerator) throws IOException {
-        float totalLoss = 0.0f;
-        int totalTokens = 0;
-    
-        // Initialiser pour l'epoch
-        optimizer.setEpoch(optimizer.getEpoch() + 1);
-        System.out.println("Epoch " + optimizer.getEpoch());
-    
-        while (dataGenerator.hasNextBatch()) {
-            // Nettoyer les gradients précédents
-            cleanGradients();
-    
-            Batch batch = dataGenerator.nextBatch();
-            INDArray data = batch.getData();   // Utiliser directement le format INDArray
-            INDArray target = batch.getTarget();  // Utiliser directement le format INDArray
-            // INDArray mask = batch.getMask();  // Masque de padding pour les séquences
-    
-            // Créer les masques de padding pour le batch
-            INDArray encoderPaddingMask = createPaddingMask(data);
-            //INDArray decoderPaddingMask = createPaddingMask(target);
-            // Créer le masque look-ahead avec le batch size
-            int batchSize = (int) data.shape()[0];
-            int targetSeqLength = (int) target.shape()[1];
-            INDArray lookAheadMask = createLookAheadMask(batchSize, targetSeqLength); // Longueur max du target
-    
-            // System.out.println("Encoder Mask: " + encoderPaddingMask);
-            // System.out.println("Decoder Mask: " + decoderPaddingMask);
-            // System.out.println("Look-Ahead Mask: " + lookAheadMask);
-
-            // Encoder les données du batch
-            INDArray encoded = encoder.encode(true, data, encoderPaddingMask);
-            // System.out.println("Encoded output shape: " + Arrays.toString(encoded.shape()));
-    
-            // Décoder les données encodées
-            INDArray decodedOutput = decoder.decode(true, encoded, encoded, lookAheadMask, encoderPaddingMask);
-            // System.out.println("Decoded output shape: " + Arrays.toString(decodedOutput.shape()));
-    
-            // Calculer la perte et les gradients
-            List<INDArray> decodedLogits = Arrays.asList(decodedOutput);
-            Pair<Float, INDArray> lossAndGradients = calculateCrossEntropyLossAndGradient(decodedLogits, target);
-            float loss = lossAndGradients.getLeft();
-            INDArray initialGradients = lossAndGradients.getRight();
-    
-            totalLoss += loss;
-            totalTokens += target.sumNumber().intValue(); // Total de tokens cibles pour normaliser la perte
-    
-            // Afficher la perte pour le monitoring
-            System.out.println("Perte pour ce batch: " + loss);
-    
-            // Étape 2: Rétropropagation à travers le Décodeur
-            Map<String, INDArray> decoderGradients = decoder.backward(initialGradients);
-    
-            // Extraire les gradients pertinents pour l'encodeur à partir de decoderGradients
-            Map<String, INDArray> encoderGradients = extractEncoderGradients(decoderGradients);
-    
-            // Étape 3: Rétropropagation à travers l'Encodeur
-            encoder.backward(encoderGradients);
-    
-            // Ajouter tous les gradients calculés aux `combinedGradients`
-            addCombinedGradients();
-
-            for (INDArray grad : combinedGradients) {
-                if (grad.isNaN().any() || grad.isInfinite().any()) {
-                    throw new RuntimeException("Gradient contains NaN or Infinite values.");
-                }
-            }
-
-
-            // for (int i = 0; i < combinedGradients.size(); i++) {
-            //     INDArray grad = combinedGradients.get(i);
-            //     double norm = grad.norm2Number().doubleValue();
-            //     System.out.println("Gradient " + i + " Norm: " + norm);
-            //     if (norm < 1e-6) {
-            //         throw new RuntimeException("Gradient " + i + " est trop petit.");
-            //     }
-            // }
-
-            // for (int i = 0; i < combinedParameters.size(); i++) {
-            //         INDArray paramBefore = combinedParameters.get(i).dup();
-            //         // Mise à jour des paramètres
-            //         optimizer.update(combinedParameters, combinedGradients);
-            //         INDArray paramAfter = combinedParameters.get(i);
-            //         System.out.println("Param " + i + " Before Update: " + paramBefore);
-            //         System.out.println("Param " + i + " After Update: " + paramAfter);
-                    
-            //     }
-
-            // Avant l'appel à l'optimiseur
-            clipGradients(combinedGradients, 0.5);
-
-            // Mettre à jour les poids du modèle via l'optimiseur
-            optimizer.update(combinedParameters, combinedGradients);
-    
-            // (Optionnel) Afficher la progression
-            // System.out.println("Batch processed.");
-        }
-    
-        // Calculer la perte moyenne
-        float averageLoss = totalLoss / totalTokens;
-    
-        // Réinitialiser le générateur de données pour le prochain epoch
-        dataGenerator.init();
-        System.out.println("Epoch " + optimizer.getEpoch() + " completed with average loss: " + averageLoss);
-    
-        // Marquer le modèle comme entraîné après le premier epoch
-        if (optimizer.getEpoch() >= 1) {
-            isTrained = true;
-        }
-    
-        return averageLoss;
-    }
-
-    // private void clipGradients(List<INDArray> gradients, double maxNorm) {
-    //     double totalNorm = 0.0;
-    //     for (INDArray grad : gradients) {
-    //         totalNorm += Math.pow(grad.norm2Number().doubleValue(), 2);
-    //     }
-    //     totalNorm = Math.sqrt(totalNorm);
-    //     if (totalNorm > maxNorm) {
-    //         double scale = maxNorm / totalNorm;
-    //         for (INDArray grad : gradients) {
-    //             grad.muli(scale);
-    //         }
-    //         // System.out.println("Gradients clipped. Scale factor: " + scale);
-    //     }
-    // }
-
-    private void clipGradients(List<INDArray> gradients, double maxNorm) {
-        for (INDArray grad : gradients) {
-            double norm = grad.norm2Number().doubleValue();
-            if (norm > maxNorm) {
-                grad.divi(norm).muli(maxNorm);
-            }
-        }
-    }
-    
-    
-    
-
-    /**
-     * Pad une liste de séquences à une longueur maximale avec le token de padding.
-     *
-     * @param sequences   Liste de séquences d'IDs.
-     * @param maxLength   Longueur maximale à atteindre.
-     * @param padTokenId  ID du token de padding.
-     * @return Liste de séquences padées.
-     */
-    private List<List<Integer>> padSequences(List<List<Integer>> sequences, int maxLength, int padTokenId) {
-        return sequences.stream()
-                .map(seq -> {
-                    List<Integer> padded = new ArrayList<>(seq);
-                    while (padded.size() < maxLength) {
-                        padded.add(padTokenId);
-                    }
-                    return padded;
-                })
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Crée un masque de padding pour un batch donné.
-     *
-     * @param data INDArray contenant les IDs de tokens du batch [batchSize, seqLength].
-     * @return INDArray représentant le masque de padding [batchSize, 1, 1, seqLength].
-     */
-    public INDArray createPaddingMask(INDArray tokens) {
-        // tokens : [batchSize, seqLength]
-        // output mask : [batchSize, 1, 1, seqLength]
-        
-        // Identifier les positions de padding
-        INDArray paddingPositions = tokens.eq(tokenizer.getPadTokenId()).castTo(DataType.FLOAT); // [batchSize, seqLength]
-        // System.out.println("Padding Positions:\n" + paddingPositions);
-        
-        // Créer un masque initial rempli de 1.0f
-        INDArray paddingMask = Nd4j.ones(DataType.FLOAT, tokens.size(0), 1, 1, tokens.size(1)); // [batchSize, 1, 1, seqLength]
-        
-        // Boucler sur chaque élément pour remplacer 1.0f (padding) par 0.0f
-        for (int i = 0; i < tokens.size(0); i++) { // Itérer sur batchSize
-            for (int j = 0; j < tokens.size(1); j++) { // Itérer sur seqLength
-                if (paddingPositions.getFloat(i, j) == 1.0f) {
-                    paddingMask.putScalar(new int[]{i, 0, 0, j}, 0.0f);
-                }
-            }
-        }
-        
-        // System.out.println("Generated Padding Mask:\n" + paddingMask);
-        return paddingMask;
-    }
-
-
-    /**
-     * Crée un masque look-ahead pour le décodeur.
-     *
-     * @param size Taille de la séquence.
-     * @return INDArray représentant le masque look-ahead [1, 1, size, size].
-     */
-    public INDArray createLookAheadMask(int batchSize, int size) {
-        // Créer une matrice triangulaire inférieure remplie de 0.0f
-        INDArray lookAheadMask = Nd4j.zeros(DataType.FLOAT, size, size); // [size, size]
-        
-        // Remplir le masque avec 0.0f où j <= i et -Infinity où j > i
-        for (int i = 0; i < size; i++) {
-            for (int j = 0; j < size; j++) {
-                if (j > i) {
-                    lookAheadMask.putScalar(new int[]{i, j}, Float.NEGATIVE_INFINITY);
-                } else {
-                    lookAheadMask.putScalar(new int[]{i, j}, 0.0f);
-                }
-            }
-        }
-        
-        // Reshaper pour correspondre aux dimensions attendues [1, 1, size, size]
-        lookAheadMask = lookAheadMask.reshape(1, 1, size, size); // [1, 1, size, size]
-        
-        // Répéter le masque pour chaque exemple du batch
-        INDArray repeatedMask = Nd4j.tile(lookAheadMask, batchSize, 1, 1, 1); // [batchSize, 1, size, size]
-        
-        return repeatedMask;
-    }
-    
-
-    /**
-     * Calcule la perte d'entropie croisée et les gradients associés.
-     *
-     * @param decodedLogits Logits générés par le décodeur [batchSize, seqLength, vocabSize].
-     * @param targetBatch   INDArray contenant les IDs des tokens cibles [batchSize, seqLength].
-     * @return Un Pair contenant la perte moyenne et les gradients [batchSize, seqLength, vocabSize].
-     */
-    protected Pair<Float, INDArray> calculateCrossEntropyLossAndGradient(List<INDArray> decodedLogits, INDArray targetBatch) {
-    
-        INDArray logits = decodedLogits.get(0); // [batchSize, seqLength, vocabSize]
-        int batchSize = (int) logits.shape()[0];
-        int seqLength = (int) logits.shape()[1];
-        int vocabSize = (int) logits.shape()[2];
-    
-        // Appliquer le softmax de manière stable
-        INDArray probabilities = NDArrayUtils.stableSoftmax(logits, 2); // [batchSize, seqLength, vocabSize]
-        // System.out.println("Probabilités Calculées: " + probabilities);
-    
-        // Vérifier les probabilités
-        if (probabilities.isNaN().any() || probabilities.isInfinite().any()) {
-            throw new RuntimeException("Probabilités contiennent des NaN ou des valeurs infinies.");
-        }
-    
-        // Créer une INDArray one-hot pour les cibles
-        INDArray targetOneHot = Nd4j.zeros(DataType.FLOAT, batchSize, seqLength, vocabSize);
-        for (int b = 0; b < batchSize; b++) {
-            for (int i = 0; i < seqLength; i++) {
-                int targetId = targetBatch.getInt(b, i);
-                if (targetId >= 0 && targetId < vocabSize) {
-                    targetOneHot.putScalar(new int[] { b, i, targetId }, 1.0f);
-                } else {
-                    throw new IllegalArgumentException("ID de cible invalide: " + targetId);
-                }
-            }
-        }
-    
-        // System.out.println("targetOneHot: " + targetOneHot);
-    
-    
-        // Créer un masque pour ignorer les `<PAD>`
-        INDArray paddingMask = createPaddingMask(targetBatch); // [batchSize, 1, 1, seqLength]
-        INDArray paddingMaskReshaped = paddingMask.reshape(batchSize, 1, seqLength); // [batchSize, 1, seqLength]
-    
-        // Calculer la perte d'entropie croisée en masquant les `<PAD>`
-        INDArray logSoftmax = Transforms.log(probabilities.add(1e-10)); // éviter log(0)
-        INDArray crossEntropy = logSoftmax.mul(targetOneHot).neg(); // [batchSize, seqLength, vocabSize]
-        
-        // Appliquer le masque binaire (1 pour valide, 0 pour padding)
-        INDArray maskedCrossEntropy = crossEntropy.mul(paddingMaskReshaped.broadcast(batchSize, vocabSize, seqLength).permute(0, 2, 1)); // [batchSize, seqLength, vocabSize]
-    
-        // System.out.println("Cross Entropy:\n" + crossEntropy);
-        // System.out.println("Masked Cross Entropy:\n" + maskedCrossEntropy);
-    
-        // Calculer la perte moyenne sur les tokens valides
-        float loss = maskedCrossEntropy.sumNumber().floatValue() / targetBatch.neq(tokenizer.getPadTokenId()).castTo(DataType.FLOAT).sumNumber().floatValue();
-    
-        // System.out.println("Total Loss: " + loss);
-    
-        // Calculer les gradients (softmax - targetOneHot) en masquant les `<PAD>`
-        INDArray gradients = probabilities.sub(targetOneHot)
-            .mul(paddingMaskReshaped.broadcast(batchSize, vocabSize, seqLength).permute(0, 2, 1))
-            .div(targetBatch.neq(tokenizer.getPadTokenId()).castTo(DataType.FLOAT).sumNumber().floatValue());
-    
-        // System.out.println("Gradients:\n" + gradients);
-    
-        // Vérifier les gradients
-        if (gradients.isNaN().any() || gradients.isInfinite().any()) {
-            throw new RuntimeException("Gradients contiennent des NaN ou des valeurs infinies.");
-        }
-    
-        return Pair.of(loss, gradients);
-    }
-    
-
-    /**
-     * Rétropropagation des gradients à travers l'encodeur et le décodeur.
-     *
-     * @param decoderGradients Gradients retournés par le décodeur.
-     * @return Map contenant les gradients spécifiques à l'encodeur.
-     */
-    private Map<String, INDArray> extractEncoderGradients(Map<String, INDArray> decoderGradients) {
-        Map<String, INDArray> encoderGradients = new HashMap<>();
-    
-        // Extrayez les gradients pertinents
-        INDArray gradAttentionOutputConcat = decoderGradients.get("gradAttentionOutputConcat");
-        INDArray gradInputQ = decoderGradients.get("gradInputQ");
-        INDArray gradInputK = decoderGradients.get("gradInputK");
-        INDArray gradInputV = decoderGradients.get("gradInputV");
-    
-        if (gradAttentionOutputConcat == null || gradInputQ == null || gradInputK == null || gradInputV == null) {
-            throw new IllegalStateException("Un ou plusieurs gradients nécessaires sont null.");
-        }
-    
-        // Ajoutez les gradients au Map
-        encoderGradients.put("gradAttentionOutputConcat", gradAttentionOutputConcat);
-        encoderGradients.put("gradInputQ", gradInputQ);
-        encoderGradients.put("gradInputK", gradInputK);
-        encoderGradients.put("gradInputV", gradInputV);
-    
-        return encoderGradients;
-    }
-    
-
-    /**
-     * Ajoute les paramètres de l'encodeur et du décodeur à la liste combinée.
-     */
-    public void addCombinedParameters() {
-        // Ajoute les paramètres de l'encodeur
-        List<INDArray> encoderParams = encoder.getParameters();
-        for (INDArray param : encoderParams) {
-            if (!isSpecialTokenParameter(param)) {
-                combinedParameters.add(param);
-            }
-        }
-    
-        // Ajoute les paramètres du decoder
-        List<INDArray> decoderParams = decoder.getParameters();
-        for (INDArray param : decoderParams) {
-            if (!isSpecialTokenParameter(param)) {
-                combinedParameters.add(param);
-            }
-        }
-    }
-    
-    private boolean isSpecialTokenParameter(INDArray param) {
-        // Implémenter une logique pour vérifier si le param correspond à un token spécial
-        // Par exemple, comparer les adresses des objets ou les indices des embeddings
-        // Cette implémentation dépend de votre structure de paramètres
-        // Voici un exemple simplifié :
-        return param.equals(tokenizer.getPretrainedEmbeddings().getRow(tokenizer.getPadTokenId())) ||
-               param.equals(tokenizer.getPretrainedEmbeddings().getRow(tokenizer.getStartTokenId())) ||
-               param.equals(tokenizer.getPretrainedEmbeddings().getRow(tokenizer.getEndTokenId())) ||
-               param.equals(tokenizer.getPretrainedEmbeddings().getRow(tokenizer.getUnkTokenId()));
-    }
-
-    /**
-     * Gèle les embeddings des tokens spéciaux, en évitant de geler <UNK> s'il a des valeurs calculées.
-     */
-    public void freezeSpecialTokenEmbeddings() {
-        int[] specialTokenIds = { tokenizer.getPadTokenId(), tokenizer.getStartTokenId(), tokenizer.getEndTokenId(), tokenizer.getUnkTokenId() };
-        
-        for (int tokenId : specialTokenIds) {
-            if (tokenId == tokenizer.getUnkTokenId()) {
-                // Vérifier si <UNK> a des valeurs calculées
-                if (!tokenizer.hasCalculatedEmbedding(tokenId)) {
-                    INDArray embedding = tokenizer.getPretrainedEmbeddings().getRow(tokenId);
-                    embedding.assign(Nd4j.zeros(dModel));
-                    System.out.println("<UNK> embedding was frozen.");
-                } else {
-                    // Ne pas geler <UNK>
-                    System.out.println("<UNK> embedding has calculated values. Skipping freezing.");
-                }
-            } else {
-                // Geler les autres tokens spéciaux
-                INDArray embedding = tokenizer.getPretrainedEmbeddings().getRow(tokenId);
-                embedding.assign(Nd4j.zeros(dModel)); // Exemple pour <PAD>
-                System.out.println("Token ID " + tokenId + " embedding was frozen.");
-            }
-        }
-    }
-
-
-
-    /**
-     * Ajoute les gradients de l'encodeur et du décodeur à la liste combinée.
-     */
-    private void addCombinedGradients() {
-        // Ajoute les gradients de l'encoder
-        combinedGradients.addAll(encoder.getGradients());
-
-        // Ajoute les gradients du decoder
-        combinedGradients.addAll(decoder.getGradients());
-    }
-
-    /**
-     * Nettoie les gradients accumulés.
-     */
-    public void cleanGradients() {
-        combinedGradients.clear();
-    }
-
-    /**
-     * Met à jour les poids du modèle en utilisant les gradients combinés.
-     */
-    private void updateModelWeights() {
-        // Vérifiez si les tailles correspondent avant de les passer à l'optimiseur
-        if (combinedParameters.size() != combinedGradients.size()) {
-            throw new IllegalArgumentException(
-                    "La taille de la liste des paramètres et des gradients doit être la même.");
-        }
-
-        // Mettre à jour les poids du modèle via l'optimiseur
-        optimizer.update(combinedParameters, combinedGradients);
-    }
-
-    /**
-     * Sauvegarde l'état du modèle dans un fichier.
-     *
-     * @param filePath Chemin du fichier où sauvegarder l'état.
-     * @throws IOException En cas d'erreur d'E/S.
-     */
-    public void saveState(String filePath) throws IOException {
-        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(filePath))) {
-
-            this.writeObject(oos);
-
-            // Sauvegarder l'état de l'encodeur et du décodeur
-            oos.writeObject(encoder);
-            oos.writeObject(decoder);
-
-            // Sauvegarder l'état de l'optimiseur
-            oos.writeObject(optimizer.getCurrentStep());
-            oos.writeObject(optimizer.getEpoch());
-            oos.writeObject(optimizer.getLearningRate());
-
-            // Sauvegarder les paramètres du modèle
-            oos.writeObject(combinedParameters.size());
-            for (INDArray param : combinedParameters) {
-                oos.writeObject(param);
-            }
-
-            // Sauvegarder l'état d'entraînement
-            oos.writeBoolean(isTrained);
-        }
-    }
-
-    /**
-     * Charge l'état du modèle depuis un fichier.
-     *
-     * @param filePath Chemin du fichier à partir duquel charger l'état.
-     * @throws IOException            En cas d'erreur d'E/S.
-     * @throws ClassNotFoundException En cas de classe non trouvée lors de la désérialisation.
-     */
-    public void loadState(String filePath) throws IOException, ClassNotFoundException {
-        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(filePath))) {
-
-            this.readObject(ois);
-
-            // Charger l'état de l'encodeur et du décodeur
-            this.encoder = (Encoder) ois.readObject();
-            this.decoder = (Decoder) ois.readObject();
-
-            // Charger l'état de l'optimiseur
-            int currentStep = (int) ois.readObject();
-            int epoch = (int) ois.readObject();
-            float learningRate = (float) ois.readObject();
-            optimizer.setCurrentStep(currentStep);
-            optimizer.setEpoch(epoch);
-            optimizer.setLearningRate(learningRate);
-
-            // Charger les paramètres du modèle
-            int numParams = (int) ois.readObject();
-            for (int i = 0; i < numParams; i++) {
-                INDArray param = (INDArray) ois.readObject();
-                combinedParameters.get(i).assign(param);
-            }
-
-            // Charger l'état d'entraînement
-            this.isTrained = ois.readBoolean();
-        }
-    }
-
-    /**
-     * Méthode de sérialisation personnalisée.
-     *
-     * @param oos Stream de sortie.
-     * @throws IOException En cas d'erreur d'E/S.
-     */
-    private void writeObject(ObjectOutputStream oos) throws IOException {
-        // Sauvegarder le chemin du fichier Word2Vec si nécessaire
-        oos.writeObject(W2VECPATH);
-    }
-
-    /**
-     * Méthode de désérialisation personnalisée.
-     *
-     * @param ois Stream d'entrée.
-     * @throws IOException            En cas d'erreur d'E/S.
-     * @throws ClassNotFoundException En cas de classe non trouvée lors de la désérialisation.
-     */
-    private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
-        // Lire le chemin du fichier Word2Vec
-        String word2vecPath = (String) ois.readObject();
-        // Réinitialiser wordVectors
-        this.wordVectors = WordVectorSerializer.loadStaticModel(new File(word2vecPath));
-    }
-
-    /**
-     * Définit l'état d'entraînement du modèle.
-     *
-     * @param isTrained true si entraîné, false sinon.
-     */
-    public void setTrained(boolean isTrained) {
-        this.isTrained = isTrained;
-    }
-
-    /**
-     * Obtient la dimension du modèle.
-     *
-     * @return Dimension du modèle (dModel).
-     */
-    public int getDModel() {
-        return dModel;
-    }
-
-    /**
-     * Obtient la taille du vocabulaire.
-     *
-     * @return Taille du vocabulaire.
-     */
-    public int getVocabSize() {
-        if (pretrainedEmbeddings == null) {
-            throw new IllegalStateException("Les embeddings pré-entraînés ne sont pas initialisés.");
-        }
-        return (int) pretrainedEmbeddings.rows();
-    }
-
-    /**
-     * Initialise les embeddings pré-entraînés.
-     *
-     * @param vocabSize Taille du vocabulaire.
-     * @param dModel    Dimension du modèle.
-     */
-    public void initializeEmbeddings(int vocabSize, int dModel) {
-        // Exemple : initialisation aléatoire des embeddings avec normalisation
-        this.pretrainedEmbeddings = Nd4j.randn(DataType.FLOAT, vocabSize, dModel).divi(Math.sqrt(dModel));
-    }
-
-    /**
-     * Récupère les embeddings pré-entraînés.
-     *
-     * @return INDArray contenant les embeddings [vocabSize, dModel]
-     */
-    public INDArray getPretrainedEmbeddings() {
-        if (pretrainedEmbeddings == null) {
-            throw new IllegalStateException(
-                    "Les embeddings pré-entraînés ne sont pas initialisés. Appelez initializeEmbeddings() d'abord.");
-        }
-        return pretrainedEmbeddings;
-    }
-
-    public List<INDArray> getCombinedParameters() {
-        return combinedParameters;
-    }
-
-    public List<INDArray> getCombinedGradients() {
-        return combinedGradients;
-    }
-
-    // Méthode pour récupérer tous les paramètres du modèle
-    public List<INDArray> getParameters() {
-        return getCombinedParameters(); 
-    }
-
-    // Méthode pour récupérer les gradients
-    public List<INDArray> getGradients() {
-        return getCombinedGradients();
-    }
-
-    /**
-     * Effectue une inférence sur un prompt donné.
-     *
-     * @param prompt    Texte d'entrée.
-     * @param maxLength Longueur maximale de la séquence générée.
-     * @return Texte généré.
-     */
-    public String infer(String prompt, int maxLength) {
-        if (!isTrained) {
-            throw new IllegalStateException("Le modèle doit être entraîné avant l'inférence.");
-        }
-
-        // Tokenisation du prompt
-        List<String> promptTokens = tokenizer.tokenize(prompt);
-        List<Integer> promptTokenIds = tokenizer.tokensToIds(promptTokens);
-
-        // Ajouter le token de début si nécessaire
-        promptTokenIds.add(0, tokenizer.getStartTokenId());
-
-        // Déterminer la longueur maximale de séquence après ajout du token de début
-        int maxSeqLength = promptTokenIds.size();
-
-        // Padder la séquence si nécessaire
-        List<Integer> paddedPromptTokenIds = padSequencesSingle(promptTokenIds, maxSeqLength, tokenizer.getPadTokenId());
-
-        // Convertir la liste en INDArray [1, seqLength]
-        INDArray data = Nd4j.create(DataType.INT, 1, maxSeqLength);
-        for (int j = 0; j < paddedPromptTokenIds.size(); j++) {
-            data.putScalar(new int[] {0, j}, (int) paddedPromptTokenIds.get(j));
-        }        
-
-
-        // Créer le masque de padding pour l'encodeur
-        INDArray encoderPaddingMask = createPaddingMask(data); // [1, 1, 1, seqLength]
-
-        // Encoder le prompt (traité comme un batch de taille 1)
-        INDArray encodedPrompt = encoder.encode(false, data, encoderPaddingMask); // [1, seqLength, dModel]
-
-        // Initialiser les IDs de sortie avec le token de début
-        List<Integer> outputIds = new ArrayList<>();
-        outputIds.add(tokenizer.getStartTokenId());
-
-        for (int i = 0; i < maxLength; i++) {
-            // Convertir les IDs de sortie en INDArray [1, currentOutputLength]
-            INDArray decoderInput = Nd4j.create(DataType.INT, 1, outputIds.size());
-
-            for (int j = 0; j < outputIds.size(); j++) {
-                decoderInput.putScalar(new int[] {0, j}, outputIds.get(j));
-            }
-
-            // Créer les masques pour le décodeur
-            INDArray lookAheadMask = createLookAheadMask(1, outputIds.size()); // [1, 1, size, size]
-            INDArray crossAttnMask = encoderPaddingMask; // [1, 1, 1, seqLength]
-
-            // Encoder les IDs de sortie 
-            INDArray encodedDecoderInput = tokenizer.lookupEmbeddings(decoderInput); // [1, currentOutputLength, dModel]
-
-            // Décoder
-            INDArray logits = decoder.decode(false, encodedPrompt, encodedDecoderInput, lookAheadMask, crossAttnMask); // [1, currentOutputLength, vocabSize]
-
-            // Extraction des logits du dernier token généré
-            int lastPosition = (int) logits.shape()[1] - 1; // seqLength - 1
-            INDArray lastTokenLogits = logits.get(
-                    NDArrayIndex.point(0), // batch 0
-                    NDArrayIndex.point(lastPosition), // dernière position dans seqLength
-                    NDArrayIndex.all() // tous les éléments dans vocabSize
-            ).dup(); // [vocabSize]
-
-            // Appliquer softmax pour obtenir les probabilités
-            INDArray softmaxLogits = Transforms.softmax(lastTokenLogits, false); // [vocabSize]
-
-            // Sélectionner le token avec la plus haute probabilité
-            int predictedTokenId = Nd4j.argMax(softmaxLogits, 0).getInt(0);
-
-            // Ajouter le token prédit à la séquence de sortie
-            outputIds.add(predictedTokenId);
-
-            // Vérification du token de fin
-            if (predictedTokenId == tokenizer.getEndTokenId()) {
-                break;
-            }
-        }
-
-        // Conversion des IDs en tokens
-        // Exclure le token de début
-        return tokenizer.idsToTokens(outputIds.subList(1, outputIds.size()));
-    }
-
-    /**
-     * Pad une seule séquence à une longueur maximale avec le token de padding.
-     *
-     * @param sequence    La séquence d'IDs de tokens.
-     * @param maxLength   La longueur maximale à atteindre.
-     * @param padTokenId  L'ID du token de padding.
-     * @return La séquence padée.
-     */
-    private List<Integer> padSequencesSingle(List<Integer> sequence, int maxLength, int padTokenId) {
-        List<Integer> padded = new ArrayList<>(sequence);
-        while (padded.size() < maxLength) {
-            padded.add(padTokenId);
-        }
-        return padded;
-    }
-
-    /**
-     * Méthode pour afficher les relations entre les tokens en utilisant les poids
-     * d'attention stockés.
-     *
-     * @param inputTokens Liste des tokens d'entrée.
-     */
-    public void displayAttentionRelations(List<String> inputTokens) {
-        // Afficher les poids d'attention de l'encodeur
-        for (int i = 0; i < encoder.layers.size(); i++) {
-            EncoderLayer layer = encoder.layers.get(i);
-            MultiHeadAttention selfAttn = layer.getSelfAttention();
-            System.out.println("===== Encoder Layer " + (i + 1) + " Attention Weights =====");
-            selfAttn.printAttentionWeights(inputTokens);
-        }
-
-        // Afficher les poids d'attention du décodeur
-        for (int i = 0; i < decoder.layers.size(); i++) {
-            DecoderLayer layer = decoder.layers.get(i);
-            MultiHeadAttention selfAttn = layer.getSelfAttention();
-            MultiHeadAttention crossAttn = layer.getCrossAttention();
-
-            System.out.println("===== Decoder Layer " + (i + 1) + " Self Attention Weights =====");
-            selfAttn.printAttentionWeights(inputTokens);
-
-            System.out.println("===== Decoder Layer " + (i + 1) + " Cross Attention Weights =====");
-            crossAttn.printAttentionWeights(inputTokens);
-        }
-    }
-
-    /**
-     * Vérifie si le modèle a été entraîné.
-     *
-     * @return true si entraîné, false sinon.
-     */
-    public boolean isTrained() {
-        return isTrained;
-    }
-
-    public void setOptimizer(CustomAdamOptimizer optimizer) {
-        this.optimizer = optimizer;
-    }
-
-
-}
-
-
-package RN.transformer;
-
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.List;
-
-import org.nd4j.linalg.api.buffer.DataType;
-import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.factory.Nd4j;
-import org.nd4j.linalg.ops.transforms.Transforms;
-
-public class CustomAdamOptimizer implements Serializable {
-    private static final long serialVersionUID = 3031098044411623634L;
-
-    // Hyperparamètres d'Adam
-    private float initialLr;
-    private float beta1;
-    private float beta2;
-    private float epsilon;
-
-    // Paramètres de scheduling
-    private int warmupSteps;
-    private int currentStep;
-    private int epoch;
-    private float learningRate;
-
-    // États pour chaque paramètre
-    private List<AdamState> states;
-
-    // Classe interne pour stocker m et v
-    private static class AdamState implements Serializable {
-        private static final long serialVersionUID = 1L;
-        public INDArray m;
-        public INDArray v;
-
-        public AdamState(long[] shape) {
-            this.m = Nd4j.zeros(DataType.FLOAT, shape);
-            this.v = Nd4j.zeros(DataType.FLOAT, shape);
-        }
-    }
-
-    /**
-     * Constructeur de l'optimiseur Adam.
-     *
-     * @param initialLr        Taux d'apprentissage initial.
-     * @param dmodel           Dimension du modèle (dModel).
-     * @param warmupSteps      Nombre de pas de warmup.
-     * @param params           Liste des paramètres du modèle.
-     */
-    public CustomAdamOptimizer(float initialLr, int dmodel, int warmupSteps, List<INDArray> params) {
-        this.initialLr = initialLr;
-        this.beta1 = 0.9f;
-        this.beta2 = 0.999f;
-        this.epsilon = 1e-8f;
-        this.warmupSteps = warmupSteps;
-        this.currentStep = 0;
-        this.epoch = 0;
-        this.learningRate = initialLr;
-
-        // Initialiser les états Adam pour chaque paramètre
-        this.states = new ArrayList<>();
-        for (INDArray param : params) {
-            this.states.add(new AdamState(param.shape()));
-        }
-    }
-
-    // Classe interne pour gérer la sérialisation des états Adam
-    private void writeObject(ObjectOutputStream oos) throws IOException {
-        oos.defaultWriteObject();
-        // Sérialiser les états Adam
-        oos.writeInt(states.size());
-        for (AdamState state : states) {
-            oos.writeObject(state.m);
-            oos.writeObject(state.v);
-        }
-    }
-
-    private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
-        ois.defaultReadObject();
-        // Désérialiser les états Adam
-        int size = ois.readInt();
-        this.states = new ArrayList<>();
-        for (int i = 0; i < size; i++) {
-            INDArray m = (INDArray) ois.readObject();
-            INDArray v = (INDArray) ois.readObject();
-            AdamState state = new AdamState(m.shape());
-            state.m = m;
-            state.v = v;
-            this.states.add(state);
-        }
-    }
-
-    // Méthode pour mettre à jour les paramètres
-    public void update(List<INDArray> params, List<INDArray> grads) {
-        if (params.size() != grads.size()) {
-            throw new IllegalArgumentException("La taille de la liste des paramètres et des gradients doit être la même.");
-        }
-    
-        if (params.size() != states.size()) {
-            throw new IllegalStateException("Le nombre de paramètres (" + params.size() + ") ne correspond pas au nombre d'états (" + states.size() + "). Assurez-vous que l'optimiseur est initialisé après avoir ajouté tous les paramètres.");
-        }
-    
-        currentStep++;
-        // System.out.println("Current Step: " + currentStep);
-        // System.out.println("Learning Rate: " + learningRate);
-    
-        for (int i = 0; i < params.size(); i++) {
-            INDArray param = params.get(i);
-            INDArray grad = grads.get(i);
-    
-            AdamState state = states.get(i);
-    
-            // Afficher les valeurs avant la mise à jour
-            // System.out.println("Param " + i + " before update: " + param);
-            // System.out.println("Grad " + i + ": " + grad);
-    
-            // Mise à jour des moments en place
-            state.m.muli(beta1).addi(grad.mul(1 - beta1));
-            state.v.muli(beta2).addi(grad.mul(grad).mul(1 - beta2));
-    
-            // Correction de biais
-            INDArray mHat = state.m.mul(1.0f / (1.0f - (float) Math.pow(beta1, currentStep)));
-            INDArray vHat = state.v.mul(1.0f / (1.0f - (float) Math.pow(beta2, currentStep)));
-    
-            // Calcul de l'étape de mise à jour
-            INDArray step = mHat.mul(learningRate).div(Transforms.sqrt(vHat).add(epsilon));
-    
-            // Afficher les valeurs intermédiaires
-            // System.out.println("mHat " + i + ": " + mHat);
-            // System.out.println("vHat " + i + ": " + vHat);
-            // System.out.println("Step " + i + ": " + step);
-    
-            // Mise à jour du paramètre
-            param.subi(step);
-    
-            // Afficher le paramètre après la mise à jour
-            //  System.out.println("Param " + i + " after update: " + param);
-        }
-    
-        // Mettre à jour le taux d'apprentissage si nécessaire
-        calculateLearningRate();
-    }
-    
-    
-    
-
-    // Calcul du taux d'apprentissage avec warmup et décroissance
-    float calculateLearningRate() {
-        float step = Math.max(1.0f, (float) currentStep);  // Commencer à 1 pour éviter la division par zéro
-
-        // Learning rate de base
-        float lr = initialLr;
-
-        // Calculer le facteur de warmup (0 à 1 pendant la période de warmup)
-        float warmupFactor = Math.min(1.0f, step / warmupSteps);
-
-        // Calculer le facteur de décroissance (diminue après la période de warmup)
-        float decayFactor;
-        if (step <= warmupSteps) {
-            decayFactor = 1.0f;
-        } else {
-            // Décroissance en racine carrée inverse après le warmup
-            decayFactor = (float) Math.sqrt(warmupSteps / step);
-        }
-
-        // Calculer le learning rate final
-        this.learningRate = lr * warmupFactor * decayFactor;
-
-        // Appliquer des limites pour éviter des valeurs extrêmes
-        this.learningRate = Math.max(this.learningRate, initialLr * 0.1f);   // Pas moins de 10% du lr initial
-        this.learningRate = Math.min(this.learningRate, initialLr);         // Pas plus que le lr initial
-
-        // Log des valeurs pour debugging
-        if (currentStep % 100 == 0) {
-            System.out.printf("Step: %d, Warmup: %.3f, Decay: %.3f, LR: %.6f%n",
-                currentStep, warmupFactor, decayFactor, this.learningRate);
-        }
-
-        return this.learningRate;
-    }
-
-    // Getters et setters
-    public void setCurrentStep(int step) {
-        this.currentStep = step;
-    }
-
-    public int getCurrentStep() {
-        return this.currentStep;
-    }
-
-    public void setEpoch(int epoch) {
-        this.epoch = epoch;
-    }
-
-    public int getEpoch() {
-        return this.epoch;
-    }
-
-    public float getLearningRate() {
-        return learningRate;
-    }
-
-    public void setLearningRate(float learningRate) {
-        this.learningRate = learningRate;
-    }
-}
+01:08:12.938 [main] INFO org.nd4j.linalg.factory.Nd4jBackend - Loaded [CpuBackend] backend
+01:08:13.672 [main] INFO org.nd4j.nativeblas.NativeOpsHolder - Number of threads used for linear algebra: 1
+01:08:13.676 [main] INFO org.nd4j.linalg.cpu.nativecpu.CpuNDArrayFactory - Binary level Generic x86 optimization level Generic x86
+01:08:13.732 [main] INFO org.nd4j.nativeblas.Nd4jBlas - Number of threads used for OpenMP BLAS: 8
+01:08:13.842 [main] INFO org.nd4j.linalg.api.ops.executioner.DefaultOpExecutioner - Backend used: [CPU]; OS: [Mac OS X]
+01:08:13.842 [main] INFO org.nd4j.linalg.api.ops.executioner.DefaultOpExecutioner - Cores: [8]; Memory: [2,0GB];
+01:08:13.842 [main] INFO org.nd4j.linalg.api.ops.executioner.DefaultOpExecutioner - Blas vendor: [OPENBLAS]
+01:08:13.846 [main] INFO org.nd4j.linalg.cpu.nativecpu.CpuBackend - Backend build information:
+ Clang: "12.0.0 (clang-1200.0.32.29)"
+STD version: 201103L
+DEFAULT_ENGINE: samediff::ENGINE_CPU
+HAVE_FLATBUFFERS
+HAVE_OPENBLAS
+01:08:13.874 [main] INFO org.deeplearning4j.models.sequencevectors.SequenceVectors - Starting vocabulary building...
+01:08:13.876 [main] DEBUG org.deeplearning4j.models.word2vec.wordstore.VocabConstructor - Target vocab size before building: [0]
+01:08:13.884 [main] DEBUG org.deeplearning4j.models.word2vec.wordstore.VocabConstructor - Trying source iterator: [0]
+01:08:13.884 [main] DEBUG org.deeplearning4j.models.word2vec.wordstore.VocabConstructor - Target vocab size before building: [0]
+01:08:13.893 [main] DEBUG org.deeplearning4j.models.word2vec.wordstore.VocabConstructor - Waiting till all processes stop...
+01:08:13.897 [main] DEBUG org.deeplearning4j.models.word2vec.wordstore.VocabConstructor - Vocab size before truncation: [43],  NumWords: [92], sequences parsed: [14], counter: [86]
+01:08:13.898 [main] DEBUG org.deeplearning4j.models.word2vec.wordstore.VocabConstructor - Scavenger: Words before: 43; Words after: 43;
+01:08:13.898 [main] DEBUG org.deeplearning4j.models.word2vec.wordstore.VocabConstructor - Vocab size after truncation: [43],  NumWords: [92], sequences parsed: [14], counter: [86]
+01:08:13.917 [main] INFO org.deeplearning4j.models.word2vec.wordstore.VocabConstructor - Sequences checked: [14], Current vocabulary size: [43]; Sequences/sec: [325,58];
+01:08:13.922 [main] INFO org.deeplearning4j.models.embeddings.loader.WordVectorSerializer - Projected memory use for model: [0,02 MB]
+01:08:13.971 [main] INFO org.deeplearning4j.models.embeddings.inmemory.InMemoryLookupTable - Initializing syn1...
+01:08:13.971 [main] INFO org.deeplearning4j.models.sequencevectors.SequenceVectors - Building learning algorithms:
+01:08:13.973 [main] INFO org.deeplearning4j.models.sequencevectors.SequenceVectors -           building ElementsLearningAlgorithm: [SkipGram]
+01:08:13.978 [main] INFO org.deeplearning4j.models.sequencevectors.SequenceVectors - Starting learning process...
+01:08:14.054 [main] INFO org.deeplearning4j.models.sequencevectors.SequenceVectors - Epoch [1] finished; Elements processed so far: [860];  Sequences processed: [140]
+01:08:14.054 [main] INFO org.deeplearning4j.models.sequencevectors.SequenceVectors - Time spent on training: 76 ms
+01:08:14.061 [main] DEBUG org.deeplearning4j.models.embeddings.loader.WordVectorSerializer - Saving header: 43 50 14
+Embedding pour le token 'mauvais' initialisé avec WordVectors.
+Embedding pour le token 'aujourd'hui' initialisé avec WordVectors.
+Embedding pour le token 'aiment' initialisé avec WordVectors.
+Embedding pour le token 'est' initialisé avec WordVectors.
+Embedding pour le token 'agréable' initialisé avec WordVectors.
+Embedding pour le token 'journée' initialisé avec WordVectors.
+Embedding pour le token 'temps' initialisé avec WordVectors.
+Embedding pour le token 'sol' initialisé avec WordVectors.
+Embedding pour le token 'sur' initialisé avec WordVectors.
+Embedding pour le token 'mange' initialisé avec WordVectors.
+Embedding pour le token 'belle' initialisé avec WordVectors.
+Embedding pour le token 'un' initialisé avec WordVectors.
+Embedding pour le token 'les' initialisé avec WordVectors.
+Embedding pour le token 'chiens' initialisé avec WordVectors.
+Embedding pour le token 'tapis' initialisé avec WordVectors.
+Embedding pour le token 'intéressant' initialisé avec WordVectors.
+Embedding pour le token 'ce' initialisé avec WordVectors.
+Embedding pour le token 'jardin' initialisé avec WordVectors.
+Embedding pour le token 'pas' initialisé avec WordVectors.
+Embedding pour le token 'c'est' initialisé avec WordVectors.
+Embedding pour le token 'excellent' initialisé avec WordVectors.
+Embedding pour le token 'heureux' initialisé avec WordVectors.
+Embedding pour le token 'fantastique' initialisé avec WordVectors.
+Embedding pour le token 'film' initialisé avec WordVectors.
+Embedding pour le token 'court' initialisé avec WordVectors.
+Embedding pour le token 'dans' initialisé avec WordVectors.
+Embedding pour le token 'chien' initialisé avec WordVectors.
+Embedding pour le token 'livre' initialisé avec WordVectors.
+Embedding pour le token 'n'aime' initialisé avec WordVectors.
+Embedding pour le token 'triste' initialisé avec WordVectors.
+Embedding pour le token 'souris' initialisé avec WordVectors.
+Embedding pour le token 'déteste' initialisé avec WordVectors.
+Embedding pour le token 'la' initialisé avec WordVectors.
+Embedding pour le token 'chat' initialisé avec WordVectors.
+Embedding pour le token 'quelle' initialisé avec WordVectors.
+Embedding pour le token 'chats' initialisé avec WordVectors.
+Embedding pour le token 'repas' initialisé avec WordVectors.
+Embedding pour le token 'le' initialisé avec WordVectors.
+Embedding pour le token 'suis' initialisé avec WordVectors.
+Embedding pour le token 'je' initialisé avec WordVectors.
+Embedding pour le token 'très' initialisé avec WordVectors.
+Embedding pour le token 'mauvais' initialisé avec WordVectors.
+Embedding pour le token 'aujourd'hui' initialisé avec WordVectors.
+Embedding pour le token 'aiment' initialisé avec WordVectors.
+Embedding pour le token 'est' initialisé avec WordVectors.
+Embedding pour le token 'agréable' initialisé avec WordVectors.
+Embedding pour le token 'journée' initialisé avec WordVectors.
+Embedding pour le token 'temps' initialisé avec WordVectors.
+Embedding pour le token 'sol' initialisé avec WordVectors.
+Embedding pour le token 'sur' initialisé avec WordVectors.
+Embedding pour le token 'mange' initialisé avec WordVectors.
+Embedding pour le token 'belle' initialisé avec WordVectors.
+Embedding pour le token 'un' initialisé avec WordVectors.
+Embedding pour le token 'les' initialisé avec WordVectors.
+Embedding pour le token 'chiens' initialisé avec WordVectors.
+Embedding pour le token 'tapis' initialisé avec WordVectors.
+Embedding pour le token 'intéressant' initialisé avec WordVectors.
+Embedding pour le token 'ce' initialisé avec WordVectors.
+Embedding pour le token 'jardin' initialisé avec WordVectors.
+Embedding pour le token 'pas' initialisé avec WordVectors.
+Embedding pour le token 'c'est' initialisé avec WordVectors.
+Embedding pour le token 'excellent' initialisé avec WordVectors.
+Embedding pour le token 'heureux' initialisé avec WordVectors.
+Embedding pour le token 'fantastique' initialisé avec WordVectors.
+Embedding pour le token 'film' initialisé avec WordVectors.
+Embedding pour le token 'court' initialisé avec WordVectors.
+Embedding pour le token 'dans' initialisé avec WordVectors.
+Embedding pour le token 'chien' initialisé avec WordVectors.
+Embedding pour le token 'livre' initialisé avec WordVectors.
+Embedding pour le token 'n'aime' initialisé avec WordVectors.
+Embedding pour le token 'triste' initialisé avec WordVectors.
+Embedding pour le token 'souris' initialisé avec WordVectors.
+Embedding pour le token 'déteste' initialisé avec WordVectors.
+Embedding pour le token 'la' initialisé avec WordVectors.
+Embedding pour le token 'chat' initialisé avec WordVectors.
+Embedding pour le token 'quelle' initialisé avec WordVectors.
+Embedding pour le token 'chats' initialisé avec WordVectors.
+Embedding pour le token 'repas' initialisé avec WordVectors.
+Embedding pour le token 'le' initialisé avec WordVectors.
+Embedding pour le token 'suis' initialisé avec WordVectors.
+Embedding pour le token 'je' initialisé avec WordVectors.
+Embedding pour le token 'très' initialisé avec WordVectors.
+Vocabulaire du Tokenizer:
+Token: '<PAD>' -> ID: 0
+Token: '<UNK>' -> ID: 1
+Token: '<START>' -> ID: 2
+Token: '<END>' -> ID: 3
+Token: 'mauvais' -> ID: 4
+Token: 'aujourd'hui' -> ID: 5
+Token: 'aiment' -> ID: 6
+Token: 'est' -> ID: 7
+Token: 'agréable' -> ID: 8
+Token: 'journée' -> ID: 9
+Token: 'temps' -> ID: 10
+Token: 'sol' -> ID: 11
+Token: 'sur' -> ID: 12
+Token: 'mange' -> ID: 13
+Token: 'belle' -> ID: 14
+Token: 'un' -> ID: 15
+Token: 'les' -> ID: 16
+Token: 'chiens' -> ID: 17
+Token: 'tapis' -> ID: 18
+Token: 'intéressant' -> ID: 19
+Token: 'ce' -> ID: 20
+Token: 'jardin' -> ID: 21
+Token: 'pas' -> ID: 22
+Token: 'c'est' -> ID: 23
+Token: 'excellent' -> ID: 24
+Token: 'heureux' -> ID: 25
+Token: 'fantastique' -> ID: 26
+Token: 'film' -> ID: 27
+Token: 'court' -> ID: 28
+Token: 'dans' -> ID: 29
+Token: 'chien' -> ID: 30
+Token: 'livre' -> ID: 31
+Token: 'n'aime' -> ID: 32
+Token: 'triste' -> ID: 33
+Token: 'souris' -> ID: 34
+Token: 'déteste' -> ID: 35
+Token: 'la' -> ID: 36
+Token: 'chat' -> ID: 37
+Token: 'quelle' -> ID: 38
+Token: 'chats' -> ID: 39
+Token: 'repas' -> ID: 40
+Token: 'le' -> ID: 41
+Token: 'suis' -> ID: 42
+Token: 'je' -> ID: 43
+Token: 'très' -> ID: 44
+01:08:14.271 [main] DEBUG org.deeplearning4j.models.embeddings.loader.WordVectorSerializer - Trying full model restoration...
+01:08:14.274 [main] DEBUG org.deeplearning4j.models.embeddings.loader.WordVectorSerializer - Trying CSV model restoration...
+01:08:14.275 [main] DEBUG org.deeplearning4j.models.embeddings.loader.WordVectorSerializer - First line is a header
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Encodeur): [[   -0.0844,    0.0617,    0.0832,  ...    0.2607,   -0.0019,   -0.2141],
+ [   -0.0598,   -0.0027,    0.0698,  ...    0.0310,    0.0580,   -0.0314],
+ [   -0.0435,   -0.1681,   -0.2886,  ...    0.1426,   -0.2793,   -0.1692],
+  ...,
+ [   -0.0945,    0.0144,    0.0828,  ...    0.1059,    0.2320,    0.0645],
+ [   -0.0422,    0.1751,    0.0666,  ...   -0.0298,   -0.0664,    0.1427],
+ [   -0.1967,    0.0931,    0.0176,  ...   -0.0824,    0.0331,   -0.0134]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Encodeur): [[   -0.0418,    0.1887,   -0.1221,  ...   -0.0927,   -0.0043,   -0.0293],
+ [    0.0334,   -0.0700,   -0.0917,  ...    0.0309,   -0.0800,   -0.0830],
+ [   -0.0866,   -0.1075,    0.0078,  ...   -0.1952,   -0.0439,    0.1055],
+  ...,
+ [    0.0752,    0.0066,    0.1763,  ...    0.1281,   -0.1616,   -0.1329],
+ [   -0.1547,   -0.0322,   -0.0624,  ...   -0.0370,    0.0801,   -0.2383],
+ [   -0.0238,    0.0577,    0.1954,  ...    0.0373,    0.1351,   -0.0928]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Encodeur): [[    0.1290,    0.0948,    0.0410,  ...    0.0488,   -0.0887,   -0.0241],
+ [   -0.0023,   -0.0150,   -0.1110,  ...    0.0575,   -0.1892,   -0.1236],
+ [    0.0872,    0.1642,   -0.0988,  ...   -0.1794,   -0.0397,    0.1258],
+  ...,
+ [   -0.1205,    0.2002,   -0.0166,  ...    0.0515,    0.1153,   -0.0093],
+ [   -0.0047,   -0.1291,    0.2472,  ...   -0.1375,    0.0950,   -0.1108],
+ [   -0.1345,    0.0086,    0.1330,  ...   -0.0219,   -0.1269,    0.0798]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Encodeur): [[   -0.0608,   -0.0628,   -0.2419,  ...    0.0075,    0.0386,    0.0894],
+ [   -0.1272,    0.0677,   -0.0643,  ...    0.0768,    0.1176,    0.2742],
+ [   -0.1676,   -0.0827,    0.0291,  ...   -0.2926,   -0.1570,   -0.0099],
+  ...,
+ [    0.1905,    0.0946,   -0.0330,  ...   -0.1010,   -0.0181,    0.1454],
+ [   -0.1203,   -0.0449,   -0.2742,  ...   -0.0747,    0.0403,    0.3371],
+ [    0.1208,   -0.1043,   -0.2368,  ...   -0.1065,    0.0556,   -0.1198]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Encodeur): [[    0.0227,   -0.3129,    0.2231,  ...    0.1984,    0.0343,    0.0596],
+ [   -0.0408,    0.0109,    0.0446,  ...   -0.4256,   -0.1393,   -0.2033],
+ [   -0.0370,    0.2028,   -0.0742,  ...    0.2546,   -0.2130,    0.2252],
+  ...,
+ [    0.0274,    0.1749,    0.2195,  ...    0.1374,   -0.1284,    0.2283],
+ [    0.1184,    0.0560,   -0.3198,  ...   -0.2305,   -0.0251,    0.3330],
+ [    0.1256,    0.0363,   -0.0376,  ...   -0.2131,   -0.0619,    0.1833]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Encodeur): [[         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Encodeur): [[   -0.0658,    0.0115,    0.0347,  ...    0.0561,   -0.0832,   -0.0695],
+ [   -0.0349,   -0.0765,    0.1087,  ...   -0.0117,    0.0485,   -0.0426],
+ [   -0.0870,    0.1092,   -0.0119,  ...   -0.0136,   -0.0597,    0.0079],
+  ...,
+ [   -0.0915,   -0.0491,    0.0440,  ...    0.1175,   -0.0093,   -0.0145],
+ [    0.1800,    0.0471,   -0.0213,  ...   -0.0453,   -0.0172,    0.0118],
+ [   -0.0010,    0.0261,   -0.1279,  ...   -0.0149,    0.0747,    0.0626]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Encodeur): [[         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Encodeur): [[[    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000]]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Encodeur): [[[         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Encodeur): [[[    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000]]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Encodeur): [[[         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Encodeur): [[[    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000]]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Encodeur): [[[         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[   -0.0636,   -0.0086,    0.0642,  ...    0.0629,    0.1631,    0.1516],
+ [   -0.1406,    0.1709,   -0.0230,  ...    0.0250,    0.0762,    0.0304],
+ [    0.0685,    0.1618,   -0.1803,  ...   -0.1996,    0.1609,    0.2697],
+  ...,
+ [   -0.1912,   -0.0704,    0.0564,  ...   -0.0169,   -0.0631,    0.0509],
+ [    0.1282,    0.0302,    0.1556,  ...    0.1017,    0.1480,   -0.2431],
+ [    0.0343,   -0.0151,   -0.0502,  ...    0.0805,   -0.2499,   -0.0596]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[    0.0515,   -0.0286,   -0.0526,  ...   -0.1270,   -0.1373,    0.0830],
+ [    0.1106,    0.1165,    0.1305,  ...   -0.2068,   -0.0530,    0.1687],
+ [   -0.0274,    0.0209,   -0.1031,  ...   -0.0515,   -0.0677,   -0.0845],
+  ...,
+ [    0.2320,   -0.3435,   -0.0296,  ...    0.0363,   -0.0775,   -0.1301],
+ [   -0.2145,   -0.0639,    0.0324,  ...    0.3268,   -0.1649,    0.0379],
+ [    0.1100,    0.0830,    0.2665,  ...   -0.2856,   -0.2210,    0.0873]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[   -0.0824,   -0.0522,   -0.1251,  ...    0.2551,   -0.0557,   -0.0794],
+ [    0.1767,   -0.0860,    0.0941,  ...    0.0638,   -0.0718,    0.0578],
+ [    0.2098,   -0.1528,   -0.1738,  ...    0.0928,    0.0756,    0.2885],
+  ...,
+ [   -0.0563,   -0.1573,    0.0674,  ...   -0.0985,    0.2322,    0.0077],
+ [    0.1060,   -0.0845,   -0.0562,  ...   -0.0334,   -0.1215,    0.0190],
+ [    0.1998,    0.0684,    0.0894,  ...    0.0262,    0.0320,   -0.1552]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[   -0.1648,    0.1340,   -0.0199,  ...   -0.1281,   -0.1473,    0.0728],
+ [   -0.1931,   -0.0956,    0.2555,  ...    0.0134,   -0.0533,    0.1002],
+ [    0.1627,   -0.2002,    0.2682,  ...    0.2001,   -0.2707,    0.0608],
+  ...,
+ [    0.0783,    0.0415,    0.1954,  ...   -0.0063,    0.0596,    0.1610],
+ [    0.1913,    0.1332,    0.0435,  ...    0.0267,   -0.0942,    0.2441],
+ [    0.0592,   -0.1571,    0.0877,  ...   -0.1492,   -0.2193,    0.0616]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[    0.2367,   -0.2292,    0.1464,  ...    0.2236,   -0.0678,    0.1217],
+ [    0.0318,    0.0367,    0.2535,  ...    0.0996,   -0.0082,   -0.2990],
+ [    0.0744,   -0.0290,    0.1794,  ...   -0.0485,    0.2296,    0.0395],
+  ...,
+ [    0.0899,   -0.0898,   -0.0270,  ...   -0.0384,    0.1714,    0.0028],
+ [   -0.1347,   -0.0252,    0.0914,  ...   -0.1097,   -0.0374,    0.2270],
+ [    0.2181,   -0.2267,   -0.2302,  ...   -0.0136,   -0.1535,    0.1541]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[    0.0017,    0.1899,   -0.1435,  ...    0.0415,   -0.0797,    0.0229],
+ [   -0.1314,   -0.0129,    0.0877,  ...    0.3151,   -0.0296,    0.0599],
+ [    0.1609,    0.2548,    0.2603,  ...    0.0832,    0.0569,    0.0540],
+  ...,
+ [   -0.0333,   -0.1512,   -0.0663,  ...    0.0906,    0.0772,    0.0239],
+ [   -0.2669,   -0.1092,    0.0886,  ...    0.0756,   -0.1314,    0.1698],
+ [    0.0404,    0.0259,   -0.0087,  ...    0.1927,    0.0470,   -0.1828]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[    0.1099,    0.0143,    0.0302,  ...   -0.0885,   -0.2398,   -0.2104],
+ [   -0.0864,    0.0961,    0.1518,  ...    0.0354,    0.0331,   -0.2250],
+ [   -0.2845,   -0.2533,    0.2539,  ...   -0.0732,    0.0373,   -0.0195],
+  ...,
+ [    0.1048,    0.1551,    0.0463,  ...    0.0742,   -0.1283,    0.2588],
+ [   -0.1143,   -0.1482,    0.1534,  ...   -0.1714,   -0.1265,    0.0392],
+ [    0.0663,   -0.2378,   -0.0116,  ...   -0.1010,   -0.1102,    0.1549]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[    0.0887,    0.1543,   -0.0116,  ...    0.1532,   -0.0312,   -0.0218],
+ [   -0.1862,    0.0440,   -0.0595,  ...   -0.1291,    0.0075,    0.0413],
+ [   -0.2243,   -0.0856,   -0.1449,  ...   -0.0731,    0.3063,   -0.0822],
+  ...,
+ [   -0.1336,    0.1763,   -0.1892,  ...   -0.0413,    0.1731,   -0.0307],
+ [    0.2638,    0.0230,   -0.1274,  ...   -0.1426,   -0.1881,   -0.1516],
+ [   -0.0544,    0.0446,   -0.0144,  ...    0.1477,    0.0652,   -0.0220]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[    0.4376,   -0.1964,   -0.3420,  ...    0.3579,   -0.0113,    0.2628],
+ [    0.3987,   -0.1449,   -0.0649,  ...   -0.0512,   -0.3907,    0.0142],
+ [    0.2395,    0.1466,    0.0089,  ...    0.1749,   -0.1387,    0.1226],
+  ...,
+ [   -0.1688,    0.2965,   -0.0662,  ...    0.4117,   -0.0845,   -0.3182],
+ [   -0.0838,   -0.3151,    0.0985,  ...   -0.3337,    0.1611,   -0.0922],
+ [   -0.3646,    0.0484,   -0.1149,  ...    0.0178,    0.1681,   -0.0772]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[    0.0140,   -0.0371,    0.0096,  ...   -0.0356,    0.0015,   -0.0888],
+ [   -0.1445,    0.0286,    0.0620,  ...    0.0714,   -0.0811,   -0.1559],
+ [    0.0205,    0.0254,   -0.0549,  ...    0.0468,    0.0735,   -0.0236],
+  ...,
+ [    0.0355,   -0.0117,   -0.0257,  ...    0.1472,   -0.0163,   -0.0033],
+ [    0.0331,    0.0092,   -0.0268,  ...    0.0303,    0.0026,    0.0271],
+ [    0.0449,    0.0284,    0.0302,  ...    0.0080,    0.0596,    0.0658]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[[    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000]]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[[         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[[    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000]]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[[         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[[    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000]]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[[         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[[    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000]]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[[         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[   -0.0719,    0.2059,   -0.3087,  ...   -0.1447,    0.2345,    0.1235],
+ [   -0.0525,   -0.3389,   -0.1220,  ...    0.0529,    0.2815,    0.1572],
+ [    0.0384,    0.0044,    0.0408,  ...    0.4821,    0.1332,   -0.0125],
+  ...,
+ [   -0.0419,   -0.2272,    0.0141,  ...   -0.3979,   -0.1492,   -0.0564],
+ [    0.1008,   -0.2866,   -0.1578,  ...   -0.0443,   -0.0272,    0.0871],
+ [    0.1055,   -0.3423,    0.0142,  ...   -0.0267,   -0.0211,    0.3687]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000,    1.0000]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Décodeur): [[         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]]
+Paramètre est un token spécial: false
+Paramètre ajouté à combinedParameters (Tokenizer): [[         0,         0,         0,  ...         0,         0,         0],
+ [    0.0008,   -0.0001,    0.0001,  ...    0.0024,    0.0005,    0.0005],
+ [   -0.1747,   -0.0991,    0.1624,  ...    0.1005,   -0.1519,    0.2564],
+  ...,
+ [    0.0090,   -0.0012,   -0.0030,  ...    0.0007,   -0.0032,   -0.0018],
+ [   -0.0072,    0.0029,   -0.0087,  ...    0.0102,   -0.0017,    0.0088],
+ [   -0.0020,    0.0040,   -0.0019,  ...   -0.0016,   -0.0044,   -0.0078]]
+Token ID 0 embedding was frozen.
+Token ID 2 embedding was frozen.
+Token ID 3 embedding was frozen.
+<UNK> embedding has calculated values. Skipping freezing.
+Texte: 'chat mange la souris'
+Tokens: [<START>, chat, mange, la, souris, <END>, <PAD>]
+IDs: [2, 37, 13, 36, 34, 3, 0]
+Texte: 'chien court dans le jardin'
+Tokens: [<START>, chien, court, dans, le, jardin, <END>]
+IDs: [2, 30, 28, 29, 41, 21, 3]
+Texte: 'les chats aiment les chiens'
+Tokens: [<START>, les, chats, aiment, les, chiens, <END>]
+IDs: [2, 16, 39, 6, 16, 17, 3]
+Texte: 'tapis sur le sol'
+Tokens: [<START>, tapis, sur, le, sol, <END>, <PAD>]
+IDs: [2, 18, 12, 41, 11, 3, 0]
+Texte: 'ce film est fantastique'
+Tokens: [<START>, ce, film, est, fantastique, <END>, <PAD>]
+IDs: [2, 20, 27, 7, 26, 3, 0]
+Texte: 'je déteste ce temps'
+Tokens: [<START>, je, déteste, ce, temps, <END>, <PAD>]
+IDs: [2, 43, 35, 20, 10, 3, 0]
+Texte: 'quelle belle journée'
+Tokens: [<START>, quelle, belle, journée, <END>, <PAD>, <PAD>]
+IDs: [2, 38, 14, 9, 3, 0, 0]
+Texte: 'je suis très heureux'
+Tokens: [<START>, je, suis, très, heureux, <END>, <PAD>]
+IDs: [2, 43, 42, 44, 25, 3, 0]
+Texte: 'c'est un mauvais film'
+Tokens: [<START>, c, ', est, un, mauvais, film]
+IDs: [2, 1, 1, 7, 15, 4, 27]
+Texte: 'ce livre est intéressant'
+Tokens: [<START>, ce, livre, est, intéressant, <END>, <PAD>]
+IDs: [2, 20, 31, 7, 19, 3, 0]
+Texte: 'je n'aime pas ce repas'
+Tokens: [<START>, je, n, ', aime, pas, ce]
+IDs: [2, 43, 1, 1, 1, 22, 20]
+Texte: 'ce film est excellent'
+Tokens: [<START>, ce, film, est, excellent, <END>, <PAD>]
+IDs: [2, 20, 27, 7, 24, 3, 0]
+Texte: 'je suis triste aujourd'hui'
+Tokens: [<START>, je, suis, triste, aujourd, ', hui]
+IDs: [2, 43, 42, 33, 1, 1, 1]
+Texte: 'ce temps est agréable'
+Tokens: [<START>, ce, temps, est, agréable, <END>, <PAD>]
+IDs: [2, 20, 10, 7, 8, 3, 0]
+Texte: 'le chat mange'
+Tokens: [<START>, le, chat, mange, <END>, <PAD>, <PAD>]
+IDs: [2, 41, 37, 13, 3, 0, 0]
+Texte: 'le chien court'
+Tokens: [<START>, le, chien, court, <END>, <PAD>, <PAD>]
+IDs: [2, 41, 30, 28, 3, 0, 0]
+Texte: 'les chats aiment'
+Tokens: [<START>, les, chats, aiment, <END>, <PAD>, <PAD>]
+IDs: [2, 16, 39, 6, 3, 0, 0]
+Texte: 'le tapis sur'
+Tokens: [<START>, le, tapis, sur, <END>, <PAD>, <PAD>]
+IDs: [2, 41, 18, 12, 3, 0, 0]
+Texte: 'le film est fantastique'
+Tokens: [<START>, le, film, est, fantastique, <END>, <PAD>]
+IDs: [2, 41, 27, 7, 26, 3, 0]
+Texte: 'je déteste'
+Tokens: [<START>, je, déteste, <END>, <PAD>, <PAD>, <PAD>]
+IDs: [2, 43, 35, 3, 0, 0, 0]
+Texte: 'quelle belle'
+Tokens: [<START>, quelle, belle, <END>, <PAD>, <PAD>, <PAD>]
+IDs: [2, 38, 14, 3, 0, 0, 0]
+Texte: 'je suis très heureux'
+Tokens: [<START>, je, suis, très, heureux, <END>, <PAD>]
+IDs: [2, 43, 42, 44, 25, 3, 0]
+Texte: 'c'est un mauvais'
+Tokens: [<START>, c, ', est, un, mauvais, <END>]
+IDs: [2, 1, 1, 7, 15, 4, 3]
+Texte: 'le livre est intéressant'
+Tokens: [<START>, le, livre, est, intéressant, <END>, <PAD>]
+IDs: [2, 41, 31, 7, 19, 3, 0]
+Texte: 'je n'aime pas'
+Tokens: [<START>, je, n, ', aime, pas, <END>]
+IDs: [2, 43, 1, 1, 1, 22, 3]
+Texte: 'le film est excellent'
+Tokens: [<START>, le, film, est, excellent, <END>, <PAD>]
+IDs: [2, 41, 27, 7, 24, 3, 0]
+Texte: 'je suis triste'
+Tokens: [<START>, je, suis, triste, <END>, <PAD>, <PAD>]
+IDs: [2, 43, 42, 33, 3, 0, 0]
+Texte: 'le temps est agréable'
+Tokens: [<START>, le, temps, est, agréable, <END>, <PAD>]
+IDs: [2, 41, 10, 7, 8, 3, 0]
+Embedding Before:
+[   -0.0052,    0.0082,   -0.0025,   -0.0027,    0.0020,    0.0077,   -0.0031,   -0.0013,   -0.0102,    0.0060,   -0.0030,    0.0049,   -0.0095,   -0.0009,    0.0055,   -0.0108,    0.0067,    0.0031,    0.0016,    0.0034,    0.0071,   -0.0065,    0.0043,    0.0062,    0.0015,   -0.0081,    0.0043,    0.0021,    0.0045,   -0.0085,   -0.0002,    0.0068,    0.0059,   -0.0076,    0.0015,    0.0090,    0.0066,    0.0005,   -0.0078,   -0.0049,    0.0026,    0.0067,    0.0049,    0.0034,    0.0035,    0.0094,   -0.0058,    0.0087,   -0.0072,    0.0072]
+Epoch 1 / 3
+Occurrences de 'chat' dans ce batch: 1
+Perte pour ce batch: 4.745164
+Gradient pour 'chat' embedding: [    0.0003,    0.0021,   -0.0012,   -0.0175,   -0.0077,    0.0210,   -0.0027,    0.0181,    0.0023,   -0.0091,    0.0087,   -0.0166,   -0.0044,    0.0028,    0.0017,    0.0163,    0.0050,   -0.0289,   -0.0044,   -0.0083,   -0.0019,    0.0167,   -0.0129,    0.0011,   -0.0130,   -0.0085,    0.0096,    0.0065,   -0.0015,    0.0132,    0.0117,   -0.0132,   -0.0017,   -0.0031,   -0.0211,    0.0123,   -0.0038,    0.0226,    0.0024,    0.0080,   -0.0179,    0.0003,    0.0111,    0.0097,   -0.0051,   -0.0161,    0.0080,    0.0085,   -0.0021,   -0.0121]
+Occurrences de 'chat' dans ce batch: 0
+Perte pour ce batch: 4.5970793
+Gradient pour 'chat' embedding: [         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]
+Gradient pour 'chat' est 0
+Occurrences de 'chat' dans ce batch: 0
+Perte pour ce batch: 4.332508
+Gradient pour 'chat' embedding: [         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]
+Gradient pour 'chat' est 0
+Occurrences de 'chat' dans ce batch: 0
+Perte pour ce batch: 4.4883776
+Gradient pour 'chat' embedding: [         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]
+Gradient pour 'chat' est 0
+Occurrences de 'chat' dans ce batch: 0
+Perte pour ce batch: 4.3437934
+Gradient pour 'chat' embedding: [         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]
+Gradient pour 'chat' est 0
+Occurrences de 'chat' dans ce batch: 0
+Perte pour ce batch: 4.013459
+Gradient pour 'chat' embedding: [         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]
+Gradient pour 'chat' est 0
+Occurrences de 'chat' dans ce batch: 0
+Perte pour ce batch: 4.007218
+Gradient pour 'chat' embedding: [         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]
+Gradient pour 'chat' est 0
+Epoch 1 completed with average loss: 0.024344178
+Epoch 2 / 3
+Occurrences de 'chat' dans ce batch: 1
+Perte pour ce batch: 3.7485726
+Gradient pour 'chat' embedding: [    0.0011,    0.0013,    0.0009,   -0.0136,   -0.0109,    0.0244,   -0.0037,    0.0218,   -0.0024,   -0.0034,    0.0179,   -0.0042,   -0.0089,    0.0054,    0.0026,    0.0120,    0.0043,   -0.0266,   -0.0034,   -0.0046,   -0.0050,    0.0120,   -0.0152,   -0.0026,   -0.0094,   -0.0065,    0.0080,   -0.0030,   -0.0103,    0.0069,    0.0101,   -0.0152,    0.0055,   -0.0089,   -0.0146,    0.0109,   -0.0047,    0.0138,    0.0052,-7.9288e-5,   -0.0139,    0.0037,    0.0113,    0.0180,   -0.0008,   -0.0174,    0.0094,    0.0099,    0.0019,   -0.0073]
+Occurrences de 'chat' dans ce batch: 0
+Perte pour ce batch: 3.975678
+Gradient pour 'chat' embedding: [         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]
+Gradient pour 'chat' est 0
+Occurrences de 'chat' dans ce batch: 0
+Perte pour ce batch: 3.3561745
+Gradient pour 'chat' embedding: [         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]
+Gradient pour 'chat' est 0
+Occurrences de 'chat' dans ce batch: 0
+Perte pour ce batch: 3.8823314
+Gradient pour 'chat' embedding: [         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]
+Gradient pour 'chat' est 0
+Occurrences de 'chat' dans ce batch: 0
+Perte pour ce batch: 3.4558046
+Gradient pour 'chat' embedding: [         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]
+Gradient pour 'chat' est 0
+Occurrences de 'chat' dans ce batch: 0
+Perte pour ce batch: 3.1822438
+Gradient pour 'chat' embedding: [         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]
+Gradient pour 'chat' est 0
+Occurrences de 'chat' dans ce batch: 0
+Perte pour ce batch: 3.2964988
+Gradient pour 'chat' embedding: [         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]
+Gradient pour 'chat' est 0
+Epoch 2 completed with average loss: 0.019854309
+Epoch 3 / 3
+Occurrences de 'chat' dans ce batch: 1
+Perte pour ce batch: 3.0362535
+Gradient pour 'chat' embedding: [    0.0068,    0.0069,   -0.0003,   -0.0052,   -0.0089,    0.0101,   -0.0025,    0.0122,    0.0063,    0.0002,    0.0163,   -0.0030,   -0.0041,    0.0074,   -0.0046,    0.0086,   -0.0011,   -0.0095, 1.6985e-5,   -0.0052,   -0.0012,    0.0083,   -0.0041,   -0.0034,   -0.0053,   -0.0107,    0.0016,   -0.0014,   -0.0042,    0.0054,    0.0050,   -0.0058,    0.0021,   -0.0032,   -0.0078,    0.0031,   -0.0042,    0.0116,    0.0063,   -0.0022,   -0.0089,    0.0002,    0.0079,    0.0113,   -0.0061,   -0.0119,    0.0035,    0.0029,   -0.0039,   -0.0042]
+Occurrences de 'chat' dans ce batch: 0
+Perte pour ce batch: 3.384253
+Gradient pour 'chat' embedding: [         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]
+Gradient pour 'chat' est 0
+Occurrences de 'chat' dans ce batch: 0
+Perte pour ce batch: 2.8582244
+Gradient pour 'chat' embedding: [         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]
+Gradient pour 'chat' est 0
+Occurrences de 'chat' dans ce batch: 0
+Perte pour ce batch: 3.64924
+Gradient pour 'chat' embedding: [         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]
+Gradient pour 'chat' est 0
+Occurrences de 'chat' dans ce batch: 0
+Perte pour ce batch: 3.1319757
+Gradient pour 'chat' embedding: [         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]
+Gradient pour 'chat' est 0
+Occurrences de 'chat' dans ce batch: 0
+Perte pour ce batch: 2.905971
+Gradient pour 'chat' embedding: [         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]
+Gradient pour 'chat' est 0
+Occurrences de 'chat' dans ce batch: 0
+Perte pour ce batch: 3.2070947
+Gradient pour 'chat' embedding: [         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0,         0]
+Gradient pour 'chat' est 0
+Epoch 3 completed with average loss: 0.017681828
+Training completed.
+Embedding After:
+[   -0.0115,    0.0022,   -0.0011,    0.0027,    0.0082,    0.0020,    0.0029,   -0.0072,   -0.0128,    0.0103,   -0.0094,    0.0092,   -0.0036,   -0.0073,    0.0024,   -0.0164,    0.0021,    0.0086,    0.0065,    0.0089,    0.0128,   -0.0121,    0.0098,    0.0081,    0.0069,   -0.0020,   -0.0009,    0.0006,    0.0103,   -0.0137,   -0.0057,    0.0124,    0.0045,   -0.0017,    0.0069,    0.0037,    0.0127,   -0.0049,   -0.0142,   -0.0076,    0.0082,    0.0015,   -0.0010,   -0.0027,    0.0086,    0.0153,   -0.0114,    0.0031,   -0.0046,    0.0124]
+Embeddings Changed: true

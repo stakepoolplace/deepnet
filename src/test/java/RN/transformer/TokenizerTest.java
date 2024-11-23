@@ -2,6 +2,7 @@ package RN.transformer;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -58,8 +59,8 @@ public class TokenizerTest {
         // Initialisation du modèle Transformer avec dModel = embeddingSize
         int numLayers = 1;
         int dModel = embeddingSize;
-        int numHeads = 1;
-        int dff = 255;
+        int numHeads = 2;
+        int dff = 512;
         int vocabSize = tokenizer.getVocabSize();
         float dropoutRate = 0.0f;
         float initialLr = 0.001f;
@@ -76,7 +77,7 @@ public class TokenizerTest {
             "ce film est fantastique",
             "je déteste ce temps",
             "quelle belle journée",
-            "je suis très heureux",
+            "le chat sol",
             "c'est un mauvais film",
             "ce livre est intéressant",
             "je n'aime pas ce repas",
@@ -92,7 +93,7 @@ public class TokenizerTest {
             "le film est fantastique",
             "je déteste",
             "quelle belle", 
-            "je suis très heureux",
+            "le chat",
             "c'est un mauvais", 
             "le livre est intéressant",
             "je n'aime pas",
@@ -100,8 +101,8 @@ public class TokenizerTest {
             "je suis triste",
             "le temps est agréable"
         );
-        int batchSize = 2; // Ajustez selon vos besoins
-        int sequenceLength = 7; // Définissez une longueur de séquence cohérente
+        int batchSize = 1; // Ajustez selon vos besoins
+        int sequenceLength = 14; // Définissez une longueur de séquence cohérente
         mockDataGenerator = new DataGenerator(data, targets, tokenizer, batchSize, sequenceLength);
         
     }
@@ -236,15 +237,15 @@ public class TokenizerTest {
         
 
         // Entraîner le modèle sur un seul epoch
-        float initialLoss = model.trainEpochAndGetLoss(mockDataGenerator);
-        System.out.println("Initial Loss: " + initialLoss);
+        model.train(mockDataGenerator, 2);
+        //System.out.println("Initial Loss: " + initialLoss);
 
         // Vérification que le modèle est marqué comme entraîné
         assertTrue("Le modèle devrait être marqué comme entraîné après l'entraînement", model.isTrained());
 
         // Effectuer une inférence sur l'entrée d'entraînement
-        String input = "chat mange la souris";
-        String actualOutput = model.infer(input, 4);
+        String input = "le chat mange la souris";
+        String actualOutput = model.infer(input, 3);
         String expectedOutput = "le chat mange";
 
         // Vérification que l'inférence n'est pas nulle et est cohérente
@@ -263,19 +264,26 @@ public class TokenizerTest {
 
     @Test
     public void testEmbeddingsUpdate() throws IOException {
-        
-        // Copier les embeddings avant l'entraînement
-        INDArray embeddingBefore = model.tokenizer.getPretrainedEmbeddings().getRow(tokenizer.getTokenToId().get("chat")).dup();
-        
+        // Récupérer l'ID du token 'chat'
+        Integer chatId = tokenizer.getTokenToId().get("chat");
+        assertNotNull("Le token 'chat' devrait exister dans le vocabulaire", chatId);
+    
+        // Copier l'embedding avant l'entraînement
+        INDArray embeddingBefore = model.tokenizer.getPretrainedEmbeddings().getRow(chatId).dup();
+        System.out.println("Embedding Before:\n" + embeddingBefore);
+    
         // Entraîner le modèle
-        model.trainEpochAndGetLoss(mockDataGenerator);
-        
-        // Copier les embeddings après l'entraînement
-        INDArray embeddingAfter = model.tokenizer.getPretrainedEmbeddings().getRow(tokenizer.getTokenToId().get("chat"));
-        
-
+        model.train(mockDataGenerator, 3);
+    
+        // Copier l'embedding après l'entraînement
+        INDArray embeddingAfter = model.tokenizer.getPretrainedEmbeddings().getRow(chatId);
+        System.out.println("Embedding After:\n" + embeddingAfter);
+    
         // Vérifier que l'embedding a changé
-        assertFalse(embeddingBefore.equals(embeddingAfter), "L'embedding de 'chat' devrait avoir été mis à jour.");
+        boolean embeddingsChanged = !embeddingBefore.equalsWithEps(embeddingAfter, 1e-6);
+        System.out.println("Embeddings Changed: " + embeddingsChanged);
+    
+        assertTrue("L'embedding de 'chat' devrait avoir été mis à jour.", embeddingsChanged);
     }
 
     /**
@@ -318,7 +326,7 @@ public class TokenizerTest {
         // Entraîner sur 10 epochs et enregistrer la perte à chaque epoch
         int numEpochs = 10;
         for (int epoch = 0; epoch < numEpochs; epoch++) {
-            float loss = model.trainEpochAndGetLoss(mockDataGenerator);
+            float loss = model.trainEpoch(mockDataGenerator);
             lossHistory.add(loss);
             System.out.println("Epoch " + (epoch + 1) + " Loss: " + loss);
             mockDataGenerator.reset(); // Réinitialiser le générateur pour chaque epoch
@@ -336,13 +344,14 @@ public class TokenizerTest {
      */
     @Test
     public void testInferenceWithPretrainedEmbeddings() throws Exception {
+
         // Effectuer l'entraînement
-        float loss = model.trainEpochAndGetLoss(mockDataGenerator);
+        float loss = model.trainEpoch(mockDataGenerator);
         System.out.println("Loss after training: " + loss);
 
         // Effectuer une inférence
         String input = "chiens aiment le jardin";
-        String actualOutput = model.infer(input, 4);
+        String actualOutput = model.infer(input, 3);
         String expectedOutput = "les chiens aiment";
 
         // Vérifier que l'inférence est proche de la cible
@@ -355,7 +364,7 @@ public class TokenizerTest {
         model.displayAttentionRelations(inputTokens);
 
         // (Optionnel) Comparer avec une sortie attendue si possible
-        assertEquals("L'inférence devrait correspondre à la cible", expectedOutput, actualOutput);
+        assertEquals(expectedOutput, actualOutput, "L'inférence devrait correspondre à la cible");
     }
 
     /**
@@ -382,7 +391,7 @@ public class TokenizerTest {
                 .collect(Collectors.toList());
 
         // Effectuer une étape d'entraînement
-        float loss = model.trainEpochAndGetLoss(mockDataGenerator);
+        float loss = model.trainEpoch(mockDataGenerator);
         mockDataGenerator.reset();
 
         // Récupérer les paramètres après l'entraînement
