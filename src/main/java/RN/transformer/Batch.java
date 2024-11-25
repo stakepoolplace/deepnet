@@ -20,6 +20,12 @@ public class Batch {
 
     }
 
+    public Batch(INDArray data, INDArray target, Tokenizer tokenizer) {
+        this.tokenizer = tokenizer;
+        this.data = data; 
+        this.target = target;
+    }
+
     public Batch(List<String> data, List<String> target, Tokenizer tokenizer) {
         this.tokenizer = tokenizer;
         this.data = this.tokenizer.tokensToINDArray(data); // Convertit List<String> en INDArray

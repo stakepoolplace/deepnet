@@ -327,9 +327,29 @@ public class Tokenizer implements Serializable {
                   .collect(Collectors.joining(" "));
     }
 
+    /**
+     * Convertit une liste d'IDs de tokens en une liste de tokens.
+     *
+     * @param tokenIds Liste d'IDs de tokens.
+     * @return Liste de tokens correspondants.
+     */
+    public List<String> idsToListTokens(List<Integer> tokenIds) {
+        return tokenIds.stream()
+                       .map(id -> idToToken.getOrDefault(id, UNK_TOKEN))
+                       .collect(Collectors.toList());
+    }
+
     // Méthodes pour obtenir les IDs des tokens spéciaux
     public int getPadTokenId() {
         return tokenToId.get(PAD_TOKEN);
+    }
+
+    public Map<Integer, String> getIdToTokenMap() {
+        Map<Integer, String> idToToken = new HashMap<>();
+        for (Map.Entry<String, Integer> entry : tokenToId.entrySet()) {
+            idToToken.put(entry.getValue(), entry.getKey());
+        }
+        return idToToken;
     }
 
     public Map<String, Integer> getTokenToId(){

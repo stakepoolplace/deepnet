@@ -113,7 +113,7 @@ public class TransformerIntegrationTest {
     @Test
     public void testInferenceAfterTraining() throws Exception {
         // Effectuer l'entraînement
-        model.train(mockDataGenerator, 245);
+        model.train(mockDataGenerator, 25);
 
         // Effectuer une inférence
         String input = "hello world";

@@ -12,6 +12,8 @@ import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.indexing.NDArrayIndex;
 
+import RN.utils.NDArrayUtils;
+
 /**
  * Classe représentant l'encodeur du modèle Transformer.
  */
@@ -35,7 +37,7 @@ public class Encoder implements Serializable {
         this.tokenizer = tokenizer;
         
         for (int i = 0; i < numLayers; i++) {
-            this.layers.add(new EncoderLayer(dModel, numHeads, dff, dropoutRate));
+            this.layers.add(new EncoderLayer(this, dModel, numHeads, dff, dropoutRate));
         }
     }
 
@@ -47,14 +49,17 @@ public class Encoder implements Serializable {
      * @param paddingMask    Masque de padding pour le batch [batchSize, 1, 1, seqLength].
      * @return Représentations encodées [batchSize, seqLength, dModel].
      */
-    public INDArray encode(boolean isTraining, INDArray data, INDArray paddingMask) {
+    public INDArray encode(boolean isTraining, Batch batch) {
+
+        INDArray data = batch.getData();
+
         // Vérification des dimensions
         if (data.rank() != 2) {
             throw new IllegalArgumentException("Data doit être de rang 2 [batchSize, seqLength], mais a la forme: " + java.util.Arrays.toString(data.shape()));
         }
-        if (paddingMask.rank() != 4) {
-            throw new IllegalArgumentException("Padding mask doit être de rang 4 [batchSize, 1, 1, seqLength], mais a la forme: " + java.util.Arrays.toString(paddingMask.shape()));
-        }
+
+        INDArray keyPaddingMask = NDArrayUtils.createKeyPaddingMask(tokenizer, data);
+        INDArray queryPaddingMask = NDArrayUtils.createQueryPaddingMask(tokenizer, data);
 
         // Lookup embeddings: [batchSize, seqLength, dModel]
         INDArray inputEmbeddings = tokenizer.lookupEmbeddings(data); 
@@ -69,7 +74,7 @@ public class Encoder implements Serializable {
     
         // Passer à travers les couches de l'encodeur
         for (EncoderLayer layer : layers) {
-            x = layer.forward(isTraining, x, paddingMask);
+            x = layer.forward(isTraining, x, queryPaddingMask, keyPaddingMask);
             // System.out.println("After encoder layer: " + java.util.Arrays.toString(x.shape()));
         }
         
@@ -132,6 +137,8 @@ public class Encoder implements Serializable {
 
         return gradients;
     }
+
+
 
     /**
      * Obtient tous les paramètres de l'encodeur.
@@ -224,8 +231,10 @@ public class Encoder implements Serializable {
         LayerNorm layerNorm2;
         Dropout dropout1;
         Dropout dropout2;
+        Encoder encoder;
 
-        public EncoderLayer(int dModel, int numHeads, int dff, double dropoutRate) {
+        public EncoderLayer(Encoder encoder, int dModel, int numHeads, int dff, double dropoutRate) {
+            this.encoder = encoder;
             this.selfAttention = new MultiHeadAttention(dModel, numHeads);
             this.feedForward = new PositionwiseFeedForward(dModel, dff);
             this.layerNorm1 = new LayerNorm(dModel);
@@ -246,9 +255,17 @@ public class Encoder implements Serializable {
          * @param paddingMask Masque de padding [batchSize, 1, 1, seqLength].
          * @return Sortie de la couche [batchSize, seqLength, dModel].
          */
-        public INDArray forward(boolean isTraining, INDArray x, INDArray paddingMask) {
+        public INDArray forward(boolean isTraining, INDArray x, INDArray queryPaddingMask, INDArray keyPaddingMask) {
+            
+         
+            
+            if (keyPaddingMask.rank() != 4) {
+                throw new IllegalArgumentException("keyPaddingMask doit être de rang 4 [batchSize, 1, 1, seqLength], mais a la forme: " + java.util.Arrays.toString(keyPaddingMask.shape()));
+            }
+
             // Attention multi-têtes auto-attention
-            INDArray attnOutput = selfAttention.forward(x, x, x, paddingMask); // [batchSize, seqLength, dModel]
+            INDArray attnOutput = selfAttention.forward(x, x, x, keyPaddingMask, queryPaddingMask, null); // [batchSize, seqLength, dModel]
+            
             attnOutput = dropout1.apply(isTraining, attnOutput); // Appliquer dropout
             INDArray out1 = layerNorm1.forward(x.add(attnOutput)); // Add & Norm [batchSize, seqLength, dModel]
 

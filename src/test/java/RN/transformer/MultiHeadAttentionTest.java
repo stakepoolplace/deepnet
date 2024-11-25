@@ -30,6 +30,7 @@ public class MultiHeadAttentionTest {
         vocabSize = 10000; // Exemple de taille de vocabulaire
 
     }
+    
 
     @Test
     public void testSoftmaxGrad() {

@@ -10,7 +10,6 @@ import java.util.Map;
 import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
-import org.nd4j.linalg.indexing.INDArrayIndex;
 import org.nd4j.linalg.indexing.NDArrayIndex;
 import org.nd4j.linalg.ops.transforms.Transforms;
 
@@ -47,14 +46,14 @@ public class MultiHeadAttention implements Serializable {
 
     public void initializeWeights() {
         // Initialize weights with appropriate normalization
-       // Initialisation des poids Wq, Wk, Wv, Wo avec Xavier Initialization
-       this.Wq = Nd4j.randn(DataType.FLOAT, dModel, dModel).mul(1.0 / Math.sqrt(dModel)); // [dModel, dModel]
-       this.Wk = Nd4j.randn(DataType.FLOAT, dModel, dModel).mul(1.0 / Math.sqrt(dModel)); // [dModel, dModel]
-       this.Wv = Nd4j.randn(DataType.FLOAT, dModel, dModel).mul(1.0 / Math.sqrt(dModel)); // [dModel, dModel]
-       this.Wo = Nd4j.randn(DataType.FLOAT, dModel, dModel).mul(1.0 / Math.sqrt(dModel)); // [dModel, dModel]
+        // Initialisation des poids Wq, Wk, Wv, Wo avec Xavier Initialization
+        this.Wq = Nd4j.randn(DataType.FLOAT, dModel, dModel).mul(1.0 / Math.sqrt(dModel)); // [dModel, dModel]
+        this.Wk = Nd4j.randn(DataType.FLOAT, dModel, dModel).mul(1.0 / Math.sqrt(dModel)); // [dModel, dModel]
+        this.Wv = Nd4j.randn(DataType.FLOAT, dModel, dModel).mul(1.0 / Math.sqrt(dModel)); // [dModel, dModel]
+        this.Wo = Nd4j.randn(DataType.FLOAT, dModel, dModel).mul(1.0 / Math.sqrt(dModel)); // [dModel, dModel]
     }
 
-    public INDArray forward(INDArray query, INDArray key, INDArray value, INDArray mask) {
+    public INDArray forward(INDArray query, INDArray key, INDArray value, INDArray queryMask, INDArray keyMask, INDArray lookAheadMask) {
 
         // Stocker les inputs pour la passe backward
         this.inputQ = query.dup(); // [batchSize, seqLength_q, dModel]
@@ -70,6 +69,15 @@ public class MultiHeadAttention implements Serializable {
         // Vérification des dimensions des entrées
         if (query.rank() != 3 || key.rank() != 3 || value.rank() != 3) {
             throw new IllegalArgumentException("Les entrées query, key et value doivent être de rang 3.");
+        }
+
+        // Vérifier que la taille totale correspond
+        long totalLengthKeyMask = keyMask.length();
+        long totalLengthNewShape = batchSize * 1 * 1 * seqLength_k;
+
+        if (totalLengthKeyMask != totalLengthNewShape) {
+            throw new IllegalArgumentException("Le reshape de keyMask est impossible car les longueurs totales ne correspondent pas. "
+                + "keyMask length: " + totalLengthKeyMask + ", New shape length: " + totalLengthNewShape);
         }
 
         // Reshaping des entrées de [batchSize, seqLength, dModel] à [batchSize *
@@ -94,15 +102,16 @@ public class MultiHeadAttention implements Serializable {
         this.V = this.V.permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength_k, depth]
 
         // Initialiser un tableau pour stocker les scores
-        INDArray scores = Nd4j.create(batchSize, numHeads, seqLength_q, seqLength_k); // [batchSize, numHeads,
-                                                                                      // seqLength_q, seqLength_k]
+        INDArray scores = Nd4j.create(batchSize, numHeads, seqLength_q, seqLength_k); // [batchSize, numHeads, seqLength_q, seqLength_k]
 
         // Itérer sur batchSize et numHeads pour effectuer mmul
         for (int b = 0; b < batchSize; b++) {
             for (int h = 0; h < numHeads; h++) {
+
                 // Extraire les matrices [seqLength_q, depth] et [depth, seqLength_k]
                 INDArray Q_batch_head = Q.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(),
                         NDArrayIndex.all());
+
                 INDArray KTransposed_batch_head = K
                         .get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all())
                         .transpose();
@@ -116,48 +125,72 @@ public class MultiHeadAttention implements Serializable {
             }
         }
 
-        // Application du masque
-        if (mask != null) {
-            // Vérifier que le batch size du masque correspond à celui des scores
-            if (mask.shape()[0] != scores.shape()[0]) {
-                throw new IllegalArgumentException("Le batch size du masque (" + mask.shape()[0]
-                        + ") ne correspond pas à celui des scores (" + scores.shape()[0] + ").");
+        // Appliquer les masques additifs avec ajustements
+        if (keyMask != null || lookAheadMask != null) {
+            // Initialiser le masque additif
+            INDArray additiveMask = Nd4j.zeros(scores.shape());
+
+            // Appliquer le keyMask
+            if (keyMask != null) {
+
+                // Reshape en [batchSize, 1, 1, seqLength_k]
+                INDArray reshapedKeyMask = keyMask.reshape(batchSize, 1, 1, seqLength_k);
+
+                // Créer le masque additif
+                INDArray additiveKeyMask = reshapedKeyMask.eq(0.0f).castTo(DataType.FLOAT).muli(-1e9f);
+                // System.out.println("Additive Key Mask after mul(-1e9f):\n" + additiveKeyMask);
+
+                // Broadcast sur [batchSize, numHeads, seqLength_q, seqLength_k]
+                additiveKeyMask = additiveKeyMask.broadcast(batchSize, numHeads, seqLength_q, seqLength_k);
+                //System.out.println("Additive Key Mask after broadcasting:\n" + additiveKeyMask);
+
+                // Ajouter au masque additif
+                additiveMask = additiveMask.add(additiveKeyMask);
             }
 
-            // Vérifier le type de masque
-            if (mask.rank() != 4) {
-                throw new IllegalArgumentException(
-                        "Le masque doit avoir 4 dimensions. Forme actuelle: " + Arrays.toString(mask.shape()));
+            // Appliquer le lookAheadMask
+            if (lookAheadMask != null) {
+                // Assurez-vous que le lookAheadMask est déjà correctement reshaped
+                INDArray additiveLookAheadMask = lookAheadMask.eq(0.0f).castTo(DataType.FLOAT).muli(-1e9f);
+                // System.out.println("Additive LookAhead Mask:\n" + additiveLookAheadMask);
+                additiveMask = additiveMask.add(additiveLookAheadMask);
             }
 
-            // Identifier si c'est un masque de padding ou un masque look-ahead
-            boolean isPaddingMask = (mask.size(1) == 1 && mask.size(2) == 1);
-            boolean isLookAheadMask = (mask.size(1) == 1 && mask.size(2) > 1);
+            // Appliquer le masque additif aux scores
+            scores = scores.add(additiveMask);
 
-            if (!isPaddingMask && !isLookAheadMask) {
-                throw new IllegalArgumentException(
-                        "Le masque doit être soit [batch_size, 1, 1, seq_len], soit [batch_size, 1, seq_length_q, seq_length_k]. Forme actuelle: "
-                                + Arrays.toString(mask.shape()));
-            }
+            // Optionnel : Limiter les scores à -1e9 maximum pour éviter des valeurs plus négatives
+            scores = Transforms.max(scores, Nd4j.onesLike(scores).mul(-1e9f));
 
-            // Conversion du masque binaire en masque additive temporaire
-            // Mask : [batchSize, 1, size, size] --> [batchSize, numHeads, seqLength_q, seqLength_k]
-            INDArray additiveMask = mask.dup(); // Clone pour éviter de modifier l'original
-            // System.out.println("additiveMask:\n" + additiveMask);
-
-            additiveMask = additiveMask.eq(0.0f).castTo(DataType.FLOAT).muli(-1e9f); // 0.0f -> -1e9, 1.0f -> 0.0f
-
-            // System.out.println("additiveMask after muli:\n" + additiveMask);
-
-            // Appliquer le masque additive
-            scores = scores.add(additiveMask); // [batchSize, numHeads, seqLength_q, seqLength_k]
-            // System.out.println("Scores after masking:\n" + scores);
-
+            // System.out.println("Scores after adding additiveMask and capping:\n" + scores);
         }
 
+        // System.out.println("Scores Shape: " + Arrays.toString(scores.shape()));
+
+    
         // Application du softmax sur le dernier axe (axis=3)
         INDArray weights = NDArrayUtils.softmax(scores, 3); // [batchSize, numHeads, seqLength_q, seqLength_k]
         // System.out.println("Attention Weights after softmax:\n" + weights);
+
+        // Application du softmax sur le dernier axe (axis=3)
+
+        // Appliquer le masque pour annuler les poids d'attention des requêtes <PAD>
+        if (queryMask != null) {
+            // Reshape le queryMask pour correspondre aux dimensions des poids d'attention
+            INDArray reshapedQueryMask = queryMask.reshape(batchSize, 1, seqLength_q, 1); // [batchSize, 1, seqLength_q, 1]
+            // System.out.println("Reshaped Query Mask for Attention Weights:\n" + reshapedQueryMask);
+
+            // Diffuser le masque sur les dimensions numHeads et seqLength_k
+            INDArray broadcastQueryMask = reshapedQueryMask.broadcast(batchSize, numHeads, seqLength_q, seqLength_k); // [batchSize, numHeads, seqLength_q, seqLength_k]
+            //System.out.println("Broadcasted Query Mask:\n" + broadcastQueryMask);
+
+            // Multiplier les poids d'attention par le masque diffusé
+            weights = weights.mul(broadcastQueryMask); // Les poids d'attention pour les requêtes <PAD> seront 0
+            // System.out.println("Attention Weights after applying Query Mask:\n" + weights);
+        }
+
+        // System.out.println("Attention Weights:\n" + weights);
+
 
         // Stocker attentionWeights pour la passe backward
         this.attentionWeights = weights;
@@ -183,20 +216,14 @@ public class MultiHeadAttention implements Serializable {
             }
         }
 
-        // System.out.println("Attention after weights.mmul(V):\n" + attention);
-
-
         // Transposition et reshaping pour concaténer les têtes
-        // [batchSize, numHeads, seqLength_q, depth] -> [batchSize, seqLength_q,
-        // numHeads * depth]
+        // [batchSize, numHeads, seqLength_q, depth] -> [batchSize, seqLength_q, numHeads * depth]
         INDArray attentionConcat = attention.permute(0, 2, 1, 3).reshape(batchSize, seqLength_q, numHeads * depth); // [batchSize,
                                                                                                                     // seqLength_q,
-        // System.out.println("Attention Concat:\n" + attentionConcat);
-                                                                                                // dModel]
+        // System.out.println("Attention Concat:\n" + attentionConcat); dModel]
 
         // Effectuer la multiplication matricielle avec Wo
-        // Reshape attentionConcat de [batchSize, seqLength_q, dModel] à [batchSize *
-        // seqLength_q, dModel]
+        // Reshape attentionConcat de [batchSize, seqLength_q, dModel] à [batchSize * seqLength_q, dModel]
         INDArray attention2D = attentionConcat.reshape(batchSize * seqLength_q, dModel); // [batchSize * seqLength_q,
                                                                                          // dModel]
         INDArray output2D = attention2D.mmul(Wo); // [batchSize * seqLength_q, dModel]
@@ -217,7 +244,6 @@ public class MultiHeadAttention implements Serializable {
         // System.out.println("Attention Weights: " + attentionWeights);
         // System.out.println("Attention Output: " + attentionOutput);
         // System.out.println("Output after Wo: " + output);
-
 
         return output;
     }
@@ -522,7 +548,6 @@ public class MultiHeadAttention implements Serializable {
                 throw new RuntimeException("Gradient " + key + " contient des valeurs NaN ou infinies.");
             }
         }
-        
 
         // Retourner les gradients des inputs séparément
         return gradients;
@@ -632,65 +657,83 @@ public class MultiHeadAttention implements Serializable {
         Wo = wo;
     }
 
-
     public INDArray getAttentionWeights() {
         return this.attentionWeights;
     }
 
 
 
-     /**
-     * Méthode pour afficher les poids d'attention sous forme de tableau croisé.
-     *
-     * @param inputTokens Liste des tokens d'entrée pour l'affichage des relations.
-     */
-    public void printAttentionWeights(List<String> inputTokens) {
+
+    public void printAttentionWeights(List<String> queryTokens, List<String> keyTokens, int sampleIndex, Map<Integer, String> idToTokenMap) {
         if (this.attentionWeights == null) {
-            System.out.println("Attention weights are not available. Perform a forward pass first.");
+            System.out.println("Les poids d'attention ne sont pas disponibles. Effectuez d'abord une passe forward.");
             return;
         }
-
-        // Supposons que batchSize = 1
-        int batchSize = (int) attentionWeights.size(0);
+    
+        // Vérifier que l'index de l'échantillon est valide
+        if (sampleIndex >= attentionWeights.size(0)) {
+            System.err.println("Index d'échantillon invalide: " + sampleIndex);
+            return;
+        }
+    
         int numHeads = (int) attentionWeights.size(1);
         int seqLength_q = (int) attentionWeights.size(2);
         int seqLength_k = (int) attentionWeights.size(3);
-
-        // Limiter l'affichage à un seul batch pour simplifier
-        for (int b = 0; b < batchSize; b++) {
-            for (int h = 0; h < numHeads; h++) {
-                System.out.println("===== Head " + (h + 1) + " =====");
-
-                // Afficher les en-têtes (tokens clés)
-                System.out.print(String.format("%-10s", "Query"));
-                for (String keyToken : inputTokens) {
-                    System.out.print(String.format("%-10s", keyToken));
-                }
-                System.out.println();
-
-                // Afficher une ligne séparatrice
-                int totalWidth = 10 + 10 * inputTokens.size();
-                for (int i = 0; i < totalWidth; i++) {
-                    System.out.print("-");
-                }
-                System.out.println();
-
-                // Afficher les lignes du tableau (tokens de requête et leurs poids d'attention)
-                for (int q = 0; q < seqLength_q; q++) {
-                    String queryToken = (q < inputTokens.size()) ? inputTokens.get(q) : "Unknown";
-                    System.out.print(String.format("%-10s", queryToken));
-                    for (int k = 0; k < seqLength_k; k++) {
-                        String keyToken = (k < inputTokens.size()) ? inputTokens.get(k) : "Unknown";
-                        float weight = attentionWeights.getFloat(b, h, q, k);
-                        System.out.print(String.format("%-10.4f", weight));
-                    }
-                    System.out.println();
-                }
-
-                System.out.println(); // Ligne vide entre les têtes
+    
+        // Vérifier que la taille des queryTokens et keyTokens correspond aux dimensions des scores
+        if (queryTokens.size() != seqLength_q) {
+            System.err.println("La taille des queryTokens ne correspond pas à seqLength_q.");
+            System.err.println("queryTokens.size() = " + queryTokens.size() + ", seqLength_q = " + seqLength_q);
+            return;
+        }
+    
+        if (keyTokens.size() != seqLength_k) {
+            System.err.println("La taille des keyTokens ne correspond pas à seqLength_k.");
+            System.err.println("keyTokens.size() = " + keyTokens.size() + ", seqLength_k = " + seqLength_k);
+            return;
+        }
+    
+        // Itérer sur chaque tête d'attention
+        for (int head = 0; head < numHeads; head++) {
+            System.out.println("===== Tête " + (head + 1) + " =====");
+    
+            // Imprimer les en-têtes avec les noms des tokens clés
+            System.out.print(String.format("%-15s", "Requête"));
+            for (String keyToken : keyTokens) {
+                System.out.print(String.format("%-15s", keyToken));
             }
+            System.out.println();
+    
+            // Afficher une ligne séparatrice
+            int totalWidth = 15 + 15 * keyTokens.size();
+            for (int i = 0; i < totalWidth; i++) {
+                System.out.print("-");
+            }
+            System.out.println();
+    
+            // Itérer sur chaque token de la séquence de requêtes
+            for (int q = 0; q < seqLength_q; q++) {
+                // Récupérer le nom du token de requête
+                String queryToken = (q < queryTokens.size()) ? queryTokens.get(q) : "Inconnu";
+                System.out.print(String.format("%-15s", queryToken));
+    
+                for (int k = 0; k < seqLength_k; k++) {
+                    // Récupérer le nom du token clé
+                    String keyToken = (k < keyTokens.size()) ? keyTokens.get(k) : "Inconnu";
+    
+                    // Récupérer le poids d'attention pour cette paire (query, key)
+                    double weight = attentionWeights.getDouble(sampleIndex, head, q, k);
+    
+                    // Optionnel : Arrondir le poids pour une meilleure lisibilité
+                    String weightStr = String.format("%.4f", weight);
+    
+                    System.out.print(String.format("%-15s", weightStr));
+                }
+                System.out.println();
+            }
+    
+            System.out.println(); // Ligne vide entre les têtes
         }
     }
-
 
 }

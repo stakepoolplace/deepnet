@@ -6,9 +6,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.factory.Nd4j;
+
+import RN.utils.NDArrayUtils;
 
 /**
  * Classe représentant le décodeur du modèle Transformer.
@@ -41,7 +41,7 @@ public class Decoder implements Serializable {
         this.forwardCache = new ArrayList<>();
 
         for (int i = 0; i < numLayers; i++) {
-            this.layers.add(new DecoderLayer(dModel, numHeads, dff, dropoutRate));
+            this.layers.add(new DecoderLayer(this, dModel, numHeads, dff, dropoutRate));
             this.forwardCache.add(null); // Initialiser le cache avec des valeurs nulles
         }
     }
@@ -57,6 +57,7 @@ public class Decoder implements Serializable {
 
     /**
      * Décode les entrées en utilisant les couches du décodeur.
+     * Utilisé par train() mais aussi par infer()
      *
      * @param isTraining       Indique si le modèle est en mode entraînement.
      * @param encoderOutput    Sortie de l'encodeur.
@@ -65,25 +66,65 @@ public class Decoder implements Serializable {
      * @param paddingMask      Masque de padding pour l'attention croisée.
      * @return Logits après projection linéaire.
      */
-    public INDArray decode(boolean isTraining, INDArray encoderOutput, INDArray encodedDecoderInput, INDArray lookAheadMask, INDArray paddingMask) {
+    public INDArray decode(boolean isTraining, INDArray encoderOutput, INDArray encodedDecoderInput, Batch batch, INDArray encoderInputTokens) {
+        
         // Réinitialiser le cache avant une nouvelle passe forward
         resetCache();
-
+    
+        // Variables pour les masques
+        INDArray keyPaddingMaskFromSource;
+        INDArray queryPaddingMaskFromSource = NDArrayUtils.createQueryPaddingMask(tokenizer, batch.getData());
+        INDArray keyPaddingMaskFromTarget;
+        INDArray queryPaddingMaskFromTarget;
+        INDArray lookAheadMask;
+        int batchSize;
+        int seqLength;
+    
+        if (isTraining) {
+            keyPaddingMaskFromSource = NDArrayUtils.createKeyPaddingMask(tokenizer, batch.getData());
+            // Entraînement : utiliser batch.getTarget()
+            keyPaddingMaskFromTarget = NDArrayUtils.createKeyPaddingMask(tokenizer, batch.getTarget()); // Séquence cible
+            queryPaddingMaskFromTarget = NDArrayUtils.createQueryPaddingMask(tokenizer, batch.getTarget());
+            batchSize = (int) batch.getTarget().shape()[0];
+            seqLength = (int) batch.getTarget().shape()[1];
+        } else {
+            // Inférence 
+            keyPaddingMaskFromSource = NDArrayUtils.createKeyPaddingMask(tokenizer, encoderInputTokens);
+            // utiliser batch.getData() pour la séquence cible
+            keyPaddingMaskFromTarget = NDArrayUtils.createKeyPaddingMask(tokenizer, batch.getData()); // Séquence cible
+            queryPaddingMaskFromTarget = NDArrayUtils.createQueryPaddingMask(tokenizer, batch.getData());
+            batchSize = (int) batch.getData().shape()[0];
+            seqLength = (int) batch.getData().shape()[1];
+        }
+    
+        // Construction du masque look-ahead
+        lookAheadMask = NDArrayUtils.createLookAheadMask(batchSize, seqLength);
+    
         // Passer à travers les couches du décodeur
         for (int i = 0; i < layers.size(); i++) {
             DecoderLayer layer = layers.get(i);
-            encodedDecoderInput = layer.forward(isTraining, encodedDecoderInput, encoderOutput, lookAheadMask, paddingMask, forwardCache.get(i));
+            encodedDecoderInput = layer.forward(
+                isTraining,
+                encodedDecoderInput,
+                encoderOutput,
+                lookAheadMask,
+                forwardCache.get(i),
+                queryPaddingMaskFromSource,
+                keyPaddingMaskFromSource,
+                queryPaddingMaskFromTarget,
+                keyPaddingMaskFromTarget
+            );
             forwardCache.set(i, encodedDecoderInput.dup()); // Stocker l'entrée actuelle dans le cache
         }
-
+    
         // Normalisation finale
         encodedDecoderInput = layerNorm.forward(encodedDecoderInput);
         lastNormalizedInput = encodedDecoderInput.dup(); // Stocker l'entrée normalisée
-
+    
         // Projection linéaire vers la taille du vocabulaire
         INDArray logits = linearProjection.project(encodedDecoderInput); // [batchSize, targetSeqLength, vocabSize]
         // System.out.println("Logits shape: " + Arrays.toString(logits.shape()));
-
+    
         return logits;
     }
     
@@ -190,6 +231,7 @@ public class Decoder implements Serializable {
      */
     static class DecoderLayer implements Serializable {
         private static final long serialVersionUID = 4450374170745550258L;
+        Decoder decoder;
         MultiHeadAttention selfAttention;
         MultiHeadAttention encoderDecoderAttention;
         PositionwiseFeedForward feedForward;
@@ -200,7 +242,8 @@ public class Decoder implements Serializable {
         Dropout dropout2;
         Dropout dropout3;
 
-        public DecoderLayer(int dModel, int numHeads, int dff, double dropoutRate) {
+        public DecoderLayer(Decoder decoder, int dModel, int numHeads, int dff, double dropoutRate) {
+            this.decoder = decoder;
             this.selfAttention = new MultiHeadAttention(dModel, numHeads);
             this.encoderDecoderAttention = new MultiHeadAttention(dModel, numHeads);
             this.feedForward = new PositionwiseFeedForward(dModel, dff);
@@ -231,14 +274,16 @@ public class Decoder implements Serializable {
          * @param cachedInput      Entrée mise en cache de la passe forward précédente.
          * @return Sortie de la couche.
          */
-        public INDArray forward(boolean isTraining, INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray paddingMask, INDArray cachedInput) {
+        public INDArray forward(boolean isTraining, INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray cachedInput, INDArray queryPaddingMaskSource, INDArray keyPaddingMaskSource, INDArray queryPaddingMaskTarget, INDArray keyPaddingMaskTarget) {
+            
+
             // Self-attention
-            INDArray attn1 = selfAttention.forward(x, x, x, lookAheadMask);
+            INDArray attn1 = selfAttention.forward(x, x, x, queryPaddingMaskTarget, keyPaddingMaskTarget, lookAheadMask);
             attn1 = dropout1.apply(isTraining, attn1);
             x = layerNorm1.forward(x.add(attn1)); // Add & Norm
 
             // Encoder-decoder attention
-            INDArray attn2 = encoderDecoderAttention.forward(x, encoderOutput, encoderOutput, paddingMask);
+            INDArray attn2 = encoderDecoderAttention.forward(x, encoderOutput, encoderOutput, queryPaddingMaskTarget, keyPaddingMaskSource, null);
             attn2 = dropout2.apply(isTraining, attn2);
             x = layerNorm2.forward(x.add(attn2)); // Add & Norm
 

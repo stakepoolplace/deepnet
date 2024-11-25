@@ -25,15 +25,17 @@ import java.util.stream.Collectors;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class TokenizerTest {
+
     private Tokenizer tokenizer;
     private WordVectors preTrainedWordVectors;
     private TransformerModel model; // Assurez-vous que cette classe existe dans votre projet
     private DataGenerator mockDataGenerator; // Assurez-vous que cette classe existe dans votre projet
     private List<DataSet> trainingData;
-    private int maxSequenceLength = 7;
+    private int maxSequenceLength = 9;
 
     @BeforeAll
     public void setUp() throws IOException {
+
         // Charger et former les WordVectors
         preTrainedWordVectors = trainAndSaveWordVectors("src/test/resources/word2vec/test_word2vec_model.txt");
 
@@ -59,7 +61,7 @@ public class TokenizerTest {
         // Initialisation du modèle Transformer avec dModel = embeddingSize
         int numLayers = 1;
         int dModel = embeddingSize;
-        int numHeads = 2;
+        int numHeads = 1;
         int dff = 512;
         int vocabSize = tokenizer.getVocabSize();
         float dropoutRate = 0.0f;
@@ -102,8 +104,7 @@ public class TokenizerTest {
             "le temps est agréable"
         );
         int batchSize = 1; // Ajustez selon vos besoins
-        int sequenceLength = 14; // Définissez une longueur de séquence cohérente
-        mockDataGenerator = new DataGenerator(data, targets, tokenizer, batchSize, sequenceLength);
+        mockDataGenerator = new DataGenerator(data, targets, tokenizer, batchSize, maxSequenceLength);
         
     }
 
@@ -255,8 +256,8 @@ public class TokenizerTest {
 
 
         // Afficher les relations entre les tokens après l'entraînement
-        List<String> inputTokens = tokenizer.tokenize(input); // Ex: ["hello", "world", "input"]
-        model.displayAttentionRelations(inputTokens);
+        // List<String> inputTokens = tokenizer.tokenize(input); // Ex: ["hello", "world", "input"]
+        // model.displayAttentionRelations(inputTokens);
 
         // (Optionnel) Vérifier que l'inférence est proche de la cible
         assertEquals( expectedOutput, actualOutput,"L'inférence devrait correspondre à la cible");
@@ -264,24 +265,30 @@ public class TokenizerTest {
 
     @Test
     public void testEmbeddingsUpdate() throws IOException {
+        
         // Récupérer l'ID du token 'chat'
         Integer chatId = tokenizer.getTokenToId().get("chat");
         assertNotNull("Le token 'chat' devrait exister dans le vocabulaire", chatId);
     
         // Copier l'embedding avant l'entraînement
         INDArray embeddingBefore = model.tokenizer.getPretrainedEmbeddings().getRow(chatId).dup();
-        System.out.println("Embedding Before:\n" + embeddingBefore);
+        //System.out.println("Embedding Before:\n" + embeddingBefore);
     
         // Entraîner le modèle
         model.train(mockDataGenerator, 3);
     
         // Copier l'embedding après l'entraînement
         INDArray embeddingAfter = model.tokenizer.getPretrainedEmbeddings().getRow(chatId);
-        System.out.println("Embedding After:\n" + embeddingAfter);
+        //System.out.println("Embedding After:\n" + embeddingAfter);
     
         // Vérifier que l'embedding a changé
         boolean embeddingsChanged = !embeddingBefore.equalsWithEps(embeddingAfter, 1e-6);
-        System.out.println("Embeddings Changed: " + embeddingsChanged);
+        //System.out.println("Embeddings Changed: " + embeddingsChanged);
+    
+        // Afficher les relations entre les tokens après l'entraînement
+        // List<String> inputTokens = tokenizer.tokenize("chat mange la souris"); // Inclut <START>, <END>, etc.
+        // System.out.println("Input Tokens: " + inputTokens); // Ajoutez ceci pour vérifier
+        // model.displayAttentionRelations(inputTokens);
     
         assertTrue("L'embedding de 'chat' devrait avoir été mis à jour.", embeddingsChanged);
     }
@@ -291,6 +298,7 @@ public class TokenizerTest {
      */
     @Test
     public void testLossDecreaseOverEpochs() throws Exception {
+        
         // Création d'un DataGenerator avec plusieurs batches pour simuler plusieurs epochs
         List<String> data = Arrays.asList(
             "chat manger la souris", 
@@ -358,10 +366,6 @@ public class TokenizerTest {
         assertNotNull("L'inférence ne devrait pas être null", actualOutput);
         assertFalse("L'inférence ne devrait pas être vide", actualOutput.isEmpty());
         System.out.println("actualOutput : " + actualOutput);
-
-        // Afficher les relations entre les tokens après l'entraînement
-        List<String> inputTokens = tokenizer.tokenize(input); // Ex: ["hello", "world", "input"]
-        model.displayAttentionRelations(inputTokens);
 
         // (Optionnel) Comparer avec une sortie attendue si possible
         assertEquals(expectedOutput, actualOutput, "L'inférence devrait correspondre à la cible");
