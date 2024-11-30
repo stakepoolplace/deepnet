@@ -218,14 +218,14 @@ public class MultiHeadAttention implements Serializable {
 
         // Transposition et reshaping pour concaténer les têtes
         // [batchSize, numHeads, seqLength_q, depth] -> [batchSize, seqLength_q, numHeads * depth]
-        INDArray attentionConcat = attention.permute(0, 2, 1, 3).reshape(batchSize, seqLength_q, numHeads * depth); // [batchSize,
-                                                                                                                    // seqLength_q,
-        // System.out.println("Attention Concat:\n" + attentionConcat); dModel]
+        INDArray attentionConcat = attention.permute(0, 2, 1, 3).reshape(batchSize, seqLength_q, numHeads * depth); 
+                                                                                                                    // [batchSize, seqLength_q, dModel]
+        // System.out.println("Attention Concat:\n" + attentionConcat); 
 
         // Effectuer la multiplication matricielle avec Wo
         // Reshape attentionConcat de [batchSize, seqLength_q, dModel] à [batchSize * seqLength_q, dModel]
-        INDArray attention2D = attentionConcat.reshape(batchSize * seqLength_q, dModel); // [batchSize * seqLength_q,
-                                                                                         // dModel]
+        INDArray attention2D = attentionConcat.reshape(batchSize * seqLength_q, dModel); // [batchSize * seqLength_q, dModel]
+                                                                                          
         INDArray output2D = attention2D.mmul(Wo); // [batchSize * seqLength_q, dModel]
 
         // Reshape le résultat en [batchSize, seqLength_q, dModel]

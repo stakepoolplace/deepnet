@@ -61,7 +61,7 @@ public class TokenizerTest {
         // Initialisation du modèle Transformer avec dModel = embeddingSize
         int numLayers = 1;
         int dModel = embeddingSize;
-        int numHeads = 1;
+        int numHeads = 2;
         int dff = 512;
         int vocabSize = tokenizer.getVocabSize();
         float dropoutRate = 0.0f;
@@ -254,10 +254,6 @@ public class TokenizerTest {
         assertFalse("L'inférence ne devrait pas être vide", actualOutput.isEmpty());
         System.out.println(actualOutput);
 
-
-        // Afficher les relations entre les tokens après l'entraînement
-        // List<String> inputTokens = tokenizer.tokenize(input); // Ex: ["hello", "world", "input"]
-        // model.displayAttentionRelations(inputTokens);
 
         // (Optionnel) Vérifier que l'inférence est proche de la cible
         assertEquals( expectedOutput, actualOutput,"L'inférence devrait correspondre à la cible");

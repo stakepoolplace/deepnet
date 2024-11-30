@@ -66,6 +66,7 @@ public class Encoder implements Serializable {
 
         // Appliquer les encodages positionnels
         INDArray posEncoding = positionalEncoding.getPositionalEncoding(data.shape()[1]); // [seqLength, dModel]
+        
         // Étendre le posEncoding pour qu'il soit compatible avec le batch
         posEncoding = posEncoding.reshape(1, data.shape()[1], dModel).broadcast(inputEmbeddings.shape());
 

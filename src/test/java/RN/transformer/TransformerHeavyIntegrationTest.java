@@ -171,9 +171,6 @@ public class TransformerHeavyIntegrationTest {
         String actualOutput = model.infer(input, 3);
         String expectedOutput = "les chiens aiment";
 
-        // Afficher les relations entre les tokens après l'inférence sous forme de tableau croisé
-        List<String> inputTokens = tokenizer.tokenize(input); 
-        model.displayAttentionRelations(inputTokens);
 
         // Vérifier que l'inférence est proche de la cible
         // String expectedOutput = "le chien court";

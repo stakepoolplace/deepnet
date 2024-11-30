@@ -24,6 +24,9 @@ import org.junit.Test;
 import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+
+import RN.utils.NDArrayUtils;
+
 import org.apache.commons.lang3.tuple.Pair;
 
 public class TransformerTest {
@@ -44,6 +47,7 @@ public class TransformerTest {
     
     @Test
     public void testMaskCreation() {
+       
         // Créer un batch de tokens sous forme de List<List<Integer>>
         List<List<Integer>> tokensBatch = Arrays.asList(
             Arrays.asList(1, 2, 3, 0, 0) // 0 est supposé être le token de padding
@@ -61,7 +65,8 @@ public class TransformerTest {
         }
         
         // Appeler createPaddingMask avec le batch de tokens
-        INDArray paddingMask = model.createPaddingMask(tokensINDArray);
+        INDArray paddingMask = NDArrayUtils.createKeyPaddingMask(model.tokenizer, tokensINDArray);
+        
         // Afficher le masque généré pour le débogage
         System.out.println("paddingMask: " + paddingMask);
     
@@ -90,7 +95,7 @@ public class TransformerTest {
         }
         
         // Tester le lookAheadMask si nécessaire
-        INDArray lookAheadMask = model.createLookAheadMask(batchSize, 5);
+        INDArray lookAheadMask = NDArrayUtils.createLookAheadMask(batchSize, 5);
         System.out.println("lookAheadMask: " + lookAheadMask);
         for (int i = 0; i < 5; i++) {
             for (int j = 0; j < 5; j++) {
@@ -176,19 +181,9 @@ public class TransformerTest {
         
         Batch batch = new Batch(tokensIn, tokensOut, model.tokenizer);
         INDArray data = batch.getData();       // [batch_size, seq_length_source]
-        INDArray target = batch.getTarget();   // [batch_size, seq_length_target]
-        INDArray mask = batch.getMask();       // [batch_size, 1, 1, seq_length_source]
-        
-        // Créer les masques de padding pour l'encodeur
-        INDArray encoderPaddingMask = model.createPaddingMask(data); // [batch_size, 1, 1, seq_length_source]
-        
-        // Créer le masque look-ahead pour le décodeur basé sur la séquence cible
-        int batchSize = (int) data.shape()[0];
-        int targetSeqLength = (int) target.shape()[1];
-        INDArray lookAheadMask = model.createLookAheadMask(batchSize, targetSeqLength); // [1, 1, seq_length_target, seq_length_target]
-        
+ 
         // Encoder l'entrée
-        INDArray encoded = model.encoder.encode(false, data, encoderPaddingMask);
+        INDArray encoded = model.encoder.encode(false, batch);
         
         assertNotNull(encoded, "Encoded output should not be null.");
         System.out.println("Encoded output shape: " + Arrays.toString(encoded.shape()));
@@ -200,11 +195,9 @@ public class TransformerTest {
         // Convertir les IDs de la séquence cible en embeddings
         INDArray encodedDecoderInput = model.tokenizer.lookupEmbeddings(targetTokenIdsArray); // [batch_size, seq_length_target, dModel]
         
-        // Créer le masque de padding pour le décodeur (si nécessaire)
-        INDArray decoderPaddingMask = model.createPaddingMask(target); // [batch_size, 1, 1, seq_length_target]
-        
+
         // Décode l'entrée encodée en utilisant les embeddings de la séquence cible
-        INDArray decoded = model.decoder.decode(false, encoded, encodedDecoderInput, lookAheadMask, encoderPaddingMask);
+        INDArray decoded = model.decoder.decode(false, encoded, encodedDecoderInput, batch, data);
         assertNotNull(decoded, "Decoded output should not be null.");
         System.out.println("Decoded output shape: " + Arrays.toString(decoded.shape()));
         System.out.println("Decoded output: " + decoded);
@@ -216,9 +209,6 @@ public class TransformerTest {
         assertEquals(outputSize, (int) decoded.shape()[2], "Output size should be " + outputSize);
     }
     
-    
-    
-        
     
     @Test
     public void testBackwardPropagation() {
@@ -233,16 +223,10 @@ public class TransformerTest {
         INDArray target = batch.getTarget();  // Utiliser directement le format INDArray
         INDArray mask = batch.getMask();  // Masque de padding pour les séquences
 
-        // Créer les masques de padding pour le batch
-        INDArray encoderPaddingMask = model.createPaddingMask(data);
-        // INDArray decoderPaddingMask = model.createPaddingMask(target);
-        int batchSize = (int) data.shape()[0];
-        int targetSeqLength = (int) target.shape()[1];
-        INDArray lookAheadMask = model.createLookAheadMask(batchSize, targetSeqLength); // Longueur max du target
 
         // Passe forward
-        INDArray encoded = model.encoder.encode(true, data, encoderPaddingMask);
-        INDArray decoderOutput = model.decoder.decode(true, encoded, encoded, lookAheadMask, encoderPaddingMask);
+        INDArray encoded = model.encoder.encode(true, batch);
+        INDArray decoderOutput = model.decoder.decode(true, encoded, encoded, batch, data);
     
         // Vérifier la forme des logits
         System.out.println("Decoder Output Shape: " + Arrays.toString(decoderOutput.shape()));

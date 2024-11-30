@@ -33,7 +33,7 @@ public class TransformerModel implements Serializable {
     private static final long serialVersionUID = -4799769434788429831L;
 
     // Affiche les tableaux d'attention croisée (encoder : self  decoder: self, cross)
-    private final static boolean TRACE_ON = false;
+    private final static boolean TRACE_ON = true;
 
     private static final String W2VECPATH = "pretrained-embeddings/mon_model_word2vec.txt";
     private boolean isTrained = false;

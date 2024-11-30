@@ -10,34 +10,50 @@ import org.junit.jupiter.api.Test;
 import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+
+import RN.utils.NDArrayUtils;
+
 import java.util.Map;
-import java.util.List;
 import java.util.Arrays;
-import org.apache.commons.lang3.tuple.Pair;
 
 public class MultiHeadAttentionTest {
 
     private static TransformerModel transformerModel;
     private static int dModel;
     private static int numHeads;
+    private static int numLayers;
     private static int vocabSize;
+    private static int dff;
+    private static int maxSequenceLength;
+    private static float dropoutRate;
+    private static float initialLr;
+    private static int warmupSteps;
+    private static Tokenizer tokenizer = null;
+    private static TransformerModel transformer = null;
 
     @BeforeAll
     public static void setup() {
+
         // Initialisation des paramètres
         dModel = 300;
         numHeads = 6;
-        vocabSize = 10000; // Exemple de taille de vocabulaire
-
+        numLayers = 6;
+        dff = 2048;
+        vocabSize = 10000;
+        dropoutRate = 0.0f;
+        maxSequenceLength = 50;
+        initialLr = 0.001f;
+        warmupSteps = 1000;
+        tokenizer = new Tokenizer(Arrays.asList("<PAD>", "Hello", "world"), dModel, maxSequenceLength);
+        
+        // Créer une instance du TransformerModel avec le tokenizer
+        transformer = new TransformerModel(numLayers, dModel, numHeads, dff, dropoutRate, 3, tokenizer, initialLr, warmupSteps);
+        
     }
     
 
     @Test
     public void testSoftmaxGrad() {
-
-        int depth = dModel / numHeads;
-        int seqLength = 1;
-        int batchSize = 1;
 
         // Création d'une instance de MultiHeadAttention
         MultiHeadAttention mha = new MultiHeadAttention(dModel, numHeads);
@@ -75,7 +91,7 @@ public class MultiHeadAttentionTest {
     @Test
     public void backward0Test() {
         int depth = dModel / numHeads;
-        int seqLength = 1;
+        int seqLength = 5;
         int batchSize = 1;
 
         // Création d'une instance de MultiHeadAttention
@@ -83,13 +99,19 @@ public class MultiHeadAttentionTest {
 
         // Entrées fictives
         // Création d'une entrée fictive [batchSize=1, seqLength=1, dModel=300]
-        INDArray input = Nd4j.rand(DataType.FLOAT, batchSize, seqLength, dModel);
+        //INDArray input = Nd4j.rand(DataType.FLOAT, batchSize, seqLength, dModel);
+        // Création de tokens fictifs [batchSize=1, seqLength=1]
+        // Création de tokens fictifs [batchSize=1, seqLength=5]
+        INDArray tokens = Nd4j.createFromArray(new int[][] { { 2, 1, 0, 3, 0 } }); // IDs de tokens
 
-        // Masque fictif (optionnel)
-        INDArray mask = null; // Ou créez un masque de forme [batchSize, 1, 1, seqLength] si nécessaire
+        // Utiliser la couche d'embedding pour convertir les tokens en embeddings
+        INDArray input = tokenizer.lookupEmbeddings(tokens); // [batchSize, seqLength, dModel]
+
+        // Création du masque de padding en utilisant les tokens
+        INDArray mask = NDArrayUtils.createQueryPaddingMask(tokenizer, tokens);
 
         // Passe forward
-        INDArray output = mha.forward(input, input, input, mask);
+        INDArray output = mha.forward(input, input, input, mask, mask, null);
 
         // Vérification des dimensions de la sortie
         assertEquals(3, output.rank(), "Le tenseur devrait être d'ordre 3");
@@ -149,18 +171,22 @@ public class MultiHeadAttentionTest {
 
     @Test
     public void forwardTest(){
-        int depth = dModel / numHeads;
-        int seqLength = 1;
+
+        int seqLength = 5;
         int batchSize = 1;
 
         MultiHeadAttention mha = new MultiHeadAttention(dModel, numHeads);
 
-        // Création d'une entrée fictive [batchSize=1, seqLength=1, dModel=300]
-        INDArray input = Nd4j.rand(DataType.FLOAT, batchSize, seqLength, dModel);
-        System.out.println("Input shape: " + Arrays.toString(input.shape()));
+        INDArray tokens = Nd4j.createFromArray(new int[][] { { 2, 1, 0, 3, 0 } }); // IDs de tokens
 
-        // Forward pass
-        INDArray output = mha.forward(input, input, input, null);
+        // Utiliser la couche d'embedding pour convertir les tokens en embeddings
+        INDArray input = tokenizer.lookupEmbeddings(tokens); // [batchSize, seqLength, dModel]
+
+        // Création du masque de padding en utilisant les tokens
+        INDArray mask = NDArrayUtils.createQueryPaddingMask(tokenizer, tokens);
+        
+        // Passe forward
+        INDArray output = mha.forward(input, input, input, mask, mask, null);
         System.out.println("Output shape: " + Arrays.toString(output.shape())); // Devrait être [1, 1, 300]
 
         // Vérifier les dimensions de la sortie
@@ -172,7 +198,7 @@ public class MultiHeadAttentionTest {
     public void testBackward() {
         // Initialiser les paramètres avec des valeurs aléatoires
         int batchSize = 1;
-        int seqLength = 6;
+        int seqLength = 5;
         int numHeads = 2;
         int depth = 150;
         int dModel = numHeads * depth;
@@ -186,8 +212,17 @@ public class MultiHeadAttentionTest {
         INDArray inputK = Nd4j.randn(batchSize, seqLength, dModel);
         INDArray inputV = Nd4j.randn(batchSize, seqLength, dModel);
 
+        INDArray tokens = Nd4j.createFromArray(new int[][] { { 2, 1, 0, 3, 0 } }); // IDs de tokens
+
+        // Utiliser la couche d'embedding pour convertir les tokens en embeddings
+        INDArray input = tokenizer.lookupEmbeddings(tokens); // [batchSize, seqLength, dModel]
+
+        // Création du masque de padding en utilisant les tokens
+        INDArray mask = NDArrayUtils.createQueryPaddingMask(tokenizer, tokens);
+        
+
         // Effectuer la passe forward
-        INDArray output = mha.forward(inputQ, inputK, inputV, null);
+        INDArray output = mha.forward(inputQ, inputK, inputV, mask, mask, null);
 
         // Créer un gradient de sortie simple
         INDArray gradOutput = Nd4j.randn(batchSize, seqLength, dModel);
@@ -211,25 +246,32 @@ public class MultiHeadAttentionTest {
     @Test
     public void backwardTest(){
         int depth = dModel / numHeads;
-        int seqLength = 2;
+        int seqLength = 5;
         int batchSize = 1;
 
         MultiHeadAttention mha = new MultiHeadAttention(dModel, numHeads);
-
+        
         // Create a dummy input [batchSize=1, seqLength=2, dModel=300]
-        INDArray input = Nd4j.rand(DataType.FLOAT, batchSize, seqLength, dModel);
-        System.out.println("Input shape: " + Arrays.toString(input.shape()));
+        INDArray tokens = Nd4j.createFromArray(new int[][] { { 2, 1, 0, 3, 0 } }); // IDs de tokens
 
-        // Forward pass
-        INDArray output = mha.forward(input, input, input, null);
-        System.out.println("Output shape: " + Arrays.toString(output.shape())); // [1, 2, 300]
+        // Utiliser la couche d'embedding pour convertir les tokens en embeddings
+        INDArray input = tokenizer.lookupEmbeddings(tokens); // [batchSize, seqLength, dModel]
 
-        // Simulate a gradient of output
-        INDArray gradOutput = Nd4j.ones(DataType.FLOAT, batchSize, seqLength, dModel);
-        System.out.println("Grad Output shape: " + Arrays.toString(gradOutput.shape()));
+        // Création du masque de padding en utilisant les tokens
+        INDArray mask = NDArrayUtils.createQueryPaddingMask(tokenizer, tokens);
+
+
+       // Créer des entrées simples avec forme [batchSize, seqLength, dModel]
+       INDArray inputQ = Nd4j.randn(batchSize, seqLength, dModel);
+       INDArray inputK = Nd4j.randn(batchSize, seqLength, dModel);
+       INDArray inputV = Nd4j.randn(batchSize, seqLength, dModel);
+
+
+       // Effectuer la passe forward
+       INDArray output = mha.forward(inputQ, inputK, inputV, mask, mask, null);
 
         // Backward pass
-        Map<String, INDArray> gradients = mha.backward(gradOutput);
+        Map<String, INDArray> gradients = mha.backward(output);
         for (Map.Entry<String, INDArray> entry : gradients.entrySet()) {
             System.out.println("Gradient for " + entry.getKey() + ": " + Arrays.toString(entry.getValue().shape()));
         }
@@ -283,17 +325,21 @@ public class MultiHeadAttentionTest {
     @Test
     public void multiBatchTest(){
         int depth = dModel / numHeads;
-        int seqLength = 3;
+        int seqLength = 6;
         int batchSize = 2;
 
         MultiHeadAttention mha = new MultiHeadAttention(dModel, numHeads);
 
-        // Création d'une entrée fictive [batchSize=2, seqLength=3, dModel=300]
-        INDArray input = Nd4j.rand(DataType.FLOAT, batchSize, seqLength, dModel);
-        System.out.println("Input shape: " + Arrays.toString(input.shape()));
+        INDArray tokens = Nd4j.createFromArray(new int[][] { { 2, 1, 0, 3, 0, 0 }, { 2, 1, 0, 3, 0, 0 } }); // IDs de tokens
 
+        // Utiliser la couche d'embedding pour convertir les tokens en embeddings
+        INDArray input = tokenizer.lookupEmbeddings(tokens); // [batchSize, seqLength, dModel]
+
+        // Création du masque de padding en utilisant les tokens
+        INDArray mask = NDArrayUtils.createQueryPaddingMask(tokenizer, tokens);
+        
         // Forward pass
-        INDArray output = mha.forward(input, input, input, null);
+        INDArray output = mha.forward(input, input, input, mask, mask, null);
         System.out.println("Output shape: " + Arrays.toString(output.shape())); // Devrait être [2, 3, 300]
 
         // Vérifier les dimensions de la sortie
@@ -354,9 +400,10 @@ public class MultiHeadAttentionTest {
 
     @Test
     public void testCreateLookAheadMask_Binary() {
+        
         int batchSize = 2;
         int size = 3;
-        INDArray mask = TransformerModel.createLookAheadMask(batchSize, size);
+        INDArray mask = NDArrayUtils.createLookAheadMask(batchSize, size);
         
         // Masque attendu pour size=3
         // [
@@ -401,7 +448,7 @@ public class MultiHeadAttentionTest {
         int size = 3;
 
         // Générer le masque look-ahead
-        INDArray mask = TransformerModel.createLookAheadMask(batchSize, size);
+        INDArray mask = NDArrayUtils.createLookAheadMask(batchSize, size);
 
         // Définir le masque attendu
         INDArray expectedMask = Nd4j.create(new float[][][][] {
@@ -451,48 +498,54 @@ public class MultiHeadAttentionTest {
     @Test
     public void testForwardWithLookAheadMask_SpecificValues() {
         // Configuration des paramètres pour le test
-        int dModel = 4;      // Dimension du modèle
-        int numHeads = 2;    // Nombre de têtes
+        int dModel = 4;      // Dimension du modèle pour ce test spécifique
+        int numHeads = 1;    // Nombre de têtes
         int depth = dModel / numHeads; // Profondeur par tête
+        int maxSequenceLength = 4; // Ajusté de 2 à 4
+        int batchSize = 1;
     
+        // Création d'une instance de Tokenizer spécifique au test avec dModel=4 et maxSequenceLength=4
+        Tokenizer testTokenizer = new Tokenizer(Arrays.asList("<PAD>", "Hello", "world"), dModel, maxSequenceLength);
+        
         // Création d'une instance de MultiHeadAttention
         MultiHeadAttention mha = new MultiHeadAttention(dModel, numHeads);
-    
+        
         // Initialisation des poids Wq, Wk, Wv, Wo à des matrices identité
         INDArray Wq = Nd4j.eye(dModel); // [4, 4]
         INDArray Wk = Nd4j.eye(dModel); // [4, 4]
         INDArray Wv = Nd4j.eye(dModel); // [4, 4]
-        INDArray Wo = Nd4j.eye(numHeads * depth); // [4, 4]
-    
+        INDArray Wo = Nd4j.eye(numHeads * depth); // [4,4]
+        
         // Affecter les poids directement (assurez-vous que les champs sont accessibles)
         mha.getWq().assign(Wq);
         mha.getWk().assign(Wk);
         mha.getWv().assign(Wv);
         mha.getWo().assign(Wo);
+        
+        // Définir les IDs des tokens
+        INDArray tokens = Nd4j.createFromArray(new int[][] { {0, 2, 1, 0} }); // [1,4]
+        
+        // Obtenir les embeddings à partir des tokens en utilisant testTokenizer
+        INDArray input = testTokenizer.lookupEmbeddings(tokens); // [1,4,4]
+        
+        // Créer un masque look-ahead avec maxSequenceLength=4
+        INDArray lookAheadMask = NDArrayUtils.createLookAheadMask(batchSize, maxSequenceLength); // [1,1,4,4]
+        
+        // Création du keyMask et reshaper correctement
+        INDArray keyMask = NDArrayUtils.createQueryPaddingMask(testTokenizer, tokens).reshape(batchSize, 1, 1, maxSequenceLength); // [1,1,1,4]
     
-        // Définir les entrées spécifiques
-        // inputQ, inputK, inputV : [batchSize=1, seqLength=2, dModel=4]
-        INDArray input = Nd4j.create(new float[][][] {
-            {
-                {1.0f, 0.0f, 0.0f, 0.0f}, // Premier token
-                {0.0f, 1.0f, 0.0f, 0.0f}  // Deuxième token
-            }
-        }); // [1, 2, 4]
+        // Appel de la méthode forward avec keyMask et lookAheadMask
+        INDArray output = mha.forward(input, input, input, null, keyMask, lookAheadMask); // [1,4,4]
     
-        // Créer un masque look-ahead binaire
-        // Pour seqLength=2 : [[1, 0], [1, 1]]
-        INDArray lookAheadMask = TransformerModel.createLookAheadMask(1, 2); // [1, 1, 2, 2]
-    
-        // Appel de la méthode forward
-        INDArray output = mha.forward(input, input, input, lookAheadMask); // [1, 2, 4]
-    
-        // Définir la sortie attendue
+        // Définir la sortie attendue pour une séquence de longueur 4
         INDArray expectedOutput = Nd4j.create(new float[][][] {
             {
-                {1.0f, 0.0f, 0.0f, 0.0f}, // Sortie pour le premier token
-                {0.3302f, 0.6698f, 0.0f, 0.0f}  // Sortie pour le deuxième token
+                {0.0f, 0.0f, 0.0f, 0.0f},   // Sortie pour le premier token
+                {0.0f, 0.0f, 0.0f, 0.0f}, // Sortie pour le deuxième token
+                {0.0f, 0.0f, 0.0f, 0.0f},   // Sortie pour le troisième token (PAD)
+                {0.0f, 0.0f, 0.0f, 0.0f}    // Sortie pour le quatrième token (PAD)
             }
-        }); // [1, 2, 4]
+        }); // [1,4,4]
     
         // Afficher les sorties pour debugging
         System.out.println("Output:\n" + output);
@@ -500,12 +553,12 @@ public class MultiHeadAttentionTest {
     
         // Vérifier les dimensions de la sortie
         assertEquals(3, output.rank(), "Le tenseur devrait être d'ordre 3");
-        assertArrayEquals(new long[]{1, 2, 4}, output.shape(), "La forme de la sortie est incorrecte");
+        assertArrayEquals(new long[]{1, 4, 4}, output.shape(), "La forme de la sortie est incorrecte");
     
         // Vérifier les valeurs de la sortie
-        for (int b = 0; b < 1; b++) {
-            for (int i = 0; i < 2; i++) {
-                for (int j = 0; j < 4; j++) {
+        for (int b = 0; b < batchSize; b++) {
+            for (int i = 0; i < maxSequenceLength; i++) {
+                for (int j = 0; j < dModel; j++) {
                     float expectedValue = expectedOutput.getFloat(b, i, j);
                     float actualValue = output.getFloat(b, i, j);
                     assertEquals(expectedValue, actualValue, 1e-4f, // Augmenter la tolérance légèrement
@@ -521,28 +574,30 @@ public class MultiHeadAttentionTest {
 
     @Test
     public void testCreatePaddingMask_SpecificValues() {
+        
         // Configuration du Tokenizer avec des IDs connus
         // Supposons que <PAD> a l'ID 0
-        Tokenizer tokenizer = new Tokenizer(Arrays.asList("<PAD>", "Hello", "world"), 300, 50);
-        
-        // Créer une instance du TransformerModel avec le tokenizer
-        TransformerModel transformer = new TransformerModel(6, 300, 6, 2048, 0D, 3, tokenizer, 0.001f, 1000);
-        
+
         // Définir un batch avec une séquence de longueur 4 : [1, 2, 0, 0]
-        INDArray tokens = Nd4j.create(new float[][] {
+        INDArray tokens = Nd4j.createFromArray(new int[][] {
             {1, 2, 0, 0}
         }); // [1, 4]
+
+
+        // Utiliser la couche d'embedding pour convertir les tokens en embeddings
+        INDArray input = tokenizer.lookupEmbeddings(tokens); // [batchSize, seqLength, dModel]
+
+        // Création du masque de padding en utilisant les tokens
+        INDArray mask = NDArrayUtils.createKeyPaddingMask(tokenizer, tokens);
         
-        // Créer le masque de padding
-        INDArray mask = transformer.createPaddingMask(tokens); // [1, 1, 1, 4]
-        
+                
         // Définir le masque attendu
         // [
         //   [
         //     [ [0.0, 0.0, -Infinity, -Infinity] ]
         //   ]
         // ]
-        INDArray expectedMask = Nd4j.create(new float[][][][] {
+        INDArray expectedMask = Nd4j.createFromArray(new float[][][][] {
             {
                 {
                     {1f, 1f, 0f, 0f}

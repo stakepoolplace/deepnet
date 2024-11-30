@@ -19,13 +19,13 @@ public class TransformerIntegrationTest {
     @Before
     public void setUp() throws IOException {
         // Initialisation du Tokenizer avec un vocabulaire simple et dModel = 64
-        int maxSequenceLength = 50;
+        int maxSequenceLength = 8;
         List<String> vocabulary = Arrays.asList("hello", "world", "test", "input", "output", "<PAD>", "<UNK>", "<START>", "<END>");
         int dModel = 64; // Correspond à la dimension utilisée dans le modèle
         Tokenizer tokenizer = new Tokenizer(vocabulary, dModel, maxSequenceLength);
         
         // Initialisation du modèle Transformer avec des paramètres réduits
-        int numLayers = 1;
+        int numLayers = 2;
         int numHeads = 1;
         int dff = 255;
         int vocabSize = vocabulary.size();

@@ -36,6 +36,7 @@ public class DataGenerator {
      * @param batchList Liste des Batch contenant les inputs, targets et masks.
      */
     public DataGenerator(List<Batch> batchList) {
+        
         this.inputSequences = new ArrayList<>();
         this.targetSequences = new ArrayList<>();
         this.tokenizer = null; // Pas nécessaire si les séquences sont déjà tokenisées
@@ -67,10 +68,10 @@ public class DataGenerator {
     }
 
     private List<Integer> preprocess(String text) {
+
         List<String> tokens = tokenizer.tokenize(text);
         List<Integer> ids = tokenizer.tokensToIds(tokens);
-        //ids.add(0, tokenizer.getStartTokenId());
-        //ids.add(tokenizer.getEndTokenId());
+
         while (ids.size() < sequenceLength) {
             ids.add(tokenizer.getPadTokenId());
         }

@@ -14,53 +14,6 @@ import RN.transformer.Tokenizer;
 
 public class NDArrayUtils {
 
-    // // Applique softmax sur une dimension spécifique de l'INDArray
-    // public static INDArray softmax(INDArray array, int softmaxDim) {
-    //     // Vérification des entrées
-    //     if (array.isNaN().any()) {
-    //         throw new IllegalArgumentException("Input array contains NaN before softmax");
-    //     }
-
-    //     // Si softmaxDim est -1, on le remplace par la dernière dimension
-    //     if (softmaxDim == -1) {
-    //         softmaxDim = array.rank() - 1;
-    //     }
-
-    //     // Si la dimension est déjà la dernière, on peut directement appliquer softmax
-    //     if (softmaxDim == array.rank() - 1) {
-    //         return Transforms.softmax(array, false);
-    //     }
-    
-    //     // Normalisation pour éviter l'explosion numérique
-    //     INDArray maxValues = array.max(true, softmaxDim);
-    //     INDArray shiftedValues = array.sub(maxValues);
-        
-    //     // Calcul de l'exponentielle
-    //     INDArray expValues = Transforms.exp(shiftedValues);
-        
-    //     // Somme pour la normalisation
-    //     INDArray sumExp = expValues.sum(true, softmaxDim);
-        
-    //     // Division pour obtenir les probabilités
-    //     INDArray softmaxOutput = expValues.div(sumExp);
-        
-    //     // Vérification de la sortie
-    //     if (softmaxOutput.isNaN().any() || softmaxOutput.isInfinite().any()) {
-    //         throw new RuntimeException("Softmax produced NaN or Infinite values");
-    //     }
-        
-    //     // Verification that the sum of probabilities is close to 1
-    //     INDArray probSum = softmaxOutput.sum(softmaxDim);
-    //     INDArray diff = probSum.sub(1);
-
-    //     // Use Transforms.abs() to calculate absolute values of the difference
-    //     if (Transforms.abs(diff).maxNumber().doubleValue() > 1e-6) {
-    //         throw new RuntimeException("Softmax probabilities do not sum to 1");
-    //     }
-        
-    //     return softmaxOutput;
-    // }
-
     /**
      * Applique la fonction softmax à un INDArray le long d'une dimension spécifiée.
      * Si softmaxDim = -1, applique le softmax sur la dernière dimension.
@@ -198,18 +151,18 @@ public class NDArrayUtils {
      * Crée un masque look-ahead binaire pour le décodeur.
      *
      * @param batchSize Taille du batch.
-     * @param size      Taille de la séquence.
+     * @param sequenceLength      Taille de la séquence.
      * @return INDArray représentant le masque look-ahead binaire [batchSize, 1, size, size].
      */
-    public static INDArray createLookAheadMask(Integer batchSize, Integer size) {
+    public static INDArray createLookAheadMask(Integer batchSize, Integer sequenceLength) {
 
        
         // Créer une matrice triangulaire inférieure remplie de 1.0f
-        INDArray lookAheadMask = Nd4j.ones(DataType.FLOAT, size, size); // [size, size]
+        INDArray lookAheadMask = Nd4j.ones(DataType.FLOAT, sequenceLength, sequenceLength); // [size, size]
         
         // Remplir le masque avec 1.0f où j <= i et 0.0f où j > i
-        for (int i = 0; i < size; i++) {
-            for (int j = 0; j < size; j++) {
+        for (int i = 0; i < sequenceLength; i++) {
+            for (int j = 0; j < sequenceLength; j++) {
                 if (j > i) {
                     lookAheadMask.putScalar(new int[]{i, j}, 0.0f);
                 } else {
@@ -219,7 +172,7 @@ public class NDArrayUtils {
         }
         
         // Reshaper pour correspondre aux dimensions attendues [1, 1, size, size]
-        lookAheadMask = lookAheadMask.reshape(1, 1, size, size); // [1, 1, size, size]
+        lookAheadMask = lookAheadMask.reshape(1, 1, sequenceLength, sequenceLength); // [1, 1, size, size]
         
         // Répéter le masque pour chaque exemple du batch
         INDArray repeatedMask = Nd4j.tile(lookAheadMask, batchSize, 1, 1, 1); // [batchSize, 1, size, size]

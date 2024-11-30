@@ -105,6 +105,42 @@
 			<version>4.5.1</version>
 			<scope>test</scope>
 		</dependency>
+		<!-- https://mvnrepository.com/artifact/org.bytedeco/openblas-platform -->
+		<dependency>
+			<groupId>org.bytedeco</groupId>
+			<artifactId>openblas-platform</artifactId>
+			<version>0.3.19-1.5.7</version>
+		</dependency>
+		<dependency>
+			<groupId>org.bytedeco</groupId>
+			<artifactId>mkl-platform</artifactId>
+			<version>2022.0-1.5.7</version>
+		</dependency>
+		<dependency>
+			<groupId>org.bytedeco</groupId>
+			<artifactId>hdf5-platform</artifactId>
+			<version>1.12.1-1.5.7</version>
+		</dependency>
+		<dependency>
+			<groupId>org.bytedeco</groupId>
+			<artifactId>javacv</artifactId>
+			<version>1.5.7</version>
+		</dependency>
+		<dependency>
+			<groupId>org.bytedeco</groupId>
+			<artifactId>opencv-platform</artifactId>
+			<version>4.10.0-1.5.11</version>
+		</dependency>
+		<dependency>
+			<groupId>org.bytedeco</groupId>
+			<artifactId>leptonica-platform</artifactId>
+			<version>1.84.1-1.5.10</version>
+		</dependency>
+		<dependency>
+			<groupId>org.bytedeco</groupId>
+			<artifactId>ffmpeg-platform</artifactId>
+			<version>7.1-1.5.11</version>
+		</dependency>
 		
         <!-- JUnit 5 Jupiter API -->
         <dependency>
