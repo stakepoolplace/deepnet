@@ -53,38 +53,49 @@ public class MultiHeadAttention implements Serializable {
         this.Wo = Nd4j.randn(DataType.FLOAT, dModel, dModel).mul(1.0 / Math.sqrt(dModel)); // [dModel, dModel]
     }
 
+    private INDArray createPositionalEncoding(int seqLength, int dModel) {
+        INDArray posEncoding = Nd4j.zeros(seqLength, dModel);
+        for (int pos = 0; pos < seqLength; pos++) {
+            for (int i = 0; i < dModel; i += 2) {
+                double angle = pos / Math.pow(10000, (2.0 * i) / dModel);
+                posEncoding.putScalar(new int[]{pos, i}, Math.sin(angle));
+                if (i + 1 < dModel) {
+                    posEncoding.putScalar(new int[]{pos, i + 1}, Math.cos(angle));
+                }
+            }
+        }
+        return posEncoding;
+    }
+
     public INDArray forward(INDArray query, INDArray key, INDArray value, INDArray queryMask, INDArray keyMask, INDArray lookAheadMask) {
+        // Cache les entrées pour le backward pass
+        this.inputQ = query;
+        this.inputK = key;
+        this.inputV = value;
 
-        // Stocker les inputs pour la passe backward
-        this.inputQ = query.dup(); // [batchSize, seqLength_q, dModel]
-        this.inputK = key.dup(); // [batchSize, seqLength_k, dModel]
-        this.inputV = value.dup(); // [batchSize, seqLength_k, dModel]
+        int batchSize = (int) query.shape()[0];
+        int seqLength_q = (int) query.shape()[1];
+        int seqLength_k = (int) key.shape()[1];
 
-        // Obtention des dimensions
-        int batchSize = (int) query.size(0);
-        int seqLength_q = (int) query.size(1);
-        int seqLength_k = (int) key.size(1);
-        int depth = dModel / numHeads;
+        // Créer et ajouter l'encodage positionnel
+        INDArray posEncodingQ = createPositionalEncoding(seqLength_q, dModel);
+        INDArray posEncodingK = createPositionalEncoding(seqLength_k, dModel);
+        INDArray posEncodingV = createPositionalEncoding(seqLength_k, dModel);
 
-        // Vérification des dimensions des entrées
-        if (query.rank() != 3 || key.rank() != 3 || value.rank() != 3) {
-            throw new IllegalArgumentException("Les entrées query, key et value doivent être de rang 3.");
-        }
+        // Reshape pour le broadcast
+        posEncodingQ = posEncodingQ.reshape(1, seqLength_q, dModel).broadcast(batchSize, seqLength_q, dModel);
+        posEncodingK = posEncodingK.reshape(1, seqLength_k, dModel).broadcast(batchSize, seqLength_k, dModel);
+        posEncodingV = posEncodingV.reshape(1, seqLength_k, dModel).broadcast(batchSize, seqLength_k, dModel);
 
-        // Vérifier que la taille totale correspond
-        long totalLengthKeyMask = keyMask.length();
-        long totalLengthNewShape = batchSize * 1 * 1 * seqLength_k;
+        // Ajouter l'encodage positionnel aux entrées
+        query = query.add(posEncodingQ);
+        key = key.add(posEncodingK);
+        value = value.add(posEncodingV);
 
-        if (totalLengthKeyMask != totalLengthNewShape) {
-            throw new IllegalArgumentException("Le reshape de keyMask est impossible car les longueurs totales ne correspondent pas. "
-                + "keyMask length: " + totalLengthKeyMask + ", New shape length: " + totalLengthNewShape);
-        }
-
-        // Reshaping des entrées de [batchSize, seqLength, dModel] à [batchSize *
-        // seqLength, dModel]
-        INDArray query2D = query.reshape(batchSize * seqLength_q, dModel);
-        INDArray key2D = key.reshape(batchSize * seqLength_k, dModel); // Utiliser seqLength_k
-        INDArray value2D = value.reshape(batchSize * seqLength_k, dModel); // Utiliser seqLength_k
+        // Reshape pour la multiplication matricielle
+        INDArray query2D = query.reshape(batchSize * seqLength_q, dModel); // [batchSize * seqLength_q, dModel]
+        INDArray key2D = key.reshape(batchSize * seqLength_k, dModel); // [batchSize * seqLength_k, dModel]
+        INDArray value2D = value.reshape(batchSize * seqLength_k, dModel); // [batchSize * seqLength_k, dModel]
 
         // Application des transformations linéaires
         this.Q = query2D.mmul(Wq); // [batchSize * seqLength_q, numHeads * depth]
@@ -110,7 +121,7 @@ public class MultiHeadAttention implements Serializable {
                 INDArray Q_batch_head = Q.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all());
                 INDArray KTransposed_batch_head = K.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all()).transpose();
                 
-                // Calculer les scores sans normalisation
+                // Calculer les scores bruts
                 INDArray score = Q_batch_head.mmul(KTransposed_batch_head);
                 scores.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all()).assign(score);
             }
@@ -123,16 +134,9 @@ public class MultiHeadAttention implements Serializable {
 
             // Appliquer le keyMask
             if (keyMask != null) {
-                // Reshape en [batchSize, 1, 1, seqLength_k]
                 INDArray reshapedKeyMask = keyMask.reshape(batchSize, 1, 1, seqLength_k);
-                
-                // Créer le masque additif
                 INDArray additiveKeyMask = reshapedKeyMask.eq(0.0f).castTo(DataType.FLOAT).muli(-1e9f);
-                
-                // Broadcast sur [batchSize, numHeads, seqLength_q, seqLength_k]
                 additiveKeyMask = additiveKeyMask.broadcast(batchSize, numHeads, seqLength_q, seqLength_k);
-                
-                // Ajouter au masque additif
                 additiveMask = additiveMask.add(additiveKeyMask);
             }
 

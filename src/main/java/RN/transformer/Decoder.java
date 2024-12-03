@@ -2,6 +2,7 @@ package RN.transformer;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,23 +22,25 @@ public class Decoder implements Serializable {
     protected int dModel;
     private int numHeads;
     private double dropoutRate;
-    private LinearProjection linearProjection; // Projection linéaire vers la taille du vocabulaire
+    private LinearProjection linearProjection;
+    private PositionalEncoding positionalEncoding;
 
     // Cache pour stocker les entrées des couches pendant la passe forward
     private List<INDArray> forwardCache;
-    private INDArray lastNormalizedInput; // Stocke l'entrée normalisée après LayerNorm
+    private INDArray lastNormalizedInput;
 
-    private Tokenizer tokenizer; // Référence au Tokenizer
+    private Tokenizer tokenizer;
 
     public Decoder(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, Tokenizer tokenizer, boolean useLayerNorm) {
         this.numLayers = numLayers;
         this.dModel = dModel;
         this.numHeads = numHeads;
         this.dropoutRate = dropoutRate;
+        this.tokenizer = tokenizer;
         this.layers = new ArrayList<>();
         this.layerNorm = useLayerNorm ? new LayerNorm(dModel) : null;
-        this.tokenizer = tokenizer;
         this.linearProjection = new LinearProjection(dModel, tokenizer.getVocabSize());
+        this.positionalEncoding = new PositionalEncoding(dModel);
         this.forwardCache = new ArrayList<>();
 
         for (int i = 0; i < numLayers; i++) {
@@ -62,15 +65,20 @@ public class Decoder implements Serializable {
      * @param isTraining       Indique si le modèle est en mode entraînement.
      * @param encoderOutput    Sortie de l'encodeur.
      * @param encodedDecoderInput Entrée encodée pour le décodeur.
-     * @param lookAheadMask    Masque look-ahead pour l'auto-attention.
-     * @param paddingMask      Masque de padding pour l'attention croisée.
+     * @param batch              Batch contenant les données d'entrée et de sortie.
+     * @param encoderInputTokens Tokens encodés de l'encodeur.
      * @return Logits après projection linéaire.
      */
     public INDArray decode(boolean isTraining, INDArray encoderOutput, INDArray encodedDecoderInput, Batch batch, INDArray encoderInputTokens) {
-        
         // Réinitialiser le cache avant une nouvelle passe forward
         resetCache();
-    
+
+        // Lookup embeddings et ajouter le positional encoding
+        INDArray inputEmbeddings = tokenizer.lookupEmbeddings(batch.getData());
+        INDArray posEncoding = positionalEncoding.getPositionalEncoding(batch.getData().shape()[1]);
+        posEncoding = posEncoding.reshape(1, batch.getData().shape()[1], dModel).broadcast(inputEmbeddings.shape());
+        encodedDecoderInput = inputEmbeddings.add(posEncoding);
+
         // Variables pour les masques
         INDArray keyPaddingMaskFromSource;
         INDArray queryPaddingMaskFromSource = NDArrayUtils.createQueryPaddingMask(tokenizer, batch.getData());
@@ -79,7 +87,7 @@ public class Decoder implements Serializable {
         INDArray lookAheadMask;
         int batchSize;
         int seqLength;
-    
+
         if (isTraining) {
             keyPaddingMaskFromSource = NDArrayUtils.createKeyPaddingMask(tokenizer, batch.getData());
             // Entraînement : utiliser batch.getTarget()
@@ -96,10 +104,10 @@ public class Decoder implements Serializable {
             batchSize = (int) batch.getData().shape()[0];
             seqLength = (int) batch.getData().shape()[1];
         }
-    
+
         // Construction du masque look-ahead
         lookAheadMask = NDArrayUtils.createLookAheadMask(batchSize, seqLength);
-    
+
         // Passer à travers les couches du décodeur
         for (int i = 0; i < layers.size(); i++) {
             DecoderLayer layer = layers.get(i);
@@ -116,18 +124,18 @@ public class Decoder implements Serializable {
             );
             forwardCache.set(i, encodedDecoderInput.dup()); // Stocker l'entrée actuelle dans le cache
         }
-    
+
         // Normalisation finale
         encodedDecoderInput = layerNorm != null ? layerNorm.forward(encodedDecoderInput) : encodedDecoderInput;
         lastNormalizedInput = encodedDecoderInput.dup(); // Stocker l'entrée normalisée
-    
+
         // Projection linéaire vers la taille du vocabulaire
         INDArray logits = linearProjection.project(encodedDecoderInput); // [batchSize, targetSeqLength, vocabSize]
         // System.out.println("Logits shape: " + Arrays.toString(logits.shape()));
-    
+
         return logits;
     }
-    
+
     /**
      * Passe backward à travers le décodeur.
      *

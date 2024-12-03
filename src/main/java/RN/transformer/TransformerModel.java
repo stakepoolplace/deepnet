@@ -882,10 +882,12 @@ public class TransformerModel implements Serializable {
      * @return Texte généré.
      */
     public String infer(String prompt, int maxLength) {
+        
         if (!isTrained) {
             throw new IllegalStateException("Le modèle doit être entraîné avant l'inférence.");
         }
-    
+        System.out.println("Prompt: " + prompt);
+
         // Tokenisation du prompt
         List<String> promptTokens = tokenizer.tokenize(prompt);
         List<Integer> promptTokenIds = tokenizer.tokensToIds(promptTokens);
@@ -1071,94 +1073,7 @@ public class TransformerModel implements Serializable {
         return optimizer;
     }
 
-    public INDArray calculateLoss(INDArray predictions, INDArray labels) {
-        int batchSize = predictions.shape()[0];
-        int seqLength = predictions.shape()[1];
-        int vocabSize = predictions.shape()[2];
-        
-        // Pénalité pour la prédiction précoce de END
-        double endPenalty = 2.0;
-        INDArray endMask = labels.eq(endTokenId);
-        INDArray positionWeights = Nd4j.ones(labels.shape());
-        for(int i = 0; i < seqLength - 1; i++) {
-            positionWeights.putScalar(new int[]{i}, endPenalty);
-        }
-        
-        // Cross entropy avec label smoothing
-        double epsilon = 0.1;
-        INDArray smoothLabels = labels.mul(1 - epsilon).add(epsilon / vocabSize);
-        
-        INDArray logProbabilities = Transforms.log(predictions.add(1e-10));
-        INDArray loss = smoothLabels.mul(logProbabilities).sum(2).mul(-1);
-        
-        // Appliquer la pénalité END
-        loss = loss.mul(positionWeights);
-        
-        return loss.mean();
-    }
 
-    public String predict(String input) {
-        // Tokenize input
-        List<String> inputTokens = tokenizer.tokenize(input);
-        inputTokens.add(0, "<START>");
-        inputTokens.add("<END>");
-        
-        // Convert to IDs
-        INDArray inputIds = Nd4j.create(tokenizer.convertToIds(inputTokens));
-        
-        // Initialize decoder input with START token
-        INDArray decoderInput = Nd4j.create(new int[]{1});
-        decoderInput.putScalar(0, startTokenId);
-        
-        StringBuilder output = new StringBuilder();
-        int maxLength = 20;  // Maximum sequence length
-        double temperature = 0.8;  // Température pour le sampling
-        
-        for(int i = 0; i < maxLength; i++) {
-            // Forward pass
-            INDArray logits = forward(inputIds.reshape(1, -1), decoderInput.reshape(1, -1));
-            
-            // Get probabilities for next token
-            INDArray lastTokenLogits = logits.get(NDArrayIndex.point(0), NDArrayIndex.point(logits.shape()[1]-1));
-            
-            // Apply temperature
-            lastTokenLogits = lastTokenLogits.div(temperature);
-            
-            // Convert to probabilities
-            INDArray probabilities = Transforms.softmax(lastTokenLogits);
-            
-            // Sample from distribution
-            int nextToken = sampleFromDistribution(probabilities);
-            
-            // Break if END token
-            if(nextToken == endTokenId) break;
-            
-            // Add to output
-            output.append(tokenizer.idToToken(nextToken)).append(" ");
-            
-            // Update decoder input
-            INDArray newDecoderInput = Nd4j.create(decoderInput.length() + 1);
-            for(int j = 0; j < decoderInput.length(); j++) {
-                newDecoderInput.putScalar(j, decoderInput.getInt(j));
-            }
-            newDecoderInput.putScalar(decoderInput.length(), nextToken);
-            decoderInput = newDecoderInput;
-        }
-        
-        return output.toString().trim();
-    }
-
-    private int sampleFromDistribution(INDArray probabilities) {
-        double[] probs = probabilities.toDoubleVector();
-        double sum = 0;
-        double r = Math.random();
-        
-        for(int i = 0; i < probs.length; i++) {
-            sum += probs[i];
-            if(r <= sum) return i;
-        }
-        
-        return probs.length - 1;
-    }
+    
 
 }
