@@ -29,15 +29,15 @@ public class Encoder implements Serializable {
     public Encoder() {
     }
     
-    public Encoder(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, Tokenizer tokenizer) {
+    public Encoder(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, Tokenizer tokenizer, boolean useLayerNorm) {
         this.dModel = dModel;
         this.positionalEncoding = new PositionalEncoding(dModel);
         this.layers = new ArrayList<>();
-        this.layerNorm = new LayerNorm(dModel);
+        this.layerNorm = useLayerNorm ? new LayerNorm(dModel) : null;
         this.tokenizer = tokenizer;
         
         for (int i = 0; i < numLayers; i++) {
-            this.layers.add(new EncoderLayer(this, dModel, numHeads, dff, dropoutRate));
+            this.layers.add(new EncoderLayer(this, dModel, numHeads, dff, dropoutRate, useLayerNorm));
         }
     }
 
@@ -80,7 +80,7 @@ public class Encoder implements Serializable {
         }
         
         // Appliquer la normalisation finale
-        x = layerNorm.forward(x);
+        x = layerNorm != null ? layerNorm.forward(x) : x;
         // System.out.println("After layer normalization: " + java.util.Arrays.toString(x.shape()));
     
         return x;
@@ -118,7 +118,7 @@ public class Encoder implements Serializable {
         INDArray gradOutputForLayerNorm = gradPermuted.reshape(batchSize, seqLength, numHeads * depth); // [batchSize, seqLength, dModel]
 
         // Backpropager à travers la normalisation de couche finale
-        Map<String, INDArray> gradientsFromLayerNorm = layerNorm.backward(gradOutputForLayerNorm);
+        Map<String, INDArray> gradientsFromLayerNorm = layerNorm != null ? layerNorm.backward(gradOutputForLayerNorm) : new HashMap<>();
 
         // Obtenir le gradient à passer aux couches de l'encodeur
         INDArray gradInput = gradientsFromLayerNorm.get("input");
@@ -195,7 +195,7 @@ public class Encoder implements Serializable {
         }
 
         // Ajouter les paramètres de la normalisation de couche
-        numParams += layerNorm.getNumberOfParameters();
+        numParams += layerNorm != null ? layerNorm.getNumberOfParameters() : 0;
 
         return numParams;
     }
@@ -214,7 +214,7 @@ public class Encoder implements Serializable {
         }
 
         // Ajouter les gradients de la normalisation de couche
-        numGrads += layerNorm.getNumberOfGradients();
+        numGrads += layerNorm != null ? layerNorm.getNumberOfGradients() : 0;
 
         return numGrads;
     }
@@ -234,12 +234,12 @@ public class Encoder implements Serializable {
         Dropout dropout2;
         Encoder encoder;
 
-        public EncoderLayer(Encoder encoder, int dModel, int numHeads, int dff, double dropoutRate) {
+        public EncoderLayer(Encoder encoder, int dModel, int numHeads, int dff, double dropoutRate, boolean useLayerNorm) {
             this.encoder = encoder;
             this.selfAttention = new MultiHeadAttention(dModel, numHeads);
             this.feedForward = new PositionwiseFeedForward(dModel, dff);
-            this.layerNorm1 = new LayerNorm(dModel);
-            this.layerNorm2 = new LayerNorm(dModel);
+            this.layerNorm1 = useLayerNorm ? new LayerNorm(dModel) : null;
+            this.layerNorm2 = useLayerNorm ? new LayerNorm(dModel) : null;
             this.dropout1 = new Dropout(dropoutRate);
             this.dropout2 = new Dropout(dropoutRate);
         }
@@ -268,12 +268,12 @@ public class Encoder implements Serializable {
             INDArray attnOutput = selfAttention.forward(x, x, x, keyPaddingMask, queryPaddingMask, null); // [batchSize, seqLength, dModel]
             
             attnOutput = dropout1.apply(isTraining, attnOutput); // Appliquer dropout
-            INDArray out1 = layerNorm1.forward(x.add(attnOutput)); // Add & Norm [batchSize, seqLength, dModel]
+            INDArray out1 = layerNorm1 != null ? layerNorm1.forward(x.add(attnOutput)) : x.add(attnOutput); // Add & Norm [batchSize, seqLength, dModel]
 
             // Feed-forward
             INDArray ffOutput = feedForward.forward(out1); // [batchSize, seqLength, dModel]
             ffOutput = dropout2.apply(isTraining, ffOutput); // Appliquer dropout
-            INDArray out2 = layerNorm2.forward(out1.add(ffOutput)); // Add & Norm [batchSize, seqLength, dModel]
+            INDArray out2 = layerNorm2 != null ? layerNorm2.forward(out1.add(ffOutput)) : out1.add(ffOutput); // Add & Norm [batchSize, seqLength, dModel]
 
             return out2;
         }
@@ -286,7 +286,7 @@ public class Encoder implements Serializable {
          */
         public INDArray backward(INDArray gradOutput) {
             // Backward à travers la deuxième normalisation de couche
-            Map<String, INDArray> gradLayerNorm2 = layerNorm2.backward(gradOutput); // {'input': grad_out1}
+            Map<String, INDArray> gradLayerNorm2 = layerNorm2 != null ? layerNorm2.backward(gradOutput) : new HashMap<>(); // {'input': grad_out1}
             INDArray gradAddNorm2 = gradLayerNorm2.get("input"); // [batchSize, seqLength, dModel]
 
             // Backward à travers le deuxième Add & Norm (FeedForward)
@@ -299,7 +299,7 @@ public class Encoder implements Serializable {
             INDArray gradOut1 = gradAddNorm2.add(gradFeedForward); // [batchSize, seqLength, dModel]
 
             // Backward à travers la première normalisation de couche
-            Map<String, INDArray> gradLayerNorm1 = layerNorm1.backward(gradOut1); // {'input': grad_attn}
+            Map<String, INDArray> gradLayerNorm1 = layerNorm1 != null ? layerNorm1.backward(gradOut1) : new HashMap<>(); // {'input': grad_attn}
             INDArray gradAddNorm1 = gradLayerNorm1.get("input"); // [batchSize, seqLength, dModel]
 
             // Backward à travers le premier Add & Norm (Self-Attention)
@@ -322,8 +322,8 @@ public class Encoder implements Serializable {
             
             layerParams.addAll(selfAttention.getParameters());
             layerParams.addAll(feedForward.getParameters());
-            layerParams.addAll(layerNorm1.getParameters());
-            layerParams.addAll(layerNorm2.getParameters());
+            layerParams.addAll(layerNorm1 != null ? layerNorm1.getParameters() : new ArrayList<>());
+            layerParams.addAll(layerNorm2 != null ? layerNorm2.getParameters() : new ArrayList<>());
 
             return layerParams;
         }
@@ -338,8 +338,8 @@ public class Encoder implements Serializable {
             
             layerGrads.addAll(selfAttention.getGradients());
             layerGrads.addAll(feedForward.getGradients());
-            layerGrads.addAll(layerNorm1.getGradients());
-            layerGrads.addAll(layerNorm2.getGradients());
+            layerGrads.addAll(layerNorm1 != null ? layerNorm1.getGradients() : new ArrayList<>());
+            layerGrads.addAll(layerNorm2 != null ? layerNorm2.getGradients() : new ArrayList<>());
 
             return layerGrads;
         }
@@ -352,8 +352,8 @@ public class Encoder implements Serializable {
         public long getNumberOfParameters() {
             return selfAttention.getNumberOfParameters() +
                    feedForward.getNumberOfParameters() +
-                   layerNorm1.getNumberOfParameters() +
-                   layerNorm2.getNumberOfParameters();
+                   (layerNorm1 != null ? layerNorm1.getNumberOfParameters() : 0) +
+                   (layerNorm2 != null ? layerNorm2.getNumberOfParameters() : 0);
         }
 
         /**
@@ -364,8 +364,8 @@ public class Encoder implements Serializable {
         public long getNumberOfGradients() {
             return selfAttention.getNumberOfGradients() +
                    feedForward.getNumberOfGradients() +
-                   layerNorm1.getNumberOfGradients() +
-                   layerNorm2.getNumberOfGradients();
+                   (layerNorm1 != null ? layerNorm1.getNumberOfGradients() : 0) +
+                   (layerNorm2 != null ? layerNorm2.getNumberOfGradients() : 0);
         }
 
         /**

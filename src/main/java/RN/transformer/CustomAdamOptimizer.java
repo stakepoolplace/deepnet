@@ -25,6 +25,7 @@ public class CustomAdamOptimizer implements Serializable {
     private int warmupSteps;
     private int currentStep;
     private int epoch;
+    private int maxEpochs = -1;
     private float learningRate;
 
     // États pour chaque paramètre
@@ -208,5 +209,13 @@ public class CustomAdamOptimizer implements Serializable {
 
     public void setLearningRate(float learningRate) {
         this.learningRate = learningRate;
+    }
+
+    public void setMaxEpochs(int maxEpochs) {
+        this.maxEpochs = maxEpochs;
+    }
+
+    public int getMaxEpochs() {
+        return this.maxEpochs;
     }
 }

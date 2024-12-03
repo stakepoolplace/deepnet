@@ -101,96 +101,63 @@ public class MultiHeadAttention implements Serializable {
         this.K = this.K.permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength_k, depth]
         this.V = this.V.permute(0, 2, 1, 3); // [batchSize, numHeads, seqLength_k, depth]
 
-        // Initialiser un tableau pour stocker les scores
-        INDArray scores = Nd4j.create(batchSize, numHeads, seqLength_q, seqLength_k); // [batchSize, numHeads, seqLength_q, seqLength_k]
+        // Calcul des scores d'attention
+        INDArray scores = Nd4j.create(batchSize, numHeads, seqLength_q, seqLength_k);
 
-        // Itérer sur batchSize et numHeads pour effectuer mmul
         for (int b = 0; b < batchSize; b++) {
             for (int h = 0; h < numHeads; h++) {
-
                 // Extraire les matrices [seqLength_q, depth] et [depth, seqLength_k]
-                INDArray Q_batch_head = Q.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(),
-                        NDArrayIndex.all());
-
-                INDArray KTransposed_batch_head = K
-                        .get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all())
-                        .transpose();
-
-                // Calculer les scores [seqLength_q, seqLength_k]
-                INDArray score = Q_batch_head.mmul(KTransposed_batch_head).div(Math.sqrt(depth));
-
-                // Stocker les scores en utilisant assign
-                scores.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all())
-                        .assign(score);
+                INDArray Q_batch_head = Q.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all());
+                INDArray KTransposed_batch_head = K.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all()).transpose();
+                
+                // Calculer les scores sans normalisation
+                INDArray score = Q_batch_head.mmul(KTransposed_batch_head);
+                scores.get(NDArrayIndex.point(b), NDArrayIndex.point(h), NDArrayIndex.all(), NDArrayIndex.all()).assign(score);
             }
         }
 
-        // Appliquer les masques additifs avec ajustements
+        // Appliquer les masques additifs
         if (keyMask != null || lookAheadMask != null) {
             // Initialiser le masque additif
             INDArray additiveMask = Nd4j.zeros(scores.shape());
 
             // Appliquer le keyMask
             if (keyMask != null) {
-
                 // Reshape en [batchSize, 1, 1, seqLength_k]
                 INDArray reshapedKeyMask = keyMask.reshape(batchSize, 1, 1, seqLength_k);
-
+                
                 // Créer le masque additif
                 INDArray additiveKeyMask = reshapedKeyMask.eq(0.0f).castTo(DataType.FLOAT).muli(-1e9f);
-                // System.out.println("Additive Key Mask after mul(-1e9f):\n" + additiveKeyMask);
-
+                
                 // Broadcast sur [batchSize, numHeads, seqLength_q, seqLength_k]
                 additiveKeyMask = additiveKeyMask.broadcast(batchSize, numHeads, seqLength_q, seqLength_k);
-                //System.out.println("Additive Key Mask after broadcasting:\n" + additiveKeyMask);
-
+                
                 // Ajouter au masque additif
                 additiveMask = additiveMask.add(additiveKeyMask);
             }
 
             // Appliquer le lookAheadMask
             if (lookAheadMask != null) {
-                // Assurez-vous que le lookAheadMask est déjà correctement reshaped
                 INDArray additiveLookAheadMask = lookAheadMask.eq(0.0f).castTo(DataType.FLOAT).muli(-1e9f);
-                // System.out.println("Additive LookAhead Mask:\n" + additiveLookAheadMask);
                 additiveMask = additiveMask.add(additiveLookAheadMask);
             }
 
             // Appliquer le masque additif aux scores
             scores = scores.add(additiveMask);
-
-            // Optionnel : Limiter les scores à -1e9 maximum pour éviter des valeurs plus négatives
-            scores = Transforms.max(scores, Nd4j.onesLike(scores).mul(-1e9f));
-
-            // System.out.println("Scores after adding additiveMask and capping:\n" + scores);
         }
 
-        // System.out.println("Scores Shape: " + Arrays.toString(scores.shape()));
+        // Normalisation après masquage
+        scores = scores.div(Math.sqrt(depth));
 
-    
-        // Application du softmax sur le dernier axe (axis=3)
-        INDArray weights = NDArrayUtils.softmax(scores, 3); // [batchSize, numHeads, seqLength_q, seqLength_k]
-        // System.out.println("Attention Weights after softmax:\n" + weights);
-
-        // Application du softmax sur le dernier axe (axis=3)
+        // Application du softmax
+        INDArray weights = NDArrayUtils.softmax(scores, 3);
 
         // Appliquer le masque pour annuler les poids d'attention des requêtes <PAD>
         if (queryMask != null) {
-            // Reshape le queryMask pour correspondre aux dimensions des poids d'attention
-            INDArray reshapedQueryMask = queryMask.reshape(batchSize, 1, seqLength_q, 1); // [batchSize, 1, seqLength_q, 1]
-            // System.out.println("Reshaped Query Mask for Attention Weights:\n" + reshapedQueryMask);
-
-            // Diffuser le masque sur les dimensions numHeads et seqLength_k
-            INDArray broadcastQueryMask = reshapedQueryMask.broadcast(batchSize, numHeads, seqLength_q, seqLength_k); // [batchSize, numHeads, seqLength_q, seqLength_k]
-            //System.out.println("Broadcasted Query Mask:\n" + broadcastQueryMask);
-
-            // Multiplier les poids d'attention par le masque diffusé
-            weights = weights.mul(broadcastQueryMask); // Les poids d'attention pour les requêtes <PAD> seront 0
-            // System.out.println("Attention Weights after applying Query Mask:\n" + weights);
+            INDArray reshapedQueryMask = queryMask.reshape(batchSize, 1, seqLength_q, 1);
+            INDArray broadcastQueryMask = reshapedQueryMask.broadcast(batchSize, numHeads, seqLength_q, seqLength_k);
+            weights = weights.mul(broadcastQueryMask);
         }
-
-        // System.out.println("Attention Weights:\n" + weights);
-
 
         // Stocker attentionWeights pour la passe backward
         this.attentionWeights = weights;

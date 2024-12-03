@@ -29,20 +29,20 @@ public class Decoder implements Serializable {
 
     private Tokenizer tokenizer; // Référence au Tokenizer
 
-    public Decoder(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, Tokenizer tokenizer) {
+    public Decoder(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, Tokenizer tokenizer, boolean useLayerNorm) {
         this.numLayers = numLayers;
         this.dModel = dModel;
         this.numHeads = numHeads;
         this.dropoutRate = dropoutRate;
         this.layers = new ArrayList<>();
-        this.layerNorm = new LayerNorm(dModel);
+        this.layerNorm = useLayerNorm ? new LayerNorm(dModel) : null;
         this.tokenizer = tokenizer;
-        this.linearProjection = new LinearProjection(dModel, tokenizer.getVocabSize()); // Utiliser la taille du vocabulaire du Tokenizer
+        this.linearProjection = new LinearProjection(dModel, tokenizer.getVocabSize());
         this.forwardCache = new ArrayList<>();
 
         for (int i = 0; i < numLayers; i++) {
-            this.layers.add(new DecoderLayer(this, dModel, numHeads, dff, dropoutRate));
-            this.forwardCache.add(null); // Initialiser le cache avec des valeurs nulles
+            this.layers.add(new DecoderLayer(this, dModel, numHeads, dff, dropoutRate, useLayerNorm));
+            this.forwardCache.add(null);
         }
     }
 
@@ -118,7 +118,7 @@ public class Decoder implements Serializable {
         }
     
         // Normalisation finale
-        encodedDecoderInput = layerNorm.forward(encodedDecoderInput);
+        encodedDecoderInput = layerNorm != null ? layerNorm.forward(encodedDecoderInput) : encodedDecoderInput;
         lastNormalizedInput = encodedDecoderInput.dup(); // Stocker l'entrée normalisée
     
         // Projection linéaire vers la taille du vocabulaire
@@ -144,7 +144,7 @@ public class Decoder implements Serializable {
         Map<String, INDArray> gradLinearProjection = linearProjection.backward(lastNormalizedInput, gradOutput);
 
         // Backpropager à travers la normalisation de couche finale
-        Map<String, INDArray> gradLayerNorm = layerNorm.backward(gradLinearProjection.get("input"));
+        Map<String, INDArray> gradLayerNorm = layerNorm != null ? layerNorm.backward(gradLinearProjection.get("input")) : gradLinearProjection;
 
         // Transformer gradLayerNorm en un Map pour correspondre à la signature attendue par DecoderLayer.backward
         Map<String, INDArray> gradMap = new HashMap<>();
@@ -176,7 +176,9 @@ public class Decoder implements Serializable {
         }
 
         // Collecter les paramètres de la normalisation de couche finale
-        params.addAll(layerNorm.getParameters());
+        if (layerNorm != null) {
+            params.addAll(layerNorm.getParameters());
+        }
 
         // Collecter les paramètres de la projection linéaire
         params.addAll(linearProjection.getParameters());
@@ -198,7 +200,9 @@ public class Decoder implements Serializable {
         }
 
         // Collecter les gradients de la normalisation de couche finale
-        grads.addAll(layerNorm.getGradients());
+        if (layerNorm != null) {
+            grads.addAll(layerNorm.getGradients());
+        }
 
         // Collecter les gradients de la projection linéaire
         grads.addAll(linearProjection.getGradients());
@@ -220,7 +224,9 @@ public class Decoder implements Serializable {
         }
 
         // Ajouter les paramètres de la normalisation de couche et de la projection linéaire
-        numParams += layerNorm.getNumberOfParameters();
+        if (layerNorm != null) {
+            numParams += layerNorm.getNumberOfParameters();
+        }
         numParams += linearProjection.getNumberOfParameters();
 
         return numParams;
@@ -242,14 +248,14 @@ public class Decoder implements Serializable {
         Dropout dropout2;
         Dropout dropout3;
 
-        public DecoderLayer(Decoder decoder, int dModel, int numHeads, int dff, double dropoutRate) {
+        public DecoderLayer(Decoder decoder, int dModel, int numHeads, int dff, double dropoutRate, boolean useLayerNorm) {
             this.decoder = decoder;
             this.selfAttention = new MultiHeadAttention(dModel, numHeads);
             this.encoderDecoderAttention = new MultiHeadAttention(dModel, numHeads);
             this.feedForward = new PositionwiseFeedForward(dModel, dff);
-            this.layerNorm1 = new LayerNorm(dModel);
-            this.layerNorm2 = new LayerNorm(dModel);
-            this.layerNorm3 = new LayerNorm(dModel);
+            this.layerNorm1 = useLayerNorm ? new LayerNorm(dModel) : null;
+            this.layerNorm2 = useLayerNorm ? new LayerNorm(dModel) : null;
+            this.layerNorm3 = useLayerNorm ? new LayerNorm(dModel) : null;
             this.dropout1 = new Dropout(dropoutRate);
             this.dropout2 = new Dropout(dropoutRate);
             this.dropout3 = new Dropout(dropoutRate);
@@ -276,21 +282,20 @@ public class Decoder implements Serializable {
          */
         public INDArray forward(boolean isTraining, INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray cachedInput, INDArray queryPaddingMaskSource, INDArray keyPaddingMaskSource, INDArray queryPaddingMaskTarget, INDArray keyPaddingMaskTarget) {
             
-
-            // Self-attention
+            // Self-attention avec masque look-ahead
             INDArray attn1 = selfAttention.forward(x, x, x, queryPaddingMaskTarget, keyPaddingMaskTarget, lookAheadMask);
             attn1 = dropout1.apply(isTraining, attn1);
-            x = layerNorm1.forward(x.add(attn1)); // Add & Norm
+            x = layerNorm1 != null ? layerNorm1.forward(x.add(attn1)) : x.add(attn1); // Add & Norm
 
-            // Encoder-decoder attention
+            // Encoder-decoder attention sans masque look-ahead
             INDArray attn2 = encoderDecoderAttention.forward(x, encoderOutput, encoderOutput, queryPaddingMaskTarget, keyPaddingMaskSource, null);
             attn2 = dropout2.apply(isTraining, attn2);
-            x = layerNorm2.forward(x.add(attn2)); // Add & Norm
+            x = layerNorm2 != null ? layerNorm2.forward(x.add(attn2)) : x.add(attn2); // Add & Norm
 
             // Feed-forward
             INDArray ffOutput = feedForward.forward(x);
             ffOutput = dropout3.apply(isTraining, ffOutput);
-            return layerNorm3.forward(x.add(ffOutput)); // Add & Norm again
+            return layerNorm3 != null ? layerNorm3.forward(x.add(ffOutput)) : x.add(ffOutput); // Add & Norm again
         }
 
         /**
@@ -304,7 +309,7 @@ public class Decoder implements Serializable {
             Map<String, INDArray> gradients = new HashMap<>();
 
             // Backpropager à travers LayerNorm3
-            Map<String, INDArray> gradLayerNorm3 = layerNorm3.backward(gradOutput.get("input"));
+            Map<String, INDArray> gradLayerNorm3 = layerNorm3 != null ? layerNorm3.backward(gradOutput.get("input")) : gradOutput;
             gradients.putAll(gradLayerNorm3);
 
             // Backpropager à travers FeedForward
@@ -312,7 +317,7 @@ public class Decoder implements Serializable {
             gradients.putAll(gradFeedForward);
 
             // Backpropager à travers LayerNorm2
-            Map<String, INDArray> gradLayerNorm2 = layerNorm2.backward(gradFeedForward.get("input"));
+            Map<String, INDArray> gradLayerNorm2 = layerNorm2 != null ? layerNorm2.backward(gradFeedForward.get("input")) : gradFeedForward;
             gradients.putAll(gradLayerNorm2);
 
             // Backpropager à travers EncoderDecoderAttention
@@ -320,7 +325,7 @@ public class Decoder implements Serializable {
             gradients.putAll(gradEncoderDecoderAttention);
 
             // Backpropager à travers LayerNorm1
-            Map<String, INDArray> gradLayerNorm1 = layerNorm1.backward(gradEncoderDecoderAttention.get("input"));
+            Map<String, INDArray> gradLayerNorm1 = layerNorm1 != null ? layerNorm1.backward(gradEncoderDecoderAttention.get("input")) : gradEncoderDecoderAttention;
             gradients.putAll(gradLayerNorm1);
 
             // Backpropager à travers SelfAttention
@@ -341,9 +346,15 @@ public class Decoder implements Serializable {
             layerParams.addAll(selfAttention.getParameters());
             layerParams.addAll(encoderDecoderAttention.getParameters());
             layerParams.addAll(feedForward.getParameters());
-            layerParams.addAll(layerNorm1.getParameters());
-            layerParams.addAll(layerNorm2.getParameters());
-            layerParams.addAll(layerNorm3.getParameters());
+            if (layerNorm1 != null) {
+                layerParams.addAll(layerNorm1.getParameters());
+            }
+            if (layerNorm2 != null) {
+                layerParams.addAll(layerNorm2.getParameters());
+            }
+            if (layerNorm3 != null) {
+                layerParams.addAll(layerNorm3.getParameters());
+            }
 
             return layerParams;
         }
@@ -359,9 +370,15 @@ public class Decoder implements Serializable {
             layerGrads.addAll(selfAttention.getGradients());
             layerGrads.addAll(encoderDecoderAttention.getGradients());
             layerGrads.addAll(feedForward.getGradients());
-            layerGrads.addAll(layerNorm1.getGradients());
-            layerGrads.addAll(layerNorm2.getGradients());
-            layerGrads.addAll(layerNorm3.getGradients());
+            if (layerNorm1 != null) {
+                layerGrads.addAll(layerNorm1.getGradients());
+            }
+            if (layerNorm2 != null) {
+                layerGrads.addAll(layerNorm2.getGradients());
+            }
+            if (layerNorm3 != null) {
+                layerGrads.addAll(layerNorm3.getGradients());
+            }
 
             return layerGrads;
         }
@@ -375,9 +392,9 @@ public class Decoder implements Serializable {
             return selfAttention.getNumberOfParameters() +
                    encoderDecoderAttention.getNumberOfParameters() +
                    feedForward.getNumberOfParameters() +
-                   layerNorm1.getNumberOfParameters() +
-                   layerNorm2.getNumberOfParameters() +
-                   layerNorm3.getNumberOfParameters();
+                   (layerNorm1 != null ? layerNorm1.getNumberOfParameters() : 0) +
+                   (layerNorm2 != null ? layerNorm2.getNumberOfParameters() : 0) +
+                   (layerNorm3 != null ? layerNorm3.getNumberOfParameters() : 0);
         }
 
         /**
@@ -389,9 +406,9 @@ public class Decoder implements Serializable {
             return selfAttention.getNumberOfGradients() +
                    encoderDecoderAttention.getNumberOfGradients() +
                    feedForward.getNumberOfGradients() +
-                   layerNorm1.getNumberOfGradients() +
-                   layerNorm2.getNumberOfGradients() +
-                   layerNorm3.getNumberOfGradients();
+                   (layerNorm1 != null ? layerNorm1.getNumberOfGradients() : 0) +
+                   (layerNorm2 != null ? layerNorm2.getNumberOfGradients() : 0) +
+                   (layerNorm3 != null ? layerNorm3.getNumberOfGradients() : 0);
         }
     }
 }

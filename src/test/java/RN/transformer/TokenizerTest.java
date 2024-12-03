@@ -47,7 +47,7 @@ public class TokenizerTest {
         tokenizer = new Tokenizer(preTrainedWordVectors, embeddingSize, maxSequenceLength);
 
         // Ajouter des mots manquants avant d'initialiser les embeddings
-        List<String> missingWords = Arrays.asList("le", "jardin", "les", "chats", "aiment", "tapis", "sur", "sol");
+        List<String> missingWords = Arrays.asList("le", "jardin", "les", "chiens", "chats",  "chat", "aiment", "tapis", "sur", "sol");
         for (String word : missingWords) {
             tokenizer.addToken(word);
         }
@@ -350,7 +350,7 @@ public class TokenizerTest {
     public void testInferenceWithPretrainedEmbeddings() throws Exception {
 
         // Effectuer l'entraînement
-        float loss = model.trainEpoch(mockDataGenerator);
+        float loss = model.train(mockDataGenerator,5);
         System.out.println("Loss after training: " + loss);
 
         // Effectuer une inférence

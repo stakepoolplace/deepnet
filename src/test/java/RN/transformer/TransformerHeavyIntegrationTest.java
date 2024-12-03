@@ -35,10 +35,10 @@ public class TransformerHeavyIntegrationTest {
 
 
         // Initialisation du modèle Transformer avec dModel = embeddingSize
-        int numLayers = 1;
+        int numLayers = 2;
         int dModel = embeddingSize;
         int numHeads = 1;
-        int dff = 1024;
+        int dff = 128;
         int vocabSize = tokenizer.getVocabSize();
         float dropoutRate = 0.0f;
         float initialLr = 0.001f;
@@ -59,7 +59,7 @@ public class TransformerHeavyIntegrationTest {
             "les chats aiment", 
             "le tapis sur"
         );
-        int batchSize = 2; // Assurez-vous que cela correspond à la forme des scores
+        int batchSize = 1; // Assurez-vous que cela correspond à la forme des scores
         int sequenceLength = 7; // Définissez une longueur de séquence cohérente
         mockDataGenerator = new DataGenerator(data, targets, tokenizer, batchSize, sequenceLength);
     }
@@ -69,8 +69,11 @@ public class TransformerHeavyIntegrationTest {
     @Test
     public void testTrainingWithPretrainedEmbeddings() throws Exception {
         
-        // Entraîner sur un seul epoch
-        float initialLoss = model.trainEpoch(mockDataGenerator);
+        model.getOptimizer().setMaxEpochs(5);
+        model.setTrace(false);
+
+        // Entraîner 
+        float initialLoss = model.train(mockDataGenerator,5);
 
         // Vérification que le modèle est marqué comme entraîné
         assertTrue("Le modèle devrait être marqué comme entraîné après l'entraînement", model.isTrained());

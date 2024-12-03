@@ -33,7 +33,7 @@ public class TransformerModel implements Serializable {
     private static final long serialVersionUID = -4799769434788429831L;
 
     // Affiche les tableaux d'attention croisée (encoder : self  decoder: self, cross)
-    private final static boolean TRACE_ON = true;
+    private static boolean traceIsOn = true;
 
     private static final String W2VECPATH = "pretrained-embeddings/mon_model_word2vec.txt";
     private boolean isTrained = false;
@@ -77,14 +77,13 @@ public class TransformerModel implements Serializable {
         this.tokenizer = new Tokenizer(defaultVocab, dModel, maxSequenceLength);
         this.pretrainedEmbeddings = this.tokenizer.getPretrainedEmbeddings();
 
-        // Initialiser les autres composants
-        this.encoder = new Encoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer);
-        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer);
+        // Initialiser les autres composants avec layer normalization activée
+        this.encoder = new Encoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer, true);
+        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer, true);
 
         addCombinedParameters();
 
-        this.optimizer = new CustomAdamOptimizer(initialLr, dModel, warmupSteps, combinedParameters); // Initialisation
-                                                                                                      // hypothétique
+        this.optimizer = new CustomAdamOptimizer(initialLr, dModel, warmupSteps, combinedParameters);
 
         freezeSpecialTokenEmbeddings();
     }
@@ -114,20 +113,17 @@ public class TransformerModel implements Serializable {
             this.tokenizer = new Tokenizer(wordVectors, dModel, maxSequenceLength);
             this.pretrainedEmbeddings = tokenizer.getPretrainedEmbeddings();
         } else {
-            // Si les WordVectors ne sont pas chargés, initialiser avec un vocabulaire vide
-            // ou par défaut
             List<String> defaultVocab = Arrays.asList("<PAD>", "<UNK>", "<START>", "<END>");
             this.tokenizer = new Tokenizer(defaultVocab, dModel, maxSequenceLength);
             this.pretrainedEmbeddings = tokenizer.getPretrainedEmbeddings();
         }
 
-        // Initialiser l'encodeur et le décodeur avec le tokenizer
-        this.encoder = new Encoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer);
-        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer);
+        // Initialiser l'encodeur et le décodeur avec layer normalization activée
+        this.encoder = new Encoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer, true);
+        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer, true);
 
         addCombinedParameters();
 
-        // Initialiser l'optimiseur avec les paramètres combinés
         this.optimizer = new CustomAdamOptimizer(initialLr, dModel, warmupSteps, combinedParameters);
 
         freezeSpecialTokenEmbeddings();
@@ -163,17 +159,15 @@ public class TransformerModel implements Serializable {
         if (this.pretrainedEmbeddings == null) {
             System.out.println("Pretrained embeddings are null. Initializing random embeddings.");
             this.pretrainedEmbeddings = Nd4j.randn(DataType.FLOAT, vocabSize, dModel).divi(Math.sqrt(dModel));
-            tokenizer.setPretrainedEmbeddings(this.pretrainedEmbeddings); // Assurez-vous que Tokenizer peut définir les
-                                                                          // embeddings
+            tokenizer.setPretrainedEmbeddings(this.pretrainedEmbeddings);
         }
 
-        // Initialiser l'encodeur et le décodeur avec le tokenizer personnalisé
-        this.encoder = new Encoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer);
-        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer);
+        // Initialiser l'encodeur et le décodeur avec layer normalization activée
+        this.encoder = new Encoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer, true);
+        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer, true);
 
         addCombinedParameters();
 
-        // Initialiser l'optimiseur avec les paramètres combinés
         this.optimizer = new CustomAdamOptimizer(initialLr, dModel, warmupSteps, combinedParameters);
 
         freezeSpecialTokenEmbeddings();
@@ -221,36 +215,45 @@ public class TransformerModel implements Serializable {
      * @param epochNum      Nombre d'epochs à entraîner.
      * @throws IOException En cas d'erreur d'E/S.
      */
-    public void train(DataGenerator dataGenerator, int epochNum) throws IOException {
+    public float train(DataGenerator dataGenerator, int epochNum) throws IOException {
+
+        Batch batch = null;
+        INDArray input = null; // [batchSize, seqLength]
+        INDArray target = null; // [batchSize, seqLength]
+        INDArray encoded = null;
+        INDArray decodedOutput = null;
+        float averageLoss = 0.0f;
+
 
         for (int epoch = 0; epoch < epochNum; epoch++) {
+            
             // Définir le numéro d'epoch actuel (commence à 1)
             optimizer.setEpoch(epoch + 1);
-            System.out.println("Epoch " + (epoch + 1) + " / " + epochNum);
 
             float totalLoss = 0.0f;
             int totalTokens = 0;
 
             while (dataGenerator.hasNextBatch()) {
+                
                 // Nettoyer les gradients précédents
                 cleanGradients();
 
                 // Obtenir le prochain batch
-                Batch batch = dataGenerator.nextBatch();
-                INDArray input = batch.getData(); // [batchSize, seqLength]
-                INDArray target = batch.getTarget(); // [batchSize, seqLength]
+                batch = dataGenerator.nextBatch();
+                input = batch.getData(); // [batchSize, seqLength]
+                target = batch.getTarget(); // [batchSize, seqLength]
                 // INDArray mask = batch.getMask(); // [batchSize, 1, 1, seqLength] (Non utilisé
                 // directement ici)
 
                 // Encoder les données du batch
-                INDArray encoded = encoder.encode(true, batch);
+                encoded = encoder.encode(true, batch);
 
                 // Décoder les données encodées
-                INDArray decodedOutput = decoder.decode(true, encoded, encoded, batch, null);
+                decodedOutput = decoder.decode(true, encoded, encoded, batch, null);
 
 
                 // Affiche les tableaux d'attention croisée (encoder : self  decoder: self, cross)
-                if (TRACE_ON) {
+                if (traceIsOn) {
                     traceAttentionInEncoderAndDecoder(input, target);
                 }
 
@@ -287,8 +290,8 @@ public class TransformerModel implements Serializable {
             }
 
             // Calculer la perte moyenne pour l'epoch
-            float averageLoss = totalLoss / totalTokens;
-            System.out.println("Epoch " + (epoch + 1) + " completed with average loss: " + averageLoss);
+            averageLoss = totalLoss / totalTokens;
+            System.out.println("Epoch " + (epoch + 1) + " / " + epochNum + " completed with average loss: " + averageLoss);
 
             // Réinitialiser le générateur de données pour le prochain epoch
             dataGenerator.init();
@@ -299,7 +302,14 @@ public class TransformerModel implements Serializable {
             }
         }
 
+        // Afficher les tableaux d'attention croisée (encoder : self  decoder: self, cross)
+        if (input != null) {
+            traceAttentionInEncoderAndDecoder(input, target);
+        }
+
         System.out.println("Training completed.");
+
+        return averageLoss;
     }
 
     private void traceAttentionInEncoderAndDecoder(INDArray input, INDArray target) {
@@ -335,21 +345,25 @@ public class TransformerModel implements Serializable {
     }
 
     public float trainEpoch(DataGenerator dataGenerator) throws IOException {
+        
         float totalLoss = 0.0f;
         int totalTokens = 0;
 
+        Batch batch = null;
+        INDArray input = null; 
+        INDArray target = null; // [batchSize, seqLength]
+
         // Initialiser pour l'epoch
         optimizer.setEpoch(optimizer.getEpoch() + 1);
-        System.out.println("Epoch " + optimizer.getEpoch());
 
         while (dataGenerator.hasNextBatch()) {
 
             // Nettoyer les gradients précédents
             cleanGradients();
 
-            Batch batch = dataGenerator.nextBatch();
-            INDArray input = batch.getData(); 
-            INDArray target = batch.getTarget(); // [batchSize, seqLength]
+            batch = dataGenerator.nextBatch();
+            input = batch.getData(); 
+            target = batch.getTarget(); // [batchSize, seqLength]
 
             // Encoder les données du batch
             INDArray encoded = encoder.encode(true, batch);
@@ -358,7 +372,7 @@ public class TransformerModel implements Serializable {
             INDArray decodedOutput = decoder.decode(true, encoded, encoded, batch, null);
 
             // Affiche les tableaux d'attention croisée (encoder : self  decoder: self, cross)
-            if (TRACE_ON) {
+            if (traceIsOn) {
                 traceAttentionInEncoderAndDecoder(input, target);
             }
 
@@ -372,7 +386,7 @@ public class TransformerModel implements Serializable {
             totalTokens += target.sumNumber().intValue(); // Total de tokens cibles pour normaliser la perte
 
             // Afficher la perte pour le monitoring
-            System.out.println("Perte pour ce batch: " + loss);
+            //System.out.println("Perte pour ce batch: " + loss);
 
             // Backward pass
             backward(initialGradients);
@@ -403,6 +417,11 @@ public class TransformerModel implements Serializable {
         // Marquer le modèle comme entraîné après le premier epoch
         if (optimizer.getEpoch() >= 1) {
             isTrained = true;
+        }
+
+        // Vérifier si l'optimiseur a atteint le nombre maximum d'epochs pour l'affichage des tableaux d'attention
+        if (optimizer.getMaxEpochs() != -1 && optimizer.getEpoch() >= optimizer.getMaxEpochs() - 1) {
+            traceAttentionInEncoderAndDecoder(input, target);
         }
 
         return averageLoss;
@@ -564,7 +583,7 @@ public class TransformerModel implements Serializable {
         INDArray gradInputV = decoderGradients.get("gradInputV");
 
         if (gradAttentionOutputConcat == null || gradInputQ == null || gradInputK == null || gradInputV == null) {
-            throw new IllegalStateException("Un ou plusieurs gradients nécessaires sont null.");
+            throw new IllegalStateException("Un ou plusieurs gradients ncessaires sont null.");
         }
 
         // Ajoutez les gradients au Map
@@ -891,6 +910,9 @@ public class TransformerModel implements Serializable {
         List<Integer> outputIds = new ArrayList<>();
         outputIds.add(tokenizer.getStartTokenId());
     
+        // Paramètre de température pour le softmax
+        float temperature = 0.7f;
+    
         for (int i = 0; i < maxLength; i++) {
             // Convertir les IDs de sortie en INDArray [1, currentOutputLength]
             INDArray decoderInputIds = Nd4j.create(DataType.INT, 1, outputIds.size());
@@ -915,8 +937,17 @@ public class TransformerModel implements Serializable {
                     NDArrayIndex.all() // tous les éléments dans vocabSize
             ).dup(); // [vocabSize]
     
-            // Appliquer softmax pour obtenir les probabilités
+            // Appliquer la température au softmax
+            lastTokenLogits = lastTokenLogits.div(temperature);
             INDArray softmaxLogits = Transforms.softmax(lastTokenLogits, false); // [vocabSize]
+    
+            // Masquer les tokens spéciaux sauf <END>
+            INDArray specialTokenMask = Nd4j.ones(softmaxLogits.shape());
+            specialTokenMask.putScalar(new int[] { tokenizer.getPadTokenId() }, 0);
+            specialTokenMask.putScalar(new int[] { tokenizer.getUnkTokenId() }, 0);
+            specialTokenMask.putScalar(new int[] { tokenizer.getStartTokenId() }, 0);
+            softmaxLogits = softmaxLogits.mul(specialTokenMask);
+            softmaxLogits = softmaxLogits.div(softmaxLogits.sumNumber().floatValue());
     
             // Sélectionner le token avec la plus haute probabilité
             int predictedTokenId = Nd4j.argMax(softmaxLogits, 0).getInt(0);
@@ -1023,6 +1054,111 @@ public class TransformerModel implements Serializable {
 
     public void setOptimizer(CustomAdamOptimizer optimizer) {
         this.optimizer = optimizer;
+    }
+
+    /**
+     * Active ou désactive le traçage des opérations pendant l'entraînement
+     * @param trace true pour activer le traçage, false pour le désactiver
+     */
+    public void setTrace(boolean trace) {
+        this.traceIsOn = trace;
+    }
+
+    /**
+     * @return l'optimiseur du modèle
+     */
+    public CustomAdamOptimizer getOptimizer() {
+        return optimizer;
+    }
+
+    public INDArray calculateLoss(INDArray predictions, INDArray labels) {
+        int batchSize = predictions.shape()[0];
+        int seqLength = predictions.shape()[1];
+        int vocabSize = predictions.shape()[2];
+        
+        // Pénalité pour la prédiction précoce de END
+        double endPenalty = 2.0;
+        INDArray endMask = labels.eq(endTokenId);
+        INDArray positionWeights = Nd4j.ones(labels.shape());
+        for(int i = 0; i < seqLength - 1; i++) {
+            positionWeights.putScalar(new int[]{i}, endPenalty);
+        }
+        
+        // Cross entropy avec label smoothing
+        double epsilon = 0.1;
+        INDArray smoothLabels = labels.mul(1 - epsilon).add(epsilon / vocabSize);
+        
+        INDArray logProbabilities = Transforms.log(predictions.add(1e-10));
+        INDArray loss = smoothLabels.mul(logProbabilities).sum(2).mul(-1);
+        
+        // Appliquer la pénalité END
+        loss = loss.mul(positionWeights);
+        
+        return loss.mean();
+    }
+
+    public String predict(String input) {
+        // Tokenize input
+        List<String> inputTokens = tokenizer.tokenize(input);
+        inputTokens.add(0, "<START>");
+        inputTokens.add("<END>");
+        
+        // Convert to IDs
+        INDArray inputIds = Nd4j.create(tokenizer.convertToIds(inputTokens));
+        
+        // Initialize decoder input with START token
+        INDArray decoderInput = Nd4j.create(new int[]{1});
+        decoderInput.putScalar(0, startTokenId);
+        
+        StringBuilder output = new StringBuilder();
+        int maxLength = 20;  // Maximum sequence length
+        double temperature = 0.8;  // Température pour le sampling
+        
+        for(int i = 0; i < maxLength; i++) {
+            // Forward pass
+            INDArray logits = forward(inputIds.reshape(1, -1), decoderInput.reshape(1, -1));
+            
+            // Get probabilities for next token
+            INDArray lastTokenLogits = logits.get(NDArrayIndex.point(0), NDArrayIndex.point(logits.shape()[1]-1));
+            
+            // Apply temperature
+            lastTokenLogits = lastTokenLogits.div(temperature);
+            
+            // Convert to probabilities
+            INDArray probabilities = Transforms.softmax(lastTokenLogits);
+            
+            // Sample from distribution
+            int nextToken = sampleFromDistribution(probabilities);
+            
+            // Break if END token
+            if(nextToken == endTokenId) break;
+            
+            // Add to output
+            output.append(tokenizer.idToToken(nextToken)).append(" ");
+            
+            // Update decoder input
+            INDArray newDecoderInput = Nd4j.create(decoderInput.length() + 1);
+            for(int j = 0; j < decoderInput.length(); j++) {
+                newDecoderInput.putScalar(j, decoderInput.getInt(j));
+            }
+            newDecoderInput.putScalar(decoderInput.length(), nextToken);
+            decoderInput = newDecoderInput;
+        }
+        
+        return output.toString().trim();
+    }
+
+    private int sampleFromDistribution(INDArray probabilities) {
+        double[] probs = probabilities.toDoubleVector();
+        double sum = 0;
+        double r = Math.random();
+        
+        for(int i = 0; i < probs.length; i++) {
+            sum += probs[i];
+            if(r <= sum) return i;
+        }
+        
+        return probs.length - 1;
     }
 
 }
