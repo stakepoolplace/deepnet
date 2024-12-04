@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.indexing.NDArrayIndex;
 
 import RN.utils.NDArrayUtils;
 
@@ -371,7 +372,7 @@ public class MultiHeadAttentionTest {
         assertEquals(dModel, gradWq.rows(), "Le nombre de lignes de gradWq devrait correspondre à dModel");
         assertEquals(numHeads * depth, gradWq.columns(), "Le nombre de colonnes de gradWq devrait correspondre à numHeads * depth");
 
-        assertEquals(dModel, gradWk.rows(), "Le nombre de lignes de gradWk devrait correspondre à dModel");
+        assertEquals(dModel, gradWk.rows(), "Le nombre de lignes de gradWk devrait correspondre  dModel");
         assertEquals(numHeads * depth, gradWk.columns(), "Le nombre de colonnes de gradWk devrait correspondre à numHeads * depth");
 
         assertEquals(numHeads * depth, gradWv.rows(), "Le nombre de lignes de gradWv devrait correspondre à numHeads * depth");
@@ -503,9 +504,25 @@ public class MultiHeadAttentionTest {
         int depth = dModel / numHeads; // Profondeur par tête
         int maxSequenceLength = 4; // Ajusté de 2 à 4
         int batchSize = 1;
+        INDArray pretrainedEmbeddings = null;
     
         // Création d'une instance de Tokenizer spécifique au test avec dModel=4 et maxSequenceLength=4
-        Tokenizer testTokenizer = new Tokenizer(Arrays.asList("<PAD>", "Hello", "world"), dModel, maxSequenceLength);
+        Tokenizer testTokenizer = new Tokenizer(Arrays.asList("<PAD>", "Hello", "world"), dModel, maxSequenceLength) {
+            @Override
+            public void initializeEmbeddings() {
+                // Créer une matrice d'embeddings avec des valeurs spécifiques
+                INDArray embeddings = Nd4j.zeros(getVocabSize(), dModel);
+                // Définir des valeurs spécifiques pour chaque token
+                embeddings.putRow(0, Nd4j.create(new float[]{0, 0, 0, 0}));  // <PAD>
+                embeddings.putRow(1, Nd4j.create(new float[]{1, 0, 0, 0}));  // Hello
+                embeddings.putRow(2, Nd4j.create(new float[]{0, 1, 0, 0}));  // world
+                
+                // Initialiser pretrainedEmbeddings avec les mêmes valeurs
+                this.pretrainedEmbeddings = embeddings.dup();
+            }
+        };
+        // Appeler explicitement l'initialisation
+        testTokenizer.initializeEmbeddings();
         
         // Création d'une instance de MultiHeadAttention
         MultiHeadAttention mha = new MultiHeadAttention(dModel, numHeads);
@@ -522,52 +539,96 @@ public class MultiHeadAttentionTest {
         mha.getWv().assign(Wv);
         mha.getWo().assign(Wo);
         
+        // Vérification des poids
+        System.out.println("Wq:");
+        System.out.println(mha.getWq());
+        System.out.println("Wk:");
+        System.out.println(mha.getWk());
+        System.out.println("Wv:");
+        System.out.println(mha.getWv());
+        System.out.println("Wo:");
+        System.out.println(mha.getWo());
+
         // Définir les IDs des tokens
         INDArray tokens = Nd4j.createFromArray(new int[][] { {0, 2, 1, 0} }); // [1,4]
-        
+
         // Obtenir les embeddings à partir des tokens en utilisant testTokenizer
         INDArray input = testTokenizer.lookupEmbeddings(tokens); // [1,4,4]
-        
+
+        // Vérification des embeddings d'entrée
+        System.out.println("Input embeddings:");
+        System.out.println(input);
+
         // Créer un masque look-ahead avec maxSequenceLength=4
         INDArray lookAheadMask = NDArrayUtils.createLookAheadMask(batchSize, maxSequenceLength); // [1,1,4,4]
-        
+
         // Création du keyMask et reshaper correctement
-        INDArray keyMask = NDArrayUtils.createQueryPaddingMask(testTokenizer, tokens).reshape(batchSize, 1, 1, maxSequenceLength); // [1,1,1,4]
-    
+        INDArray keyMask = NDArrayUtils.createKeyPaddingMask(testTokenizer, tokens);
+        INDArray queryPaddingMaskFromSource = NDArrayUtils.createQueryPaddingMask(tokenizer, tokens);
+
+
+
+        // Vérification des masques
+        System.out.println("Look-ahead mask:");
+        System.out.println(lookAheadMask);
+        System.out.println("Key mask:");
+        System.out.println(keyMask);
+
         // Appel de la méthode forward avec keyMask et lookAheadMask
         INDArray output = mha.forward(input, input, input, null, keyMask, lookAheadMask); // [1,4,4]
-    
+
         // Définir la sortie attendue pour une séquence de longueur 4
         INDArray expectedOutput = Nd4j.create(new float[][][] {
             {
-                {0.0f, 0.0f, 0.0f, 0.0f},   // Sortie pour le premier token
-                {0.0f, 0.0f, 0.0f, 0.0f}, // Sortie pour le deuxième token
-                {0.0f, 0.0f, 0.0f, 0.0f},   // Sortie pour le troisième token (PAD)
-                {0.0f, 0.0f, 0.0f, 0.0f}    // Sortie pour le quatrième token (PAD)
+                {0.0f, 0.0f, 0.0f, 0.0f},    // Premier token (PAD) -> tout à zéro
+                {0.0f, 1.0f, 0.0f, 0.0f},    // Second token (world) -> peut voir uniquement lui-même
+                {0.5f, 0.5f, 0.0f, 0.0f},    // Troisième token (Hello) -> moyenne de lui-même et world
+                {0.0f, 0.0f, 0.0f, 0.0f}     // Quatrième token (PAD) -> tout à zéro
             }
         }); // [1,4,4]
-    
+
         // Afficher les sorties pour debugging
         System.out.println("Output:\n" + output);
         System.out.println("Expected Output:\n" + expectedOutput);
-    
+
         // Vérifier les dimensions de la sortie
         assertEquals(3, output.rank(), "Le tenseur devrait être d'ordre 3");
         assertArrayEquals(new long[]{1, 4, 4}, output.shape(), "La forme de la sortie est incorrecte");
-    
+
         // Vérifier les valeurs de la sortie
-        for (int b = 0; b < batchSize; b++) {
-            for (int i = 0; i < maxSequenceLength; i++) {
-                for (int j = 0; j < dModel; j++) {
-                    float expectedValue = expectedOutput.getFloat(b, i, j);
-                    float actualValue = output.getFloat(b, i, j);
-                    assertEquals(expectedValue, actualValue, 1e-4f, // Augmenter la tolérance légèrement
-                        String.format("Position [%d][%d][%d] devrait être %.4f, mais était %.4f",
-                            b, i, j, expectedValue, actualValue));
-                }
-            }
-        }
-    
+        assertTrue("Les positions PAD devraient être à zéro", 
+            output.get(NDArrayIndex.point(0), NDArrayIndex.point(0), NDArrayIndex.all())
+                  .sumNumber().doubleValue() < 1e-6);
+        
+        // Vérifier la position 1 [0, 1, 0, 0]
+        INDArray pos1 = output.get(NDArrayIndex.point(0), NDArrayIndex.point(1), NDArrayIndex.all());
+        assertEquals("Position 1, index 0 devrait être 0", 0.0, pos1.getDouble(0), 1e-6);
+        assertEquals("Position 1, index 1 devrait être 1", 1.0, pos1.getDouble(1), 1e-6);
+        assertEquals("Position 1, index 2 devrait être 0", 0.0, pos1.getDouble(2), 1e-6);
+        assertEquals("Position 1, index 3 devrait être 0", 0.0, pos1.getDouble(3), 1e-6);
+        
+        // Vérifier la position 2 [0.5, 0.5, 0, 0]
+        INDArray pos2 = output.get(NDArrayIndex.point(0), NDArrayIndex.point(2), NDArrayIndex.all());
+        assertEquals("Position 2, index 0 devrait être 0.5", 0.5, pos2.getDouble(0), 1e-6);
+        assertEquals("Position 2, index 1 devrait être 0.5", 0.5, pos2.getDouble(1), 1e-6);
+        assertEquals("Position 2, index 2 devrait être 0", 0.0, pos2.getDouble(2), 1e-6);
+        assertEquals("Position 2, index 3 devrait être 0", 0.0, pos2.getDouble(3), 1e-6);
+        
+        // Vérifier la dernière position (PAD)
+        assertTrue("La dernière position devrait être à zéro",
+            output.get(NDArrayIndex.point(0), NDArrayIndex.point(3), NDArrayIndex.all())
+                  .sumNumber().doubleValue() < 1e-6);
+              
+        // Ajouter des messages d'erreur plus descriptifs
+        System.out.println("Sortie attendue:");
+        System.out.println("[[[0, 0, 0, 0],");
+        System.out.println(" [0, 1, 0, 0],");
+        System.out.println(" [0.5, 0.5, 0, 0],");
+        System.out.println(" [0, 0, 0, 0]]]");
+        
+        System.out.println("\nSortie réelle:");
+        System.out.println(output);
+
         System.out.println("Test réussi : La méthode forward fonctionne correctement avec des valeurs spécifiques et un masque look-ahead binaire.");
     }
 

@@ -8,6 +8,7 @@ import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 
 import RN.transformer.Decoder.DecoderLayer;
+import RN.utils.NDArrayUtils;
 
 import java.util.Arrays;
 import java.util.List;
@@ -41,7 +42,6 @@ public class DecoderTest {
 
     @Test
     public void testDecoderFunctionality() {
-
         // Initialiser les IDs de sortie avec le token de début
         List<Integer> outputIds = Arrays.asList(tokenizer.getStartTokenId(), tokenizer.getPadTokenId(), tokenizer.getEndTokenId());
 
@@ -51,8 +51,24 @@ public class DecoderTest {
         // Créer un Batch pour le décodeur
         Batch decoderBatch = new Batch(decoderInputIds, null, tokenizer);
         
+        // Créer les masques nécessaires
+        INDArray queryPaddingMaskFromSource = NDArrayUtils.createQueryPaddingMask(tokenizer, encoderInputTokens);
+        INDArray keyPaddingMaskFromSource = NDArrayUtils.createKeyPaddingMask(tokenizer, encoderInputTokens);
+        INDArray queryPaddingMaskFromTarget = NDArrayUtils.createQueryPaddingMask(tokenizer, decoderInputIds);
+        INDArray keyPaddingMaskFromTarget = NDArrayUtils.createKeyPaddingMask(tokenizer, decoderInputIds);
+        INDArray lookAheadMask = NDArrayUtils.createLookAheadMask((int)decoderInputIds.shape()[0], 
+                                                                 (int)decoderInputIds.shape()[1]);
+
         // Décoder en passant les tokens d'entrée de l'encodeur
-        INDArray logits = decoder.decode(false, encodedInput, encodedInput, decoderBatch, encoderInputTokens);
+        INDArray logits = decoder.decode(false, 
+                                       encodedInput, 
+                                       encodedInput, 
+                                       decoderBatch,
+                                       lookAheadMask,
+                                       queryPaddingMaskFromSource,
+                                       keyPaddingMaskFromSource,
+                                       queryPaddingMaskFromTarget,
+                                       keyPaddingMaskFromTarget);
 
         // Vérifier que les logits ne sont pas nuls
         assertNotNull("Les logits ne devraient pas être null", logits);
@@ -60,7 +76,6 @@ public class DecoderTest {
         // Vérifier la forme des logits
         assertEquals("La forme des logits devrait être [1, seqLength, vocabSize]",
                 3, logits.shape().length);
-
     }
 
     @Test
@@ -74,8 +89,24 @@ public class DecoderTest {
         // Créer un Batch pour le décodeur avec les tokens d'entrée
         Batch decoderBatch = new Batch(decoderInputIds, decoderInputIds, tokenizer);
 
+        // Créer les masques nécessaires
+        INDArray queryPaddingMaskFromSource = NDArrayUtils.createQueryPaddingMask(tokenizer, encoderInputTokens);
+        INDArray keyPaddingMaskFromSource = NDArrayUtils.createKeyPaddingMask(tokenizer, encoderInputTokens);
+        INDArray queryPaddingMaskFromTarget = NDArrayUtils.createQueryPaddingMask(tokenizer, decoderInputIds);
+        INDArray keyPaddingMaskFromTarget = NDArrayUtils.createKeyPaddingMask(tokenizer, decoderInputIds);
+        INDArray lookAheadMask = NDArrayUtils.createLookAheadMask((int)decoderInputIds.shape()[0], 
+                                                                 (int)decoderInputIds.shape()[1]);
+
         // Décoder en passant les tokens d'entrée de l'encodeur
-        INDArray logits = decoder.decode(true, encodedInput, encodedInput, decoderBatch, encoderInputTokens);
+        INDArray logits = decoder.decode(true, 
+                                       encodedInput, 
+                                       encodedInput, 
+                                       decoderBatch,
+                                       lookAheadMask,
+                                       queryPaddingMaskFromSource,
+                                       keyPaddingMaskFromSource,
+                                       queryPaddingMaskFromTarget,
+                                       keyPaddingMaskFromTarget);
 
         // Tracer les valeurs intermédiaires
         System.out.println("Logits: " + logits);

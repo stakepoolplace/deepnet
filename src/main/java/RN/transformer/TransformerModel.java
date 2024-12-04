@@ -33,7 +33,7 @@ public class TransformerModel implements Serializable {
     private static final long serialVersionUID = -4799769434788429831L;
 
     // Affiche les tableaux d'attention croisée (encoder : self  decoder: self, cross)
-    private static boolean traceIsOn = true;
+    private static boolean traceIsOn = false;
 
     private static final String W2VECPATH = "pretrained-embeddings/mon_model_word2vec.txt";
     private boolean isTrained = false;
@@ -51,7 +51,10 @@ public class TransformerModel implements Serializable {
     private INDArray pretrainedEmbeddings = null; // Maintenant non statique
     private List<INDArray> combinedParameters = new ArrayList<>();
     private List<INDArray> combinedGradients = new ArrayList<>();
-    
+    private float temperature = 1.0f;
+    private float frequencyPenalty = 0.0f;
+    private double attentionDropout = 0.0;
+
 
     static {
         try {
@@ -215,15 +218,11 @@ public class TransformerModel implements Serializable {
      * @param epochNum      Nombre d'epochs à entraîner.
      * @throws IOException En cas d'erreur d'E/S.
      */
-    public float train(DataGenerator dataGenerator, int epochNum) throws IOException {
-
-        Batch batch = null;
-        INDArray input = null; // [batchSize, seqLength]
-        INDArray target = null; // [batchSize, seqLength]
-        INDArray encoded = null;
-        INDArray decodedOutput = null;
+    public float train(DataGenerator dataGenerator, int epochNum) {
         float averageLoss = 0.0f;
-
+        Batch batch = null;
+        INDArray input = null;
+        INDArray target = null;
 
         for (int epoch = 0; epoch < epochNum; epoch++) {
             
@@ -246,11 +245,26 @@ public class TransformerModel implements Serializable {
                 // directement ici)
 
                 // Encoder les données du batch
-                encoded = encoder.encode(true, batch);
+                INDArray encoded = encoder.encode(true, batch);
 
-                // Décoder les données encodées
-                decodedOutput = decoder.decode(true, encoded, encoded, batch, null);
+                // Créer les masques nécessaires
+                INDArray queryPaddingMaskFromSource = NDArrayUtils.createQueryPaddingMask(tokenizer, input);
+                INDArray keyPaddingMaskFromSource = NDArrayUtils.createKeyPaddingMask(tokenizer, input);
+                INDArray queryPaddingMaskFromTarget = NDArrayUtils.createQueryPaddingMask(tokenizer, target);
+                INDArray keyPaddingMaskFromTarget = NDArrayUtils.createKeyPaddingMask(tokenizer, target);
+                INDArray lookAheadMask = NDArrayUtils.createLookAheadMask((int)target.shape()[0], 
+                                                                         (int)target.shape()[1]);
 
+                // Décoder les données encodées avec les masques
+                INDArray decodedOutput = decoder.decode(true, 
+                                                      encoded, 
+                                                      encoded, 
+                                                      batch,
+                                                      lookAheadMask,
+                                                      queryPaddingMaskFromSource,
+                                                      keyPaddingMaskFromSource,
+                                                      queryPaddingMaskFromTarget,
+                                                      keyPaddingMaskFromTarget);
 
                 // Affiche les tableaux d'attention croisée (encoder : self  decoder: self, cross)
                 if (traceIsOn) {
@@ -345,7 +359,6 @@ public class TransformerModel implements Serializable {
     }
 
     public float trainEpoch(DataGenerator dataGenerator) throws IOException {
-        
         float totalLoss = 0.0f;
         int totalTokens = 0;
 
@@ -357,7 +370,6 @@ public class TransformerModel implements Serializable {
         optimizer.setEpoch(optimizer.getEpoch() + 1);
 
         while (dataGenerator.hasNextBatch()) {
-
             // Nettoyer les gradients précédents
             cleanGradients();
 
@@ -368,8 +380,24 @@ public class TransformerModel implements Serializable {
             // Encoder les données du batch
             INDArray encoded = encoder.encode(true, batch);
 
-            // Décoder les données encodées
-            INDArray decodedOutput = decoder.decode(true, encoded, encoded, batch, null);
+            // Créer les masques nécessaires
+            INDArray queryPaddingMaskFromSource = NDArrayUtils.createQueryPaddingMask(tokenizer, input);
+            INDArray keyPaddingMaskFromSource = NDArrayUtils.createKeyPaddingMask(tokenizer, input);
+            INDArray queryPaddingMaskFromTarget = NDArrayUtils.createQueryPaddingMask(tokenizer, target);
+            INDArray keyPaddingMaskFromTarget = NDArrayUtils.createKeyPaddingMask(tokenizer, target);
+            INDArray lookAheadMask = NDArrayUtils.createLookAheadMask((int)target.shape()[0], 
+                                                                     (int)target.shape()[1]);
+
+            // Décoder les données encodées avec les masques
+            INDArray decodedOutput = decoder.decode(true, 
+                                                  encoded, 
+                                                  encoded, 
+                                                  batch,
+                                                  lookAheadMask,
+                                                  queryPaddingMaskFromSource,
+                                                  keyPaddingMaskFromSource,
+                                                  queryPaddingMaskFromTarget,
+                                                  keyPaddingMaskFromTarget);
 
             // Affiche les tableaux d'attention croisée (encoder : self  decoder: self, cross)
             if (traceIsOn) {
@@ -881,56 +909,74 @@ public class TransformerModel implements Serializable {
      * @param maxLength Longueur maximale de la séquence générée.
      * @return Texte généré.
      */
-    public String infer(String prompt, int maxLength) {
-        
+    public String infer(String input, int maxNewTokens) {
         if (!isTrained) {
             throw new IllegalStateException("Le modèle doit être entraîné avant l'inférence.");
         }
-        System.out.println("Prompt: " + prompt);
+        System.out.println("Prompt: " + input);
 
         // Tokenisation du prompt
-        List<String> promptTokens = tokenizer.tokenize(prompt);
+        List<String> promptTokens = tokenizer.tokenize(input);
         List<Integer> promptTokenIds = tokenizer.tokensToIds(promptTokens);
-    
+        
+        System.out.println("Tokenisation du prompt: " + promptTokens);
+        System.out.println("IDs des tokens du prompt: " + promptTokenIds);
+        
         // Ajouter le token de début si nécessaire
         promptTokenIds.add(0, tokenizer.getStartTokenId());
-    
+
         // Convertir la liste en INDArray [1, seqLength]
         INDArray data = Nd4j.create(DataType.INT, 1, promptTokenIds.size());
         for (int j = 0; j < promptTokenIds.size(); j++) {
             data.putScalar(new int[] { 0, j }, promptTokenIds.get(j));
         }
-    
+
         // Encoder le prompt (traité comme un batch de taille 1)
         Batch encoderBatch = new Batch(data, null, tokenizer);
-        INDArray encodedPrompt = encoder.encode(false, encoderBatch); // [1,10,50]
-    
+        INDArray encodedPrompt = encoder.encode(false, encoderBatch);
+
         // Stocker les tokens d'entrée de l'encodeur pour la cross-attention
-        INDArray encoderInputTokens = encoderBatch.getData(); // [1,10]
-    
+        INDArray encoderInputTokens = encoderBatch.getData();
+
         // Initialiser les IDs de sortie avec le token de début
         List<Integer> outputIds = new ArrayList<>();
         outputIds.add(tokenizer.getStartTokenId());
-    
-        // Paramètre de température pour le softmax
-        float temperature = 0.7f;
-    
-        for (int i = 0; i < maxLength; i++) {
+
+        // Créer les masques en dehors de la boucle
+        INDArray queryPaddingMaskFromSource = NDArrayUtils.createQueryPaddingMask(tokenizer, encoderInputTokens);
+        INDArray keyPaddingMaskFromSource = NDArrayUtils.createKeyPaddingMask(tokenizer, encoderInputTokens);
+
+
+        for (int i = 0; i < maxNewTokens; i++) {
             // Convertir les IDs de sortie en INDArray [1, currentOutputLength]
             INDArray decoderInputIds = Nd4j.create(DataType.INT, 1, outputIds.size());
             for (int j = 0; j < outputIds.size(); j++) {
                 decoderInputIds.putScalar(new int[] { 0, j }, outputIds.get(j));
             }
-    
+
             // Créer un Batch pour le décodeur avec les données actuelles
             Batch decoderBatch = new Batch(decoderInputIds, null, tokenizer);
-    
+
+            // Créer les masques spécifiques au décodeur pour cette itération
+            INDArray queryPaddingMaskFromTarget = NDArrayUtils.createQueryPaddingMask(tokenizer, decoderInputIds);
+            INDArray keyPaddingMaskFromTarget = NDArrayUtils.createKeyPaddingMask(tokenizer, decoderInputIds);
+            INDArray lookAheadMask = NDArrayUtils.createLookAheadMask((int)decoderInputIds.shape()[0], 
+                                                                     (int)decoderInputIds.shape()[1]);
+
             // Encoder les IDs de sortie
-            INDArray encodedDecoderInput = tokenizer.lookupEmbeddings(decoderInputIds); // [1, currentOutputLength, dModel]
-    
-            // Décoder en passant les tokens d'entrée de l'encodeur
-            INDArray logits = decoder.decode(false, encodedPrompt, encodedDecoderInput, decoderBatch, encoderInputTokens); // [1,1, vocabSize]
-    
+            INDArray encodedDecoderInput = tokenizer.lookupEmbeddings(decoderInputIds);
+
+            // Décoder avec tous les masques
+            INDArray logits = decoder.decode(false, 
+                                           encodedPrompt, 
+                                           encodedDecoderInput, 
+                                           decoderBatch,
+                                           lookAheadMask,
+                                           queryPaddingMaskFromSource,
+                                           keyPaddingMaskFromSource,
+                                           queryPaddingMaskFromTarget,
+                                           keyPaddingMaskFromTarget);
+
             // Extraction des logits du dernier token généré
             int lastPosition = (int) logits.shape()[1] - 1; // seqLength - 1
             INDArray lastTokenLogits = logits.get(
@@ -938,11 +984,23 @@ public class TransformerModel implements Serializable {
                     NDArrayIndex.point(lastPosition), // dernière position dans seqLength
                     NDArrayIndex.all() // tous les éléments dans vocabSize
             ).dup(); // [vocabSize]
-    
+
+                    // Appliquer frequency penalty
+            if (frequencyPenalty > 0) {
+                INDArray freqMask = Nd4j.zeros(lastTokenLogits.shape());
+                for (int j = 0; j < lastTokenLogits.length(); j++) {
+                    int freq = tokenizer.getFrequency(j);
+                    if (freq > 0) {
+                        freqMask.putScalar(j, freq * frequencyPenalty);
+                    }
+                }
+                lastTokenLogits = lastTokenLogits.sub(freqMask);
+            }
+
             // Appliquer la température au softmax
             lastTokenLogits = lastTokenLogits.div(temperature);
-            INDArray softmaxLogits = Transforms.softmax(lastTokenLogits, false); // [vocabSize]
-    
+            INDArray softmaxLogits = Transforms.softmax(lastTokenLogits); // [vocabSize]
+
             // Masquer les tokens spéciaux sauf <END>
             INDArray specialTokenMask = Nd4j.ones(softmaxLogits.shape());
             specialTokenMask.putScalar(new int[] { tokenizer.getPadTokenId() }, 0);
@@ -950,21 +1008,24 @@ public class TransformerModel implements Serializable {
             specialTokenMask.putScalar(new int[] { tokenizer.getStartTokenId() }, 0);
             softmaxLogits = softmaxLogits.mul(specialTokenMask);
             softmaxLogits = softmaxLogits.div(softmaxLogits.sumNumber().floatValue());
-    
+
             // Sélectionner le token avec la plus haute probabilité
             int predictedTokenId = Nd4j.argMax(softmaxLogits, 0).getInt(0);
-    
-            // Ajouter le token prédit à la séquence de sortie
-            outputIds.add(predictedTokenId);
-    
+
+
             // Vérification du token de fin
             if (predictedTokenId == tokenizer.getEndTokenId()) {
                 break;
             }
+
+            // Ajouter le token prédit à la séquence de sortie
+            outputIds.add(predictedTokenId);
+
+            // Mettre à jour la fréquence du token généré
+            tokenizer.updateFrequency(predictedTokenId);
         }
-    
+
         // Conversion des IDs en tokens
-        // Exclure le token de début
         List<Integer> generatedTokenIds = outputIds.subList(1, outputIds.size());
         return tokenizer.idsToTokens(generatedTokenIds);
     }
@@ -1073,7 +1134,21 @@ public class TransformerModel implements Serializable {
         return optimizer;
     }
 
+    public void setTemperature(float temperature) {
+        this.temperature = temperature;
+    }
 
     
+    public void setFrequencyPenalty(float penalty) {
+        this.frequencyPenalty = penalty;
+    }
+    
+
+    public void setAttentionDropout(double dropout) {
+        this.attentionDropout = dropout;
+        // Mettre à jour le dropout dans les couches d'attention
+        encoder.setAttentionDropout(dropout);
+        decoder.setAttentionDropout(dropout);
+    }
 
 }

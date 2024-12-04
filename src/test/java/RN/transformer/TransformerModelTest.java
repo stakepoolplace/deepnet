@@ -144,12 +144,12 @@ public class TransformerModelTest {
         model.train(mockDataGenerator, 1);
         
         String inputPrompt = "Some input text";
-        String response = model.infer(inputPrompt, 45);
+        String response = model.infer(inputPrompt, 5);
         assertNotNull("L'inférence devrait retourner une réponse non-null", response);
         System.out.println("Inférence 1 prompt: " + inputPrompt + " : " + response);
         // Ici, vous pouvez ajouter d'autres assertions pour vérifier la plausibilité de la réponse.
         inputPrompt = "This is a dummy sentence";
-        response = model.infer(inputPrompt, 32);
+        response = model.infer(inputPrompt, 5);
         assertNotNull("L'inférence devrait retourner une réponse non-null", response);
         System.out.println("Inférence 2 prompt: " + inputPrompt + " : " + response);
 

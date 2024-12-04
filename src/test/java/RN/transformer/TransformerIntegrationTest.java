@@ -32,24 +32,24 @@ public class TransformerIntegrationTest {
         
         // Initialisation du Tokenizer avec un vocabulaire minimal
         int maxSequenceLength = 3;
-        List<String> vocabulary = Arrays.asList("<PAD>", "<UNK>", "<START>", "<END>", "hello", "world");
+        List<String> vocabulary = Arrays.asList("<PAD>", "<UNK>", "<START>", "<END>", "hello", "world", "hi", "there");
         int dModel = 64;   // Taille modeste qui fonctionne
         Tokenizer tokenizer = new Tokenizer(vocabulary, dModel, maxSequenceLength);
         
         // Configuration qui fonctionne de manière fiable
-        int numLayers = 2;
-        int numHeads = 1;
-        int dff = 128;
+        int numLayers = 5;
+        int numHeads = 2;
+        int dff = 512;
         int vocabSize = vocabulary.size();
         float dropoutRate = 0.0f;
-        float lr = 0.0001f;        // Learning rate original
+        float lr = 0.001f;        // Learning rate original
         int warmupSteps = 0;       // Pas de warmup
         int batchSize = 1;
         model = new TransformerModel(numLayers, dModel, numHeads, dff, dropoutRate, vocabSize, tokenizer, lr, warmupSteps);
         
         // Une seule paire d'apprentissage
-        List<String> data = Arrays.asList("hello");
-        List<String> targets = Arrays.asList("world");
+        List<String> data = Arrays.asList("hello", "hi");
+        List<String> targets = Arrays.asList("world", "there");
         mockDataGenerator = new DataGenerator(data, targets, tokenizer, batchSize, maxSequenceLength);
  
 
@@ -60,7 +60,7 @@ public class TransformerIntegrationTest {
         
         // Effectuer l'entraînement
         float finalLoss = 0;
-        int maxEpochs = 200;
+        int maxEpochs = 102;
         int convergenceCount = 0;
         
         model.setTrace(false);
@@ -75,7 +75,7 @@ public class TransformerIntegrationTest {
                 System.out.println(String.format("Epoch %d - Loss: %.6f", epoch, loss));
             }
             
-            if (loss < 0.01) {
+            if (loss < 0.004) {
                 convergenceCount++;
                 if (convergenceCount >= 5) {
                     finalLoss = loss;
@@ -92,7 +92,7 @@ public class TransformerIntegrationTest {
         System.out.println("\n=== Tests d'inférence ===");
         Map<String, String> testPairs = new LinkedHashMap<>();
         testPairs.put("hello", "world");
-        // testPairs.put("hi", "there");
+         testPairs.put("hi", "there");
         // testPairs.put("good", "morning");
         // testPairs.put("bye", "now");
         
@@ -161,7 +161,7 @@ public class TransformerIntegrationTest {
 
 
         // Initialisation de l'entraînement avec un seul epoch
-        float loss = model.trainEpoch(mockDataGenerator);
+        float loss = model.train(mockDataGenerator, maxEpochs);
 
         // Vérification que le modèle est marqué comme entraîné
         assertTrue("Le modèle devrait être marqué comme entraîné après l'entraînement", model.isTrained());

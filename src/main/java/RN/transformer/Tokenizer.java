@@ -18,7 +18,7 @@ public class Tokenizer implements Serializable {
     private final LinkedHashMap<String, Integer> tokenToId;
     private final LinkedHashMap<Integer, String> idToToken;
     private int vocabSize;
-    private INDArray pretrainedEmbeddings;
+    public INDArray pretrainedEmbeddings;
     private final int embeddingSize;
     private final int maxSequenceLength;
 
@@ -34,6 +34,8 @@ public class Tokenizer implements Serializable {
 
     private List<Integer> lastForwardTokenIds = new ArrayList<>();
     private INDArray embeddingGradients = null;
+    
+    private Map<Integer, Integer> tokenFrequencies = new HashMap<>();
     
     // Constructeur utilisant des WordVectors
     public Tokenizer(WordVectors wordVectors, int embeddingSize, int maxSequenceLength) {
@@ -90,7 +92,11 @@ public class Tokenizer implements Serializable {
      */
     public INDArray tokensToINDArray(List<String> tokens) {
         int[] ids = tokens.stream()
-                          .mapToInt(token -> tokenToId.getOrDefault(token, getUnkTokenId()))
+                          .mapToInt(token -> {
+                              int id = tokenToId.getOrDefault(token, getUnkTokenId());
+                              updateFrequency(id);
+                              return id;
+                          })
                           .toArray();
         // Assurer la forme [1, N]
         INDArray arr = Nd4j.createFromArray(ids).castTo(DataType.INT32).reshape(1, ids.length);
@@ -316,7 +322,11 @@ public class Tokenizer implements Serializable {
     // Conversion de tokens en IDs
     public List<Integer> tokensToIds(List<String> tokens) {
         return tokens.stream()
-                     .map(token -> tokenToId.getOrDefault(token, getUnkTokenId()))
+                     .map(token -> {
+                         int id = tokenToId.getOrDefault(token, getUnkTokenId());
+                         updateFrequency(id);
+                         return id;
+                     })
                      .collect(Collectors.toList());
     }
 
@@ -422,8 +432,13 @@ public class Tokenizer implements Serializable {
         embeddingGradients.assign(0.0);
     }
 
-
-
-
+    public int getFrequency(int tokenId) {
+        return tokenFrequencies.getOrDefault(tokenId, 0);
+    }
+    
+    // Dans la méthode encode ou là où vous traitez les tokens
+    public void updateFrequency(int tokenId) {
+        tokenFrequencies.merge(tokenId, 1, Integer::sum);
+    }
 
 }

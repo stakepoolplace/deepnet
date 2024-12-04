@@ -25,6 +25,7 @@ public class Encoder implements Serializable {
     private PositionalEncoding positionalEncoding;
     private LayerNorm layerNorm;
     private Tokenizer tokenizer;
+    private double attentionDropout = 0.0;
 
     public Encoder() {
     }
@@ -267,12 +268,12 @@ public class Encoder implements Serializable {
             // Attention multi-têtes auto-attention
             INDArray attnOutput = selfAttention.forward(x, x, x, keyPaddingMask, queryPaddingMask, null); // [batchSize, seqLength, dModel]
             
-            attnOutput = dropout1.apply(isTraining, attnOutput); // Appliquer dropout
+            attnOutput = dropout1.forward(isTraining, attnOutput); // Appliquer dropout
             INDArray out1 = layerNorm1 != null ? layerNorm1.forward(x.add(attnOutput)) : x.add(attnOutput); // Add & Norm [batchSize, seqLength, dModel]
 
             // Feed-forward
             INDArray ffOutput = feedForward.forward(out1); // [batchSize, seqLength, dModel]
-            ffOutput = dropout2.apply(isTraining, ffOutput); // Appliquer dropout
+            ffOutput = dropout2.forward(isTraining, ffOutput); // Appliquer dropout
             INDArray out2 = layerNorm2 != null ? layerNorm2.forward(out1.add(ffOutput)) : out1.add(ffOutput); // Add & Norm [batchSize, seqLength, dModel]
 
             return out2;
@@ -375,6 +376,15 @@ public class Encoder implements Serializable {
          */
         public int getNumHeads() {
             return selfAttention.getNumHeads();
+        }
+    }
+
+    public void setAttentionDropout(double dropout) {
+        this.attentionDropout = dropout;
+        // Propager aux couches d'encodeur
+        for (EncoderLayer layer : layers) {
+            layer.dropout1.setDropoutRate(dropout);
+            layer.dropout2.setDropoutRate(dropout);
         }
     }
 }

@@ -69,11 +69,12 @@ public class TransformerHeavyIntegrationTest {
     @Test
     public void testTrainingWithPretrainedEmbeddings() throws Exception {
         
-        model.getOptimizer().setMaxEpochs(5);
+        int epochs = 20;
+        model.getOptimizer().setMaxEpochs(epochs);
         model.setTrace(false);
 
         // Entraîner 
-        float initialLoss = model.train(mockDataGenerator,5);
+        float initialLoss = model.train(mockDataGenerator, epochs);
 
         // Vérification que le modèle est marqué comme entraîné
         assertTrue("Le modèle devrait être marqué comme entraîné après l'entraînement", model.isTrained());
@@ -109,8 +110,6 @@ public class TransformerHeavyIntegrationTest {
         int batchSize = 2;
         int sequenceLength = 6;
         mockDataGenerator = new DataGenerator(data, targets, tokenizer, batchSize, sequenceLength);
-
-
 
         // Initialisation des variables pour suivre la perte
         List<Float> lossHistory = new java.util.ArrayList<>();
@@ -167,7 +166,7 @@ public class TransformerHeavyIntegrationTest {
     @Test
     public void testInferenceWithPretrainedEmbeddings() throws Exception {
         // Effectuer l'entraînement
-        float loss = model.trainEpoch(mockDataGenerator);
+        float loss = model.train(mockDataGenerator, 5);
 
         // Effectuer une inférence
         String input = "chiens aiment le jardin";

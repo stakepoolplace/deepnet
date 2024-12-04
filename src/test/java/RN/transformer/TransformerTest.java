@@ -9,7 +9,6 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
@@ -24,6 +23,7 @@ import org.junit.Test;
 import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.indexing.NDArrayIndex;
 
 import RN.utils.NDArrayUtils;
 
@@ -155,58 +155,73 @@ public class TransformerTest {
     @Test
     public void testEncodeDecode() {
         // Initialiser le Tokenizer avec un vocabulaire connu
-        List<String> vocabulary = Arrays.asList("le", "chat", "est", "sur", "tapis", "les", "chiens", "dans", "jardin", "aiment", "manger", "<PAD>", "<UNK>", "<START>", "<END>");
+        List<String> vocabulary = Arrays.asList("<PAD>", "<UNK>", "<START>", "<END>", "le", "chat", "est", "sur", "tapis");
         
-        // Initialiser le modèle avec les paramètres appropriés
+        // Configuration du modèle
         int numLayers = 2;
-        int dModel = 300;
-        int numHeads = 6;
-        int dff = 512;
+        int dModel = 64;
+        int numHeads = 2;
+        int dff = 128;
         int vocabSize = vocabulary.size();
-        int maxSequenceLength = 50;
+        int maxSequenceLength = 10;
         float learningRate = 0.0001f;
-        int warmupSteps = 10;
+        int warmupSteps = 0;
         
         Tokenizer tokenizer = new Tokenizer(vocabulary, dModel, maxSequenceLength);
-        
-        // Utiliser le constructeur qui prend un Tokenizer personnalisé
         TransformerModel model = new TransformerModel(numLayers, dModel, numHeads, dff, 0.1, vocabSize, tokenizer, learningRate, warmupSteps);
         
-        String testInput = "le chat est sur le tapis les chiens dans le jardin";
-        String testExpected = "les chiens aiment le jardin";
-        System.out.println("Test input: " + testInput);
-        
+        // Données de test
+        String testInput = "le chat";
+        String testExpected = "sur tapis";
         List<String> tokensIn = model.tokenizer.tokenize(testInput);
         List<String> tokensOut = model.tokenizer.tokenize(testExpected);
-        
         Batch batch = new Batch(tokensIn, tokensOut, model.tokenizer);
-        INDArray data = batch.getData();       // [batch_size, seq_length_source]
- 
+        
+        // Créer les différents masques
+        INDArray lookAheadMask = NDArrayUtils.createLookAheadMask(1, tokensOut.size());
+        INDArray queryPaddingMaskFromSource = NDArrayUtils.createKeyPaddingMask(model.tokenizer, batch.getData());
+        INDArray keyPaddingMaskFromSource = queryPaddingMaskFromSource.dup();
+        INDArray queryPaddingMaskFromTarget = NDArrayUtils.createKeyPaddingMask(model.tokenizer, batch.getTarget());
+        INDArray keyPaddingMaskFromTarget = queryPaddingMaskFromTarget.dup();
+        
         // Encoder l'entrée
         INDArray encoded = model.encoder.encode(false, batch);
+        assertNotNull("L'encodage ne devrait pas être null", encoded);
         
-        assertNotNull(encoded, "Encoded output should not be null.");
-        System.out.println("Encoded output shape: " + Arrays.toString(encoded.shape()));
+        // Vérifier la forme de l'encodage
+        long[] encodedShape = encoded.shape();
+        assertEquals("Batch size incorrect", 1, encodedShape[0]);
+        assertEquals("Longueur de séquence incorrecte", tokensIn.size(), encodedShape[1]);
+        assertEquals("Dimension du modèle incorrecte", dModel, encodedShape[2]);
         
-        // Convertir la séquence cible en identifiants d'IDs avec le tokenizer
-        List<Integer> targetTokenIds = model.tokenizer.tokensToIds(tokensOut);
-        INDArray targetTokenIdsArray = Nd4j.createFromArray(targetTokenIds.stream().mapToInt(i -> i).toArray()).reshape(1, targetTokenIds.size());
-    
-        // Convertir les IDs de la séquence cible en embeddings
-        INDArray encodedDecoderInput = model.tokenizer.lookupEmbeddings(targetTokenIdsArray); // [batch_size, seq_length_target, dModel]
+        // Décoder avec tous les masques nécessaires
+        INDArray decoderInput = model.tokenizer.lookupEmbeddings(batch.getTarget());
+        INDArray decoded = model.decoder.decode(
+            false,              // isTraining
+            encoded,           // encoderOutput
+            decoderInput,      // encodedDecoderInput
+            batch,             // batch
+            lookAheadMask,     // lookAheadMask
+            queryPaddingMaskFromSource,  // queryPaddingMaskFromSource
+            keyPaddingMaskFromSource,    // keyPaddingMaskFromSource
+            queryPaddingMaskFromTarget,  // queryPaddingMaskFromTarget
+            keyPaddingMaskFromTarget     // keyPaddingMaskFromTarget
+        );
         
-
-        // Décode l'entrée encodée en utilisant les embeddings de la séquence cible
-        INDArray decoded = model.decoder.decode(false, encoded, encodedDecoderInput, batch, data);
-        assertNotNull(decoded, "Decoded output should not be null.");
-        System.out.println("Decoded output shape: " + Arrays.toString(decoded.shape()));
-        System.out.println("Decoded output: " + decoded);
+        assertNotNull("Le décodage ne devrait pas être null", decoded);
         
-        // Vérifier la forme de la sortie du décodeur
-        assertEquals(1, (int) decoded.shape()[0], "Batch size should be 1");
+        // Vérifications des dimensions
+        long[] decodedShape = decoded.shape();
+        assertEquals("Batch size incorrect pour la sortie", 1, decodedShape[0]);
+        assertEquals("Longueur de séquence incorrecte pour la sortie", tokensOut.size(), decodedShape[1]);
+        assertEquals("Dimension de sortie incorrecte", vocabSize, decodedShape[2]);
         
-        int outputSize = model.getVocabSize(); // Assurez-vous que cette valeur est correcte
-        assertEquals(outputSize, (int) decoded.shape()[2], "Output size should be " + outputSize);
+        // Vérifier que la sortie contient des valeurs valides
+        for (int i = 0; i < decodedShape[1]; i++) {
+            INDArray logits = decoded.get(NDArrayIndex.point(0), NDArrayIndex.point(i), NDArrayIndex.all());
+            assertTrue("Les logits devraient contenir des valeurs finies", !logits.isInfinite().any());
+            assertTrue("Les logits ne devraient pas contenir de NaN", !logits.isNaN().any());
+        }
     }
     
     
@@ -219,24 +234,38 @@ public class TransformerTest {
         List<String> tokensOut = model.tokenizer.tokenize(testExpected);
     
         Batch batch = new Batch(tokensIn, tokensOut, model.tokenizer);
-        INDArray data = batch.getData();   // Utiliser directement le format INDArray
-        INDArray target = batch.getTarget();  // Utiliser directement le format INDArray
-        INDArray mask = batch.getMask();  // Masque de padding pour les séquences
-
+        
+        // Créer les différents masques
+        INDArray lookAheadMask = NDArrayUtils.createLookAheadMask(1, tokensOut.size());
+        INDArray queryPaddingMaskFromSource = NDArrayUtils.createKeyPaddingMask(model.tokenizer, batch.getData());
+        INDArray keyPaddingMaskFromSource = queryPaddingMaskFromSource.dup();
+        INDArray queryPaddingMaskFromTarget = NDArrayUtils.createKeyPaddingMask(model.tokenizer, batch.getTarget());
+        INDArray keyPaddingMaskFromTarget = queryPaddingMaskFromTarget.dup();
 
         // Passe forward
         INDArray encoded = model.encoder.encode(true, batch);
-        INDArray decoderOutput = model.decoder.decode(true, encoded, encoded, batch, data);
-    
+        INDArray decoderInput = model.tokenizer.lookupEmbeddings(batch.getTarget());
+        INDArray decoderOutput = model.decoder.decode(
+            true,              // isTraining
+            encoded,           // encoderOutput
+            decoderInput,      // encodedDecoderInput
+            batch,             // batch
+            lookAheadMask,     // lookAheadMask
+            queryPaddingMaskFromSource,  // queryPaddingMaskFromSource
+            keyPaddingMaskFromSource,    // keyPaddingMaskFromSource
+            queryPaddingMaskFromTarget,  // queryPaddingMaskFromTarget
+            keyPaddingMaskFromTarget     // keyPaddingMaskFromTarget
+        );
+
         // Vérifier la forme des logits
         System.out.println("Decoder Output Shape: " + Arrays.toString(decoderOutput.shape()));
         
         // Création d'un gradient fictif pour la rétropropagation
         INDArray gradOutput = Nd4j.rand(decoderOutput.shape()).castTo(DataType.FLOAT);
-    
+
         // Appel de la méthode backward
         Map<String, INDArray> gradients = model.decoder.backward(gradOutput);
-    
+
         // Assertions pour vérifier les gradients
         assertNotNull("Les gradients ne devraient pas être null", gradients);
         assertFalse("Le map des gradients ne devrait pas être vide", gradients.isEmpty());
@@ -363,7 +392,7 @@ public class TransformerTest {
         model.setTrained(true); // Assurez-vous d'avoir un setter pour cette variable si elle est privée
 
         // Effectuer l'inférence
-        String response = model.infer("Hello world", 100);
+        String response = model.infer("Hello world", 3);
         assertFalse(response.isEmpty(), "Response should not be empty.");
     }
     

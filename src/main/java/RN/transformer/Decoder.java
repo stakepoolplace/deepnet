@@ -31,6 +31,8 @@ public class Decoder implements Serializable {
 
     private Tokenizer tokenizer;
 
+    private double attentionDropout = 0.0;
+
     public Decoder(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, Tokenizer tokenizer, boolean useLayerNorm) {
         this.numLayers = numLayers;
         this.dModel = dModel;
@@ -69,7 +71,15 @@ public class Decoder implements Serializable {
      * @param encoderInputTokens Tokens encodés de l'encodeur.
      * @return Logits après projection linéaire.
      */
-    public INDArray decode(boolean isTraining, INDArray encoderOutput, INDArray encodedDecoderInput, Batch batch, INDArray encoderInputTokens) {
+    public INDArray decode(boolean isTraining, 
+                          INDArray encoderOutput, 
+                          INDArray encodedDecoderInput, 
+                          Batch batch,
+                          INDArray lookAheadMask,
+                          INDArray queryPaddingMaskFromSource,
+                          INDArray keyPaddingMaskFromSource,
+                          INDArray queryPaddingMaskFromTarget,
+                          INDArray keyPaddingMaskFromTarget) {
         // Réinitialiser le cache avant une nouvelle passe forward
         resetCache();
 
@@ -78,35 +88,6 @@ public class Decoder implements Serializable {
         INDArray posEncoding = positionalEncoding.getPositionalEncoding(batch.getData().shape()[1]);
         posEncoding = posEncoding.reshape(1, batch.getData().shape()[1], dModel).broadcast(inputEmbeddings.shape());
         encodedDecoderInput = inputEmbeddings.add(posEncoding);
-
-        // Variables pour les masques
-        INDArray keyPaddingMaskFromSource;
-        INDArray queryPaddingMaskFromSource = NDArrayUtils.createQueryPaddingMask(tokenizer, batch.getData());
-        INDArray keyPaddingMaskFromTarget;
-        INDArray queryPaddingMaskFromTarget;
-        INDArray lookAheadMask;
-        int batchSize;
-        int seqLength;
-
-        if (isTraining) {
-            keyPaddingMaskFromSource = NDArrayUtils.createKeyPaddingMask(tokenizer, batch.getData());
-            // Entraînement : utiliser batch.getTarget()
-            keyPaddingMaskFromTarget = NDArrayUtils.createKeyPaddingMask(tokenizer, batch.getTarget()); // Séquence cible
-            queryPaddingMaskFromTarget = NDArrayUtils.createQueryPaddingMask(tokenizer, batch.getTarget());
-            batchSize = (int) batch.getTarget().shape()[0];
-            seqLength = (int) batch.getTarget().shape()[1];
-        } else {
-            // Inférence 
-            keyPaddingMaskFromSource = NDArrayUtils.createKeyPaddingMask(tokenizer, encoderInputTokens);
-            // utiliser batch.getData() pour la séquence cible
-            keyPaddingMaskFromTarget = NDArrayUtils.createKeyPaddingMask(tokenizer, batch.getData()); // Séquence cible
-            queryPaddingMaskFromTarget = NDArrayUtils.createQueryPaddingMask(tokenizer, batch.getData());
-            batchSize = (int) batch.getData().shape()[0];
-            seqLength = (int) batch.getData().shape()[1];
-        }
-
-        // Construction du masque look-ahead
-        lookAheadMask = NDArrayUtils.createLookAheadMask(batchSize, seqLength);
 
         // Passer à travers les couches du décodeur
         for (int i = 0; i < layers.size(); i++) {
@@ -122,18 +103,14 @@ public class Decoder implements Serializable {
                 queryPaddingMaskFromTarget,
                 keyPaddingMaskFromTarget
             );
-            forwardCache.set(i, encodedDecoderInput.dup()); // Stocker l'entrée actuelle dans le cache
+            forwardCache.set(i, encodedDecoderInput.dup());
         }
 
-        // Normalisation finale
+        // Normalisation finale et projection linéaire
         encodedDecoderInput = layerNorm != null ? layerNorm.forward(encodedDecoderInput) : encodedDecoderInput;
-        lastNormalizedInput = encodedDecoderInput.dup(); // Stocker l'entrée normalisée
-
-        // Projection linéaire vers la taille du vocabulaire
-        INDArray logits = linearProjection.project(encodedDecoderInput); // [batchSize, targetSeqLength, vocabSize]
-        // System.out.println("Logits shape: " + Arrays.toString(logits.shape()));
-
-        return logits;
+        lastNormalizedInput = encodedDecoderInput.dup();
+        
+        return linearProjection.project(encodedDecoderInput);
     }
 
     /**
@@ -292,17 +269,17 @@ public class Decoder implements Serializable {
             
             // Self-attention avec masque look-ahead
             INDArray attn1 = selfAttention.forward(x, x, x, queryPaddingMaskTarget, keyPaddingMaskTarget, lookAheadMask);
-            attn1 = dropout1.apply(isTraining, attn1);
+            attn1 = dropout1.forward(isTraining, attn1);
             x = layerNorm1 != null ? layerNorm1.forward(x.add(attn1)) : x.add(attn1); // Add & Norm
 
             // Encoder-decoder attention sans masque look-ahead
             INDArray attn2 = encoderDecoderAttention.forward(x, encoderOutput, encoderOutput, queryPaddingMaskTarget, keyPaddingMaskSource, null);
-            attn2 = dropout2.apply(isTraining, attn2);
+            attn2 = dropout2.forward(isTraining, attn2);
             x = layerNorm2 != null ? layerNorm2.forward(x.add(attn2)) : x.add(attn2); // Add & Norm
 
             // Feed-forward
             INDArray ffOutput = feedForward.forward(x);
-            ffOutput = dropout3.apply(isTraining, ffOutput);
+            ffOutput = dropout3.forward(isTraining, ffOutput);
             return layerNorm3 != null ? layerNorm3.forward(x.add(ffOutput)) : x.add(ffOutput); // Add & Norm again
         }
 
@@ -417,6 +394,16 @@ public class Decoder implements Serializable {
                    (layerNorm1 != null ? layerNorm1.getNumberOfGradients() : 0) +
                    (layerNorm2 != null ? layerNorm2.getNumberOfGradients() : 0) +
                    (layerNorm3 != null ? layerNorm3.getNumberOfGradients() : 0);
+        }
+    }
+
+    public void setAttentionDropout(double dropout) {
+        this.attentionDropout = dropout;
+        // Propager aux couches de décodeur
+        for (DecoderLayer layer : layers) {
+            layer.dropout1.setDropoutRate(dropout);
+            layer.dropout2.setDropoutRate(dropout);
+            layer.dropout3.setDropoutRate(dropout);
         }
     }
 }
