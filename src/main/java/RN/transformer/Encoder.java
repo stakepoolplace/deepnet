@@ -26,6 +26,7 @@ public class Encoder implements Serializable {
     private LayerNorm layerNorm;
     private Tokenizer tokenizer;
     private double attentionDropout = 0.0;
+    private float positionalEncodingScale = 1.0f;
 
     public Encoder() {
     }
@@ -385,6 +386,22 @@ public class Encoder implements Serializable {
         for (EncoderLayer layer : layers) {
             layer.dropout1.setDropoutRate(dropout);
             layer.dropout2.setDropoutRate(dropout);
+        }
+    }
+
+    /**
+     * Met à jour l'échelle de l'encodage positionnel
+     * @param scale nouvelle échelle à appliquer
+     */
+    public void updatePositionalEncodingScale(float scale) {
+        this.positionalEncodingScale = scale;
+        // Recalculer l'encodage positionnel si nécessaire
+        updatePositionalEncoding();
+    }
+
+    private void updatePositionalEncoding() {
+        if (positionalEncoding != null) {
+            positionalEncoding.updateScale(positionalEncodingScale);
         }
     }
 }

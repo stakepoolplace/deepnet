@@ -22,41 +22,13 @@ public class NDArrayUtils {
      * @param softmaxDim  La dimension le long de laquelle appliquer la fonction softmax. Utiliser -1 pour la dernière dimension.
      * @return            L'INDArray après application de la fonction softmax.
      */
-    public static INDArray softmax(INDArray input, int softmaxDim) {
- 
-        // Replace infinity values with a large finite number (1e6)
-        INDArray safeInput = replaceInfinityWithLargeValue(input, 1e6, -1e6);
- 
- 
-        // Si softmaxDim est -1, le définir sur la dernière dimension
-        if (softmaxDim == -1) {
-            softmaxDim = safeInput.rank() - 1;
-        }
-
-
-        // Trouver la valeur maximale le long de la dimension spécifiée pour la stabilité numérique
-        INDArray maxAlongDim = safeInput.max(true, softmaxDim);
-
-        // Soustraire la valeur maximale de l'entrée
-        INDArray shiftedInput = safeInput.sub(maxAlongDim);
-
-        // Appliquer la fonction exponentielle
-        INDArray expShifted = Transforms.exp(shiftedInput);
-
-        // Calculer la somme des exponentielles le long de la dimension spécifiée
-        INDArray sumExp = expShifted.sum(true, softmaxDim);
-
-        // Diviser les exponentielles par la somme pour obtenir les probabilités softmax
-        INDArray softmaxOutput = expShifted.div(sumExp);
-
-        // Vérification de la sortie
-        if (softmaxOutput.isNaN().any() || softmaxOutput.isInfinite().any()) {
-            System.out.println("input : " + input);
-            throw new RuntimeException("Softmax produced NaN or Infinite values");
-        }
-
-        return softmaxOutput;
-
+    public static INDArray softmax(INDArray input, int axis) {
+        INDArray maxValues = input.max(true, axis);
+        INDArray shiftedInput = input.sub(maxValues);
+        
+        INDArray expValues = Transforms.exp(shiftedInput);
+        INDArray sumExp = expValues.sum(true, axis);
+        return expValues.div(sumExp);
     }
 
 

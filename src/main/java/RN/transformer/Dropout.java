@@ -4,45 +4,47 @@ import java.io.Serializable;
 
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.api.buffer.DataType;
 
 public class Dropout implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
     private double dropoutRate;
-    private INDArray dropoutMask;
+    private INDArray lastMask;
 
     public Dropout(double dropoutRate) {
-        setDropoutRate(dropoutRate);
+        this.dropoutRate = dropoutRate;
     }
 
-    public void setDropoutRate(double rate) {
-        if (rate < 0.0 || rate >= 1.0) {
-            throw new IllegalArgumentException("Le taux de dropout doit être compris entre 0 et 1 (exclus)");
-        }
-        this.dropoutRate = rate;
-    }
-
-    public INDArray forward(boolean training, INDArray input) {
-        if (!training || dropoutRate == 0.0) {
+    public INDArray forward(boolean isTraining, INDArray input) {
+        if (!isTraining || dropoutRate == 0.0) {
             return input;
         }
 
         // Créer un masque aléatoire
-        dropoutMask = Nd4j.rand('u',input.shape()).gt(dropoutRate)
-                     .div(1.0 - dropoutRate);
+        INDArray mask = Nd4j.rand(input.shape()).gt(dropoutRate);
         
-        // Appliquer le masque à l'entrée
-        return input.mul(dropoutMask);
+        // Convertir le masque en float avant la division
+        INDArray maskFloat = mask.castTo(DataType.FLOAT);
+        
+        // Mettre à l'échelle pour maintenir la moyenne
+        maskFloat = maskFloat.div(1.0 - dropoutRate);
+        
+        this.lastMask = maskFloat;
+        
+        return input.mul(maskFloat);
     }
 
     public INDArray backward(INDArray gradOutput) {
-        if (dropoutRate == 0.0) {
+        if (lastMask == null) {
             return gradOutput;
         }
-
-        return gradOutput.mul(dropoutMask);
+        return gradOutput.mul(lastMask);
     }
 
+    public void setDropoutRate(double rate) {
+        this.dropoutRate = rate;
+    }
 
 }

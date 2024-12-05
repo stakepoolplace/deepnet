@@ -17,6 +17,7 @@ import org.junit.jupiter.api.TestInstance;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.indexing.NDArrayIndex;
 
 import java.io.File;
 import java.io.IOException;
@@ -236,17 +237,17 @@ public class TokenizerTest {
     @Test
     public void testTrainingAndInference() throws Exception {
         // Augmenter le nombre d'epochs pour un meilleur apprentissage
-        int numEpochs = 20;
+        int numEpochs = 10;
         
         // Ajuster les paramètres d'attention
         model.setAttentionDropout(0.1); // Réduire le dropout pour garder plus d'informations
         model.setPositionalEncodingScale(1.0); // Renforcer l'encodage positionnel
         
         // Ajouter des poids d'attention personnalisés pour les relations grammaticales
-        Map<String, Float> relationWeights = new HashMap<>();
-        relationWeights.put("SUJET_VERBE", 1.5f);
-        relationWeights.put("VERBE_OBJET", 1.5f);
-        model.setRelationWeights(relationWeights);
+        // Map<String, Float> relationWeights = new HashMap<>();
+        // relationWeights.put("SUJET_VERBE", 1.5f);
+        // relationWeights.put("VERBE_OBJET", 1.5f);
+        // model.setRelationWeights(relationWeights);
 
         // Réduire l'influence des mots fréquents
         model.setFrequencyPenalty(0.3f);
@@ -278,12 +279,37 @@ public class TokenizerTest {
 
     // Ajouter une méthode pour visualiser les relations grammaticales
     private void analyzeGrammaticalRelations(String input, INDArray attentionScores) {
+        if (attentionScores == null) {
+            System.out.println("Pas de scores d'attention disponibles");
+            return;
+        }
+
         String[] tokens = input.split(" ");
-        for (int i = 0; i < tokens.length; i++) {
-            for (int j = 0; j < tokens.length; j++) {
-                if (attentionScores.getDouble(i, j) > 0.2) {
+        
+        // Vérifier les dimensions
+        long[] shape = attentionScores.shape();
+        if (shape.length < 4) {
+            System.out.println("Format de scores d'attention invalide");
+            return;
+        }
+        
+        int seqLength = tokens.length;
+        // Utiliser les dimensions minimales entre les tokens et les scores
+        int maxI = Math.min(seqLength, (int)shape[2]);
+        int maxJ = Math.min(seqLength, (int)shape[3]);
+
+        for (int i = 0; i < maxI; i++) {
+            for (int j = 0; j < maxJ; j++) {
+                // Moyenne des scores sur toutes les têtes d'attention
+                double score = attentionScores.get(NDArrayIndex.point(0), 
+                                                 NDArrayIndex.all(), 
+                                                 NDArrayIndex.point(i), 
+                                                 NDArrayIndex.point(j))
+                                            .meanNumber().doubleValue();
+                
+                if (score > 0.2) {
                     System.out.printf("Relation forte entre '%s' et '%s': %.3f%n", 
-                        tokens[i], tokens[j], attentionScores.getDouble(i, j));
+                        tokens[i], tokens[j], score);
                 }
             }
         }

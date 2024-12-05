@@ -291,29 +291,22 @@ public class Tokenizer implements Serializable {
 
     // Conversion de texte en tokens avec ajout des tokens spéciaux et padding
     public List<String> tokenize(String text) {
-        String[] tokens = text.split("\\s+|(?=\\p{Punct})|(?<=\\p{Punct})");
         List<String> tokenList = new ArrayList<>();
-        
-        // Ajouter le token <START>
         tokenList.add(START_TOKEN);
         
-        // Ajouter les tokens de la phrase
-        tokenList.addAll(Arrays.stream(tokens)
-                             .filter(token -> !token.trim().isEmpty())
-                             .collect(Collectors.toList()));
-        
-        // Ajouter le token <END>
-        tokenList.add(END_TOKEN);
-        
-        
-        // Ajouter le padding <PAD> si nécessaire
-        while (tokenList.size() < maxSequenceLength) {
-            tokenList.add(PAD_TOKEN);
+        // Tokeniser le texte en ignorant les tokens spéciaux
+        String[] words = text.split("\\s+");
+        for (String word : words) {
+            if (!isSpecialToken(word)) {
+                tokenList.add(word);
+            }
         }
         
-        // Troncature si la séquence dépasse la longueur maximale
-        if (tokenList.size() > maxSequenceLength) {
-            tokenList = tokenList.subList(0, maxSequenceLength);
+        tokenList.add(END_TOKEN);
+        
+        // Padding
+        while (tokenList.size() < maxSequenceLength) {
+            tokenList.add(PAD_TOKEN);
         }
         
         return tokenList;

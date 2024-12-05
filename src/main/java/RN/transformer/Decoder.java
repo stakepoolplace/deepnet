@@ -33,6 +33,8 @@ public class Decoder implements Serializable {
 
     private double attentionDropout = 0.0;
 
+    private float positionalEncodingScale = 1.0f;
+
     public Decoder(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, Tokenizer tokenizer, boolean useLayerNorm) {
         this.numLayers = numLayers;
         this.dModel = dModel;
@@ -220,7 +222,7 @@ public class Decoder implements Serializable {
     /**
      * Classe interne représentant une couche unique du décodeur.
      */
-    static class DecoderLayer implements Serializable {
+    public static class DecoderLayer implements Serializable {
         private static final long serialVersionUID = 4450374170745550258L;
         Decoder decoder;
         MultiHeadAttention selfAttention;
@@ -270,17 +272,36 @@ public class Decoder implements Serializable {
             // Self-attention avec masque look-ahead
             INDArray attn1 = selfAttention.forward(x, x, x, queryPaddingMaskTarget, keyPaddingMaskTarget, lookAheadMask);
             attn1 = dropout1.forward(isTraining, attn1);
-            x = layerNorm1 != null ? layerNorm1.forward(x.add(attn1)) : x.add(attn1); // Add & Norm
+            
+            x = x.add(attn1);  // Première connexion résiduelle
+    
+            if (layerNorm1 != null) {
+                x = layerNorm1.forward(x);
+            }
 
-            // Encoder-decoder attention sans masque look-ahead
+
+            // Encoder-decoder (cross) attention sans masque look-ahead
             INDArray attn2 = encoderDecoderAttention.forward(x, encoderOutput, encoderOutput, queryPaddingMaskTarget, keyPaddingMaskSource, null);
             attn2 = dropout2.forward(isTraining, attn2);
-            x = layerNorm2 != null ? layerNorm2.forward(x.add(attn2)) : x.add(attn2); // Add & Norm
+            
+            x = x.add(attn2);  // Deuxième connexion résiduelle
+    
+            if (layerNorm2 != null) {
+                x = layerNorm2.forward(x);
+            }
+
 
             // Feed-forward
             INDArray ffOutput = feedForward.forward(x);
             ffOutput = dropout3.forward(isTraining, ffOutput);
-            return layerNorm3 != null ? layerNorm3.forward(x.add(ffOutput)) : x.add(ffOutput); // Add & Norm again
+
+            x = x.add(ffOutput);  // Troisième connexion résiduelle
+    
+            if (layerNorm3 != null) {
+                x = layerNorm3.forward(x);
+            }
+
+            return x;
         }
 
         /**
@@ -404,6 +425,22 @@ public class Decoder implements Serializable {
             layer.dropout1.setDropoutRate(dropout);
             layer.dropout2.setDropoutRate(dropout);
             layer.dropout3.setDropoutRate(dropout);
+        }
+    }
+
+    /**
+     * Met à jour l'échelle de l'encodage positionnel
+     * @param scale nouvelle échelle à appliquer
+     */
+    public void updatePositionalEncodingScale(float scale) {
+        this.positionalEncodingScale = scale;
+        // Recalculer l'encodage positionnel si nécessaire
+        updatePositionalEncoding();
+    }
+
+    private void updatePositionalEncoding() {
+        if (positionalEncoding != null) {
+            positionalEncoding.updateScale(positionalEncodingScale);
         }
     }
 }

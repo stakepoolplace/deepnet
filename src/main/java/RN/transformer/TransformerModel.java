@@ -54,6 +54,8 @@ public class TransformerModel implements Serializable {
     private float temperature = 1.0f;
     private float frequencyPenalty = 0.0f;
     private double attentionDropout = 0.0;
+    private float positionalEncodingScale = 1.0f;
+    private INDArray lastAttentionScores;  // Ajouter cet attribut
 
 
     static {
@@ -266,6 +268,9 @@ public class TransformerModel implements Serializable {
                                                       queryPaddingMaskFromTarget,
                                                       keyPaddingMaskFromTarget);
 
+                // Mettre à jour les scores d'attention
+                updateLastAttentionScores();
+
                 // Affiche les tableaux d'attention croisée (encoder : self  decoder: self, cross)
                 if (traceIsOn) {
                     traceAttentionInEncoderAndDecoder(input, target);
@@ -399,6 +404,9 @@ public class TransformerModel implements Serializable {
                                                   queryPaddingMaskFromTarget,
                                                   keyPaddingMaskFromTarget);
 
+            // Mettre à jour les scores d'attention
+            updateLastAttentionScores();
+
             // Affiche les tableaux d'attention croisée (encoder : self  decoder: self, cross)
             if (traceIsOn) {
                 traceAttentionInEncoderAndDecoder(input, target);
@@ -474,7 +482,7 @@ public class TransformerModel implements Serializable {
             throw new IllegalStateException("Les embeddings ne sont pas trouvés dans combinedParameters.");
         }
 
-        // Récupérer le gradient correspondant
+        // Récuprer le gradient correspondant
         INDArray embeddingsGrad = combinedGradients.get(embeddingsParamIndex); // [vocabSize, dModel]
         INDArray gradChat = embeddingsGrad.getRow(tokenId).dup(); // [dModel]
         System.out.println("Gradient pour '" + token + "' embedding: " + gradChat);
@@ -524,74 +532,36 @@ public class TransformerModel implements Serializable {
      * @return Un Pair contenant la perte moyenne et les gradients [batchSize,
      *         seqLength, vocabSize].
      */
-    protected Pair<Float, INDArray> calculateCrossEntropyLossAndGradient(List<INDArray> decodedLogits,
-            INDArray targetBatch) {
-
-        INDArray logits = decodedLogits.get(0); // [batchSize, seqLength, vocabSize]
-        int batchSize = (int) logits.shape()[0];
-        int seqLength = (int) logits.shape()[1];
-        int vocabSize = (int) logits.shape()[2];
-
-        // Appliquer le softmax de manière stable
-        INDArray probabilities = NDArrayUtils.stableSoftmax(logits, 2); // [batchSize, seqLength, vocabSize]
-        // System.out.println("Probabilités Calculées: " + probabilities);
-
-        // Vérifier les probabilités
-        if (probabilities.isNaN().any() || probabilities.isInfinite().any()) {
-            throw new RuntimeException("Probabilités contiennent des NaN ou des valeurs infinies.");
-        }
-
-        // Créer une INDArray one-hot pour les cibles
-        INDArray targetOneHot = Nd4j.zeros(DataType.FLOAT, batchSize, seqLength, vocabSize);
-        for (int b = 0; b < batchSize; b++) {
-            for (int i = 0; i < seqLength; i++) {
-                int targetId = targetBatch.getInt(b, i);
-                if (targetId >= 0 && targetId < vocabSize) {
-                    targetOneHot.putScalar(new int[] { b, i, targetId }, 1.0f);
-                } else {
-                    throw new IllegalArgumentException("ID de cible invalide: " + targetId);
+    protected Pair<Float, INDArray> calculateCrossEntropyLossAndGradient(List<INDArray> logits, INDArray target) {
+        INDArray logitsTensor = logits.get(0);
+        
+        // Convertir chaque masque en FLOAT avant la multiplication
+        INDArray padMask = target.neq(tokenizer.getPadTokenId()).castTo(DataType.FLOAT);
+        INDArray startMask = target.neq(tokenizer.getStartTokenId()).castTo(DataType.FLOAT);
+        INDArray endMask = target.neq(tokenizer.getEndTokenId()).castTo(DataType.FLOAT);
+        
+        // Combiner les masques après conversion
+        INDArray validTokensMask = padMask.mul(startMask).mul(endMask);
+        
+        // Reste du code inchangé...
+        INDArray targetOneHot = Nd4j.zeros(DataType.FLOAT, target.shape()[0], target.shape()[1], logitsTensor.shape()[2]);
+        for (int b = 0; b < target.shape()[0]; b++) {
+            for (int i = 0; i < target.shape()[1]; i++) {
+                if (validTokensMask.getDouble(b, i) > 0) {
+                    int targetId = target.getInt(b, i);
+                    targetOneHot.putScalar(new int[]{b, i, targetId}, 1.0f);
                 }
             }
         }
-
-        // System.out.println("targetOneHot: " + targetOneHot);
-
-        // Créer un masque pour ignorer les `<PAD>`
-        INDArray paddingMask = NDArrayUtils.createKeyPaddingMask(tokenizer, targetBatch); // [batchSize, 1, 1,
-                                                                                          // seqLength]
-        INDArray paddingMaskReshaped = paddingMask.reshape(batchSize, 1, seqLength); // [batchSize, 1, seqLength]
-
-        // Calculer la perte d'entropie croisée en masquant les `<PAD>`
-        INDArray logSoftmax = Transforms.log(probabilities.add(1e-10)); // éviter log(0)
-        INDArray crossEntropy = logSoftmax.mul(targetOneHot).neg(); // [batchSize, seqLength, vocabSize]
-
-        // Appliquer le masque binaire (1 pour valide, 0 pour padding)
-        INDArray maskedCrossEntropy = crossEntropy
-                .mul(paddingMaskReshaped.broadcast(batchSize, vocabSize, seqLength).permute(0, 2, 1)); // [batchSize,
-                                                                                                       // seqLength,
-                                                                                                       // vocabSize]
-
-        // System.out.println("Cross Entropy:\n" + crossEntropy);
-        // System.out.println("Masked Cross Entropy:\n" + maskedCrossEntropy);
-
-        // Calculer la perte moyenne sur les tokens valides
-        float loss = maskedCrossEntropy.sumNumber().floatValue()
-                / targetBatch.neq(tokenizer.getPadTokenId()).castTo(DataType.FLOAT).sumNumber().floatValue();
-
-        // System.out.println("Total Loss: " + loss);
-
-        // Calculer les gradients (softmax - targetOneHot) en masquant les `<PAD>`
-        INDArray gradients = probabilities.sub(targetOneHot)
-                .mul(paddingMaskReshaped.broadcast(batchSize, vocabSize, seqLength).permute(0, 2, 1))
-                .div(targetBatch.neq(tokenizer.getPadTokenId()).castTo(DataType.FLOAT).sumNumber().floatValue());
-
-        // System.out.println("Gradients:\n" + gradients);
-
-        // Vérifier les gradients
-        if (gradients.isNaN().any() || gradients.isInfinite().any()) {
-            throw new RuntimeException("Gradients contiennent des NaN ou des valeurs infinies.");
-        }
-
+        
+        INDArray logits_masked = logitsTensor.mul(validTokensMask.reshape(validTokensMask.shape()[0], validTokensMask.shape()[1], 1));
+        INDArray probabilities = NDArrayUtils.softmax(logits_masked, -1);
+        
+        INDArray crossEntropy = targetOneHot.mul(Transforms.log(probabilities.add(1e-10))).sum(2).mul(-1);
+        float loss = crossEntropy.mul(validTokensMask).sumNumber().floatValue() / validTokensMask.sumNumber().floatValue();
+        
+        INDArray gradients = probabilities.sub(targetOneHot).mul(validTokensMask.reshape(validTokensMask.shape()[0], validTokensMask.shape()[1], 1));
+        
         return Pair.of(loss, gradients);
     }
 
@@ -954,7 +924,7 @@ public class TransformerModel implements Serializable {
                 decoderInputIds.putScalar(new int[] { 0, j }, outputIds.get(j));
             }
 
-            // Créer un Batch pour le décodeur avec les données actuelles
+            // Créer un Batch pour le d��codeur avec les données actuelles
             Batch decoderBatch = new Batch(decoderInputIds, null, tokenizer);
 
             // Créer les masques spécifiques au décodeur pour cette itération
@@ -976,6 +946,9 @@ public class TransformerModel implements Serializable {
                                            keyPaddingMaskFromSource,
                                            queryPaddingMaskFromTarget,
                                            keyPaddingMaskFromTarget);
+
+            // Mettre à jour les scores d'attention
+            updateLastAttentionScores();
 
             // Extraction des logits du dernier token généré
             int lastPosition = (int) logits.shape()[1] - 1; // seqLength - 1
@@ -1135,7 +1108,8 @@ public class TransformerModel implements Serializable {
     }
 
     public void setTemperature(float temperature) {
-        this.temperature = temperature;
+        // Augmenter la température pour des prédictions plus nettes
+        this.temperature = Math.max(0.7f, temperature);
     }
 
     
@@ -1149,6 +1123,75 @@ public class TransformerModel implements Serializable {
         // Mettre à jour le dropout dans les couches d'attention
         encoder.setAttentionDropout(dropout);
         decoder.setAttentionDropout(dropout);
+    }
+
+    /**
+     * Définit l'échelle de l'encodage positionnel
+     * @param scale facteur d'échelle à appliquer à l'encodage positionnel
+     */
+    public void setPositionalEncodingScale(double scale) {
+        this.positionalEncodingScale = (float) scale;
+        // Mettre à jour l'encodage positionnel dans l'encodeur et le décodeur
+        if (encoder != null) {
+            encoder.updatePositionalEncodingScale(this.positionalEncodingScale);
+        }
+        if (decoder != null) {
+            decoder.updatePositionalEncodingScale(this.positionalEncodingScale);
+        }
+    }
+
+    /**
+     * Récupère l'échelle actuelle de l'encodage positionnel
+     * @return l'échelle actuelle
+     */
+    public float getPositionalEncodingScale() {
+        return this.positionalEncodingScale;
+    }
+
+
+    public INDArray getLastAttentionScores() {
+        return lastAttentionScores;
+    }
+
+    private void updateLastAttentionScores() {
+        // Récupérer les derniers scores d'attention de l'encodeur et du décodeur
+        List<INDArray> allScores = new ArrayList<>();
+        
+        // Scores de l'encodeur
+        for (EncoderLayer layer : encoder.layers) {
+            INDArray scores = layer.getSelfAttention().getLastAttentionScores();
+            if (scores != null) {
+                allScores.add(scores);
+            }
+        }
+        
+        // Scores du décodeur
+        for (DecoderLayer layer : decoder.layers) {
+            INDArray selfAttScores = layer.getSelfAttention().getLastAttentionScores();
+            INDArray crossAttScores = layer.getCrossAttention().getLastAttentionScores();
+            if (selfAttScores != null) {
+                allScores.add(selfAttScores);
+            }
+            if (crossAttScores != null) {
+                allScores.add(crossAttScores);
+            }
+        }
+        
+        // Vérifier qu'il y a des scores à combiner
+        if (!allScores.isEmpty()) {
+            // Vérifier que tous les scores ont la même forme
+            long[] shape = allScores.get(0).shape();
+            boolean sameShape = allScores.stream()
+                .allMatch(score -> Arrays.equals(score.shape(), shape));
+                
+            if (sameShape) {
+                // Combiner tous les scores
+                this.lastAttentionScores = Nd4j.pile(allScores);
+            } else {
+                // Si les formes sont différentes, prendre juste le dernier score
+                this.lastAttentionScores = allScores.get(allScores.size() - 1);
+            }
+        }
     }
 
 }

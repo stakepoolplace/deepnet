@@ -28,6 +28,7 @@ public class MultiHeadAttention implements Serializable {
     private INDArray attentionWeights; // Cached attention weights for backward
     private INDArray attentionOutput; // [batchSize * seqLength, numHeads * depth]
     private Map<String, INDArray> gradients = new HashMap<>();
+    private INDArray lastAttentionScores;
 
     public MultiHeadAttention(int dModel, int numHeads) {
 
@@ -178,6 +179,9 @@ public class MultiHeadAttention implements Serializable {
         // System.out.println("Attention Output: " + attentionOutput);
         // System.out.println("Output after Wo: " + output);
 
+        // Stocker les scores d'attention
+        this.lastAttentionScores = scores;
+
         return output;
     }
 
@@ -189,7 +193,7 @@ public class MultiHeadAttention implements Serializable {
      * @return Map of gradients with respect to parameters and inputs
      */
     public Map<String, INDArray> backward(INDArray gradOutput) {
-        // Vérifications d'état
+        // Vrifications d'état
         if (this.attentionOutput == null || this.Q == null || this.K == null || this.V == null) {
             throw new IllegalStateException(
                     "Les variables nécessaires (attentionOutput, Q, K, V) ne sont pas initialisées. Assurez-vous d'avoir effectué une passe forward avant backward.");
@@ -594,8 +598,9 @@ public class MultiHeadAttention implements Serializable {
         return this.attentionWeights;
     }
 
-
-
+    public INDArray getLastAttentionScores() {
+        return lastAttentionScores;
+    }
 
     public void printAttentionWeights(List<String> queryTokens, List<String> keyTokens, int sampleIndex, Map<Integer, String> idToTokenMap) {
         if (this.attentionWeights == null) {
@@ -667,6 +672,21 @@ public class MultiHeadAttention implements Serializable {
     
             System.out.println(); // Ligne vide entre les têtes
         }
+    }
+
+    private INDArray calculateAttentionScores(INDArray Q, INDArray K, INDArray mask) {
+        // Revenir au scaling factor standard
+        float scalingFactor = (float) (1.0 / Math.sqrt(dModel));
+        
+        INDArray scores = Q.mmul(K.permute(0, 2, 1));
+        scores = scores.mul(scalingFactor);
+        
+        // Masquage plus agressif mais pas trop
+        if (mask != null) {
+            scores = scores.add(mask.mul(-1e9f));
+        }
+        
+        return scores;
     }
 
 }
