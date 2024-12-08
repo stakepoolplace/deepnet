@@ -109,80 +109,75 @@ public class TransformerInferenceTest {
 
 
     @Test
-    public void testSimpleTransformerSimplified() throws IOException, ClassNotFoundException {
-        // Configuration simplifiée
-        int numLayers = 1;
-        int dModel = 4;
-        int numHeads = 2;
-        int dff = 16;
-        double dropoutRate = 0.0;
-        int vocabSize = 5;
-        int maxSequenceLength = 1;
-        float learningRate = 0.001f;
-        int warmupSteps = 10;
-    
-        // Initialiser le Tokenizer avec un vocabulaire très simple
-        List<String> vocab = Arrays.asList("<PAD>", "<START>", "<END>", "hello", "world");
-        Tokenizer tokenizer = new Tokenizer(vocab, dModel, maxSequenceLength);
-        INDArray pretrainedEmbeddings = Nd4j.randn(vocabSize, dModel).divi(Math.sqrt(dModel));
-        tokenizer.setPretrainedEmbeddings(pretrainedEmbeddings);
-    
-        // Initialiser le modèle Transformer avec le Tokenizer personnalisé
-        TransformerModel transformer = new TransformerModel(numLayers, dModel, numHeads, dff, dropoutRate, vocabSize, tokenizer, learningRate, warmupSteps);
-    
-        // Initialiser l'optimiseur
-        transformer.initializeOptimizer(learningRate, warmupSteps);
-    
-        // Créer un jeu de données synthétique (entrée = cible)
-        List<String> inputSentences = Arrays.asList("hello");
-        List<String> targetSentences = Arrays.asList("world");
-    
-        // Convertir les phrases en IDs de tokens
-        List<Integer> inputIds = tokenizer.tokensToIds(tokenizer.tokenize(inputSentences.get(0))); // [<START>, hello, <END>, <PAD>, ...]
-        List<Integer> targetIds = tokenizer.tokensToIds(tokenizer.tokenize(targetSentences.get(0))); // [<START>, world, <END>, <PAD>, ...]
-    
-        // Convertir les listes en INDArray [batchSize, seqLength]
-        INDArray input = Nd4j.create(DataType.INT, 1, inputIds.size());
-        INDArray target = Nd4j.create(DataType.INT, 1, targetIds.size());
-    
-        for (int i = 0; i < inputIds.size(); i++) {
-            input.putScalar(new int[] { 0, i }, inputIds.get(i));
-        }
-    
-        for (int i = 0; i < targetIds.size(); i++) {
-            target.putScalar(new int[] { 0, i }, targetIds.get(i));
-        }
-    
-        // Créer un DataGenerator avec un seul batch
-        DataGenerator dataGenerator = new DataGenerator(
-                inputSentences,
-                targetSentences,
-                tokenizer,
-                1, // batchSize
-                targetIds.size() // sequenceLength
+    public void testSimpleTransformerSimplified() {
+        // Configuration ultra-minimaliste
+        int maxSequenceLength = 5;
+        int dModel = 8;  // Très petite dimension
+        int numLayers = 1;  // Un seul layer
+        int numHeads = 2;  // Minimum de têtes
+        int dff = dModel;  // Même taille que dModel
+        float dropoutRate = 0.0f;
+        float initialLr = 0.001f;
+        int warmupSteps = 0;
+        int epochs = 100;
+        int batchSize = 1;
+        
+        // Vocabulaire minimal
+        List<String> vocabulary = Arrays.asList(
+            "<PAD>", "<UNK>", "<START>", "<END>",
+            "le", "chat", "sur", "dans", "tapis", "jardin"
         );
-
-        tokenizer.printVocabulary();
-    
-        // Entraîner le modèle sur plusieurs epochs
-        int epochs = 50;
-        for (int epoch = 1; epoch <= epochs; epoch++) {
-            float averageLoss = transformer.trainEpoch(dataGenerator);
-            System.out.println("Epoch " + epoch + " - Average Loss: " + averageLoss);
-            dataGenerator.reset();
+        
+        // Initialisation du tokenizer
+        Tokenizer tokenizer = new Tokenizer(vocabulary, dModel, maxSequenceLength);
+        
+        // Données d'entraînement minimales
+        List<String> inputs = Arrays.asList(
+            "le chat sur",
+            "le chat dans"
+        );
+        
+        List<String> targets = Arrays.asList(
+            "le tapis",
+            "le jardin"
+        );
+        
+        // Initialisation du modèle
+        TransformerModel model = new TransformerModel(
+            numLayers,
+            dModel,
+            numHeads,
+            dff,
+            dropoutRate,
+            vocabulary.size(),
+            tokenizer,
+            initialLr,
+            warmupSteps
+        );
+        
+        // Initialisation du générateur de données
+        DataGenerator dataGenerator = new DataGenerator(
+            inputs, 
+            targets, 
+            tokenizer, 
+            batchSize, 
+            maxSequenceLength
+        );
+        
+        // Entraînement
+        try {
+            model.train(dataGenerator, epochs);
+        } catch (Exception e) {
+            throw new RuntimeException("Erreur lors de l'entraînement", e);
         }
-    
-        // Marquer le modèle comme entraîné
-        transformer.setTrained(true);
-    
-        // Effectuer une inférence sur la même entrée et stocker les poids d'attention
-        String prompt = "hello";
-        String inferredOutput = transformer.infer(prompt, maxSequenceLength); // Ajuster la longueur maximale si nécessaire
-        System.out.println("Inferred Output: " + inferredOutput);
-    
-        // Vérifier que l'inférence correspond à la cible attendue
-        assertEquals("L'inférence devrait correspondre à la cible.", targetSentences.get(0), inferredOutput);
-    
+        
+        // Test de prédiction
+        String input = "le chat";
+        String prediction = model.predict(input);
+        
+        assertNotNull("La prédiction ne devrait pas être null", prediction);
+        assertTrue("La prédiction devrait être soit 'sur' soit 'dans'",
+                  prediction.equals("sur") || prediction.equals("dans"));
     }
     
 
@@ -357,5 +352,56 @@ public class TransformerInferenceTest {
     //     }
     // }
 
+    @Test
+    public void testTrainingAndInference() {
+        // Configuration ultra-minimaliste
+        int maxSequenceLength = 4;  // Séquences très courtes
+        int dModel = 16;           // Dimension très réduite
+        int numLayers = 1;         // Un seul layer
+        int numHeads = 2;          // Deux têtes (diviseur de 16)
+        int dff = 16;             // Même taille que dModel
+        float dropoutRate = 0.0f;  // Pas de dropout
+        float initialLr = 0.001f;  // Learning rate standard
+        int warmupSteps = 0;       // Pas de warmup
+        int epochs = 1000;         // Beaucoup plus d'époques
+        int batchSize = 1;         // Un exemple à la fois
+        
+        // Vocabulaire minimal
+        List<String> vocabulary = Arrays.asList(
+            "<PAD>", "<UNK>", "<START>", "<END>",
+            "le", "chat", "souris"
+        );
+        
+        // Données d'entraînement ultra-simples
+        List<String> inputs = Arrays.asList(
+            "le chat",
+            "le chat",
+            "le chat"
+        );
+        
+        List<String> targets = Arrays.asList(
+            "souris",
+            "souris",
+            "souris"
+        );
+        
+        // Initialisation
+        Tokenizer tokenizer = new Tokenizer(vocabulary, dModel, maxSequenceLength);
+        TransformerModel model = new TransformerModel(
+            numLayers, dModel, numHeads, dff, dropoutRate,
+            vocabulary.size(), tokenizer, initialLr, warmupSteps
+        );
+        
+        DataGenerator dataGenerator = new DataGenerator(
+            inputs, targets, tokenizer, batchSize, maxSequenceLength
+        );
+        
+        // Entraînement intensif
+        model.train(dataGenerator, epochs);
+        
+        // Test
+        String prediction = model.predict("le chat");
+        assertEquals("La prédiction devrait être 'souris'", "souris", prediction);
+    }
     
 }

@@ -434,4 +434,8 @@ public class Tokenizer implements Serializable {
         tokenFrequencies.merge(tokenId, 1, Integer::sum);
     }
 
+    public String idToToken(int id) {
+        return idToToken.getOrDefault(id, "<UNK>");
+    }
+
 }

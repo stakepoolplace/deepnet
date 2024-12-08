@@ -267,7 +267,7 @@ public class Encoder implements Serializable {
             }
 
             // Attention multi-têtes auto-attention
-            INDArray attnOutput = selfAttention.forward(x, x, x, keyPaddingMask, queryPaddingMask, null); // [batchSize, seqLength, dModel]
+            INDArray attnOutput = selfAttention.forward(x, x, x, queryPaddingMask, keyPaddingMask, null); // [batchSize, seqLength, dModel]
             
             attnOutput = dropout1.forward(isTraining, attnOutput); // Appliquer dropout
             INDArray out1 = layerNorm1 != null ? layerNorm1.forward(x.add(attnOutput)) : x.add(attnOutput); // Add & Norm [batchSize, seqLength, dModel]

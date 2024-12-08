@@ -22,13 +22,13 @@ public class DropoutTest {
             {0.0, 1.0}
         });
 
-        INDArray output = dropout.apply(true, input, fixedMask);
+        INDArray output = dropout.forward(true, input, fixedMask);
 
         // Vérifier que le masque est appliqué
-        assertNotNull(dropout.mask, "Le masque ne doit pas être null en mode entraînement.");
+        assertNotNull(dropout.getLastMask(), "Le masque ne doit pas être null en mode entraînement.");
 
         // Afficher le masque et la sortie
-        System.out.println("Mask:\n" + dropout.mask);
+        System.out.println("Mask:\n" + dropout.getLastMask());
         System.out.println("Output:\n" + output);
 
         // Calcul attendu avec Inverted Dropout
@@ -47,10 +47,10 @@ public class DropoutTest {
         // Fixer la graîne pour la reproductibilité
         Nd4j.getRandom().setSeed(12345);
 
-        INDArray output = dropout.apply(true, input);
+        INDArray output = dropout.forward(true, input);
 
         // Vérifier que le masque est appliqué
-        assertNotNull(dropout.mask, "Le masque ne doit pas être null en mode entraînement.");
+        assertNotNull(dropout.getLastMask(), "Le masque ne doit pas être null en mode entraînement.");
 
         // Calcul attendu avec Inverted Dropout
         // La moyenne des activations devrait être proche de 1.0
@@ -68,7 +68,7 @@ public class DropoutTest {
             {3.0, 4.0}
         }); // [2, 2]
 
-        INDArray output = dropout.apply(false, input);
+        INDArray output = dropout.forward(false, input);
 
         // En inférence, le dropout n'est pas appliqué
         assertEquals(input, output, "En inférence, le dropout ne doit pas être appliqué.");
@@ -86,7 +86,7 @@ public class DropoutTest {
             {0.0, 1.0}
         });
 
-        INDArray output = dropout.apply(true, input, mask);
+        INDArray output = dropout.forward(true, input, mask);
 
         // Simuler des gradients de sortie
         INDArray gradOutput = Nd4j.create(new double[][] {

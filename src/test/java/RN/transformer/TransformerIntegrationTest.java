@@ -2,11 +2,14 @@ package RN.transformer;
 
 import static org.junit.Assert.*;
 
+import org.deeplearning4j.models.embeddings.loader.WordVectorSerializer;
+import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -19,10 +22,23 @@ public class TransformerIntegrationTest {
 
     private TransformerModel model;
     private DataGenerator mockDataGenerator;
+    private Tokenizer tokenizer;
 
     @Before
     public void setUp() throws IOException {
-    } 
+ 
+    }
+
+    /**
+     * Charge les WordVectors pré-entraînés.
+     */
+    private static WordVectors loadPreTrainedWordVectors() throws IOException {
+        File modelFile = new File("pretrained-embeddings/mon_model_word2vec.txt");
+        if (!modelFile.exists()) {
+            throw new IOException("Le fichier du modèle Word2Vec n'existe pas: " + modelFile.getAbsolutePath());
+        }
+        return WordVectorSerializer.readWord2VecModel(modelFile);
+    }
 
     @Test
     public void testInferenceAfterTraining() throws Exception {
@@ -308,5 +324,69 @@ public class TransformerIntegrationTest {
         }
     }
 
+    @Test
+    public void testNextWordPrediction() throws IOException {
+        // Initialisation des paramètres
+        int maxSequenceLength = 10;
+        WordVectors preTrainedWordVectors = loadPreTrainedWordVectors();
+        int embeddingSize = preTrainedWordVectors.getWordVector("chat").length;
+        
+        // Vocabulaire minimal
+        List<String> vocabulary = Arrays.asList(
+            "<PAD>", "<UNK>", "<START>", "<END>",
+            "le", "chat", "sur", "dans", "tapis", "jardin"
+        );
+        
+        int dModel = embeddingSize;  // 300
+        int numHeads = 6;  // Car 300/6 = 50 (entier)
+        
+        tokenizer = new Tokenizer(vocabulary, embeddingSize, maxSequenceLength);
+        tokenizer.initializeEmbeddings(preTrainedWordVectors);
+        
+        // Configuration avec dimensions cohérentes
+        int numLayers = 1;
+        int dff = dModel * 4;     // 1200
+        float dropoutRate = 0.1f;
+        float initialLr = 0.001f;
+        int warmupSteps = 0;
+        int epochs = 500;
+        int batchSize = 2;
+        
+        // Données d'entraînement
+        List<String> inputs = Arrays.asList(
+            "le chat sur", "le chat dans"
+        );
+        
+        List<String> targets = Arrays.asList(
+            "le tapis", "le jardin"
+        );
+        
+        model = new TransformerModel(
+            numLayers,
+            dModel,
+            numHeads,  // Maintenant 6 au lieu de 8
+            dff,
+            dropoutRate,
+            tokenizer.getVocabSize(),
+            tokenizer,
+            initialLr,
+            warmupSteps
+        );
+        
+        mockDataGenerator = new DataGenerator(inputs, targets, tokenizer, batchSize, maxSequenceLength);
+        
+        try {
+            model.train(mockDataGenerator, epochs);
+        } catch (Exception e) {
+            throw new RuntimeException("Erreur lors de l'entraînement initial", e);
+        }
+        
+        assertNotNull("Le modèle ne devrait pas être null", model);
+        String input = "le chat";
+        String prediction = model.predict(input);
+        assertNotNull("La prédiction ne devrait pas être null", prediction);
+        assertTrue("La prédiction devrait être soit 'sur' soit 'dans'", 
+                  prediction.equals("sur") || prediction.equals("dans"));
+    }
 
 }

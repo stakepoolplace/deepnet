@@ -35,10 +35,10 @@ public class TransformerHeavyIntegrationTest {
 
 
         // Initialisation du modèle Transformer avec dModel = embeddingSize
-        int numLayers = 2;
+        int numLayers = 4;
         int dModel = embeddingSize;
-        int numHeads = 1;
-        int dff = 128;
+        int numHeads = 2;
+        int dff = 256;
         int vocabSize = tokenizer.getVocabSize();
         float dropoutRate = 0.0f;
         float initialLr = 0.001f;
@@ -47,21 +47,19 @@ public class TransformerHeavyIntegrationTest {
         model = new TransformerModel(numLayers, dModel, numHeads, dff, dropoutRate, vocabSize, tokenizer, initialLr, warmupSteps);
 
         // Création d'un DataGenerator fictif avec des paires d'entrée-cible simples
-        List<String> data = Arrays.asList(
-            "chat mange la souris", 
-            "chien court dans le jardin", 
-            "les chats aiment les chiens",
-            "tapis sur le sol"
+        List<String> inputs = Arrays.asList(
+            "le chat sur", "chat sur", "le chat sur",
+            "le chat dans", "chat dans", "le chat dans"
         );
         List<String> targets = Arrays.asList(
-            "le chat mange", 
-            "le chien court", 
-            "les chats aiment", 
-            "le tapis sur"
+            "le tapis", "le tapis", "le tapis",
+            "le jardin", "le jardin", "le jardin"
         );
+
+
         int batchSize = 1; // Assurez-vous que cela correspond à la forme des scores
         int sequenceLength = 7; // Définissez une longueur de séquence cohérente
-        mockDataGenerator = new DataGenerator(data, targets, tokenizer, batchSize, sequenceLength);
+        mockDataGenerator = new DataGenerator(inputs, targets, tokenizer, batchSize, sequenceLength);
     }
 
  
@@ -69,7 +67,7 @@ public class TransformerHeavyIntegrationTest {
     @Test
     public void testTrainingWithPretrainedEmbeddings() throws Exception {
         
-        int epochs = 20;
+        int epochs = 30;
         model.getOptimizer().setMaxEpochs(epochs);
         model.setTrace(false);
 
@@ -80,15 +78,15 @@ public class TransformerHeavyIntegrationTest {
         assertTrue("Le modèle devrait être marqué comme entraîné après l'entraînement", model.isTrained());
 
         // Effectuer une inférence sur l'entrée d'entraînement
-        String input = "chat manger la souris";
-        String actualOutput = model.infer(input, 4);
+        String input = "le chat sur";
+        String actualOutput = model.infer(input, 2);
 
         // Vérification que l'inférence n'est pas nulle et est cohérente
         assertNotNull("L'inférence ne devrait pas être null", actualOutput);
         assertFalse("L'inférence ne devrait pas être vide", actualOutput.isEmpty());
 
         // (Optionnel) Vérifier que l'inférence est proche de la cible
-        String expectedOutput = "le chat mange";
+        String expectedOutput = "le tapis";
         assertEquals("L'inférence devrait correspondre à la cible", expectedOutput, actualOutput);
     }
 

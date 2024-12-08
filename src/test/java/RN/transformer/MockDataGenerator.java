@@ -22,7 +22,7 @@ public class MockDataGenerator extends DataGenerator {
     }
 
     @Override
-    public Batch nextBatch() {
+    public Batch getNextBatch() {
         if (!hasNextBatch()) {
             return null;
         }
@@ -37,7 +37,7 @@ public class MockDataGenerator extends DataGenerator {
     }
 
     @Override
-    public void init() {
+    public void reset() {
         batchCount = 0;
     }
 }

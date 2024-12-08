@@ -57,6 +57,7 @@ public class TransformerModel implements Serializable {
     private float positionalEncodingScale = 1.0f;
     private INDArray lastAttentionScores;  // Ajouter cet attribut
 
+    private boolean trained = false;
 
     static {
         try {
@@ -240,7 +241,7 @@ public class TransformerModel implements Serializable {
                 cleanGradients();
 
                 // Obtenir le prochain batch
-                batch = dataGenerator.nextBatch();
+                batch = dataGenerator.getNextBatch();
                 input = batch.getData(); // [batchSize, seqLength]
                 target = batch.getTarget(); // [batchSize, seqLength]
                 // INDArray mask = batch.getMask(); // [batchSize, 1, 1, seqLength] (Non utilisé
@@ -313,7 +314,7 @@ public class TransformerModel implements Serializable {
             System.out.println("Epoch " + (epoch + 1) + " / " + epochNum + " completed with average loss: " + averageLoss);
 
             // Réinitialiser le générateur de données pour le prochain epoch
-            dataGenerator.init();
+            dataGenerator.reset();
 
             // Marquer le modèle comme entraîné après le premier epoch
             if (epoch + 1 >= 1) {
@@ -378,7 +379,7 @@ public class TransformerModel implements Serializable {
             // Nettoyer les gradients précédents
             cleanGradients();
 
-            batch = dataGenerator.nextBatch();
+            batch = dataGenerator.getNextBatch();
             input = batch.getData(); 
             target = batch.getTarget(); // [batchSize, seqLength]
 
@@ -447,7 +448,7 @@ public class TransformerModel implements Serializable {
         float averageLoss = totalLoss / totalTokens;
 
         // Réinitialiser le générateur de données pour le prochain epoch
-        dataGenerator.init();
+        dataGenerator.reset();
         System.out.println("Epoch " + optimizer.getEpoch() + " completed with average loss: " + averageLoss);
 
         // Marquer le modèle comme entraîné après le premier epoch
@@ -924,7 +925,7 @@ public class TransformerModel implements Serializable {
                 decoderInputIds.putScalar(new int[] { 0, j }, outputIds.get(j));
             }
 
-            // Créer un Batch pour le d��codeur avec les données actuelles
+            // Créer un Batch pour le dcodeur avec les données actuelles
             Batch decoderBatch = new Batch(decoderInputIds, null, tokenizer);
 
             // Créer les masques spécifiques au décodeur pour cette itération
@@ -1109,7 +1110,7 @@ public class TransformerModel implements Serializable {
 
     public void setTemperature(float temperature) {
         // Augmenter la température pour des prédictions plus nettes
-        this.temperature = Math.max(0.7f, temperature);
+        this.temperature = temperature;
     }
 
     
@@ -1192,6 +1193,46 @@ public class TransformerModel implements Serializable {
                 this.lastAttentionScores = allScores.get(allScores.size() - 1);
             }
         }
+    }
+
+    private INDArray inferSingle(INDArray inputArray) {
+        // Créer un batch avec l'entrée et s'assurer qu'il a la bonne forme [batchSize, seqLength, dModel]
+        INDArray embeddedInput = tokenizer.lookupEmbeddings(inputArray);
+        Batch batch = new Batch(inputArray, null, tokenizer);
+        
+        // Encoder l'entrée avec les embeddings
+        INDArray encoded = encoder.encode(false, batch);
+        
+        // Redimensionner les masques pour l'attention [batchSize, 1, 1, seqLength]
+        INDArray paddingMask = NDArrayUtils.createPaddingMask(tokenizer, inputArray)
+            .reshape(inputArray.size(0), 1, 1, inputArray.size(1));
+        
+        // Décoder et retourner la sortie
+        return decoder.decode(false, encoded, embeddedInput, batch,
+                null, paddingMask, paddingMask, paddingMask, paddingMask);
+    }
+
+    public String predict(String input) {
+        if (!isTrained()) {
+            throw new IllegalStateException("Le modèle doit être entraîné avant de faire des prédictions");
+        }
+        
+        // Utiliser infer avec maxLength=1 pour prédire le prochain mot
+        String prediction = infer(input, 1);
+        return prediction.trim();
+    }
+
+    public boolean isTrained() {
+        return trained;
+    }
+
+    protected void setTrained(boolean trained) {
+        this.trained = trained;
+    }
+
+    public void train(DataGenerator dataGen, int epochs) throws Exception {
+        // ... code existant ...
+        setTrained(true);
     }
 
 }

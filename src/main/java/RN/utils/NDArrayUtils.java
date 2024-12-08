@@ -152,6 +152,19 @@ public class NDArrayUtils {
         return repeatedMask;
     }
 
-
+    public static INDArray createPaddingMask(Tokenizer tokenizer, INDArray input) {
+        INDArray mask = Nd4j.ones(input.shape());
+        int padTokenId = tokenizer.getPadTokenId();
+        
+        // Mettre à 0 les positions où se trouve le token de padding
+        for (int i = 0; i < input.shape()[0]; i++) {
+            for (int j = 0; j < input.shape()[1]; j++) {
+                if (input.getInt(i, j) == padTokenId) {
+                    mask.putScalar(new int[]{i, j}, 0);
+                }
+            }
+        }
+        return mask;
+    }
 
 }

@@ -14,25 +14,34 @@ public class Dropout implements Serializable {
     private INDArray lastMask;
 
     public Dropout(double dropoutRate) {
+        if (dropoutRate < 0.0 || dropoutRate >= 1.0) {
+            throw new IllegalArgumentException("Le taux de dropout doit être compris entre 0 et 1 (exclus)");
+        }
         this.dropoutRate = dropoutRate;
     }
 
     public INDArray forward(boolean isTraining, INDArray input) {
+        return forward(isTraining, input, null);
+    }
+
+    public INDArray forward(boolean isTraining, INDArray input, INDArray mask) {
         if (!isTraining || dropoutRate == 0.0) {
             return input;
         }
 
-        // Créer un masque aléatoire
-        INDArray mask = Nd4j.rand(input.shape()).gt(dropoutRate);
-        
-        // Convertir le masque en float avant la division
-        INDArray maskFloat = mask.castTo(DataType.FLOAT);
+        // Utiliser le masque fourni ou en créer un nouveau
+        INDArray maskFloat;
+        if (mask != null) {
+            maskFloat = mask.castTo(DataType.FLOAT);
+        } else {
+            INDArray randomMask = Nd4j.rand(input.shape()).gt(dropoutRate);
+            maskFloat = randomMask.castTo(DataType.FLOAT);
+        }
         
         // Mettre à l'échelle pour maintenir la moyenne
         maskFloat = maskFloat.div(1.0 - dropoutRate);
         
         this.lastMask = maskFloat;
-        
         return input.mul(maskFloat);
     }
 
@@ -47,4 +56,13 @@ public class Dropout implements Serializable {
         this.dropoutRate = rate;
     }
 
+    public double getDropoutRate() {
+        return dropoutRate;
+    }
+
+    public INDArray getLastMask() {
+        return lastMask;
+    }
+
+    
 }
