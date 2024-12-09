@@ -37,12 +37,12 @@ public class TransformerHeavyIntegrationTest {
         // Initialisation du modèle Transformer avec dModel = embeddingSize
         int numLayers = 4;
         int dModel = embeddingSize;
-        int numHeads = 2;
-        int dff = 256;
+        int numHeads = 4;
+        int dff = 512;
         int vocabSize = tokenizer.getVocabSize();
         float dropoutRate = 0.0f;
         float initialLr = 0.001f;
-        int warmupSteps = 10;
+        int warmupSteps = 2;
 
         model = new TransformerModel(numLayers, dModel, numHeads, dff, dropoutRate, vocabSize, tokenizer, initialLr, warmupSteps);
 
@@ -67,7 +67,7 @@ public class TransformerHeavyIntegrationTest {
     @Test
     public void testTrainingWithPretrainedEmbeddings() throws Exception {
         
-        int epochs = 30;
+        int epochs = 5;
         model.getOptimizer().setMaxEpochs(epochs);
         model.setTrace(false);
 

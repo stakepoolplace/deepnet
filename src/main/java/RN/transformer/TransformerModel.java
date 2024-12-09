@@ -1222,17 +1222,5 @@ public class TransformerModel implements Serializable {
         return prediction.trim();
     }
 
-    public boolean isTrained() {
-        return trained;
-    }
-
-    protected void setTrained(boolean trained) {
-        this.trained = trained;
-    }
-
-    public void train(DataGenerator dataGen, int epochs) throws Exception {
-        // ... code existant ...
-        setTrained(true);
-    }
 
 }

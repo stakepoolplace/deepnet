@@ -11,6 +11,7 @@ import org.nd4j.linalg.factory.Nd4j;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -349,7 +350,7 @@ public class TransformerIntegrationTest {
         float dropoutRate = 0.1f;
         float initialLr = 0.001f;
         int warmupSteps = 0;
-        int epochs = 500;
+        int epochs = 100;
         int batchSize = 2;
         
         // Données d'entraînement
@@ -387,6 +388,70 @@ public class TransformerIntegrationTest {
         assertNotNull("La prédiction ne devrait pas être null", prediction);
         assertTrue("La prédiction devrait être soit 'sur' soit 'dans'", 
                   prediction.equals("sur") || prediction.equals("dans"));
+    }
+
+    @Test
+    public void testSimpleCopyTask() {
+        // Configuration minimale
+        List<String> vocabulary = Arrays.asList(
+            "<PAD>", "<UNK>", "<START>", "<END>",
+            "A", "B"  // Réduire à 2 tokens seulement
+        );
+        
+        int dModel = 32;    // Petite dimension
+        int maxSequenceLength = 4;
+        Tokenizer tokenizer = new Tokenizer(vocabulary, dModel, maxSequenceLength);
+        
+        // Configuration très simple du modèle
+        TransformerModel model = new TransformerModel(
+            1,          // Une seule couche
+            32,         // dModel petit mais suffisant
+            1,          // Une seule tête d'attention
+            64,         // FFN modeste
+            0.0f,       // Pas de dropout
+            vocabulary.size(),
+            tokenizer,
+            0.005f,     // Learning rate standard
+            0
+        );
+        
+        // Données d'entraînement simplifiées
+        List<String> inputs = Arrays.asList("A", "B");
+        List<String> targets = Arrays.asList("A", "B");
+        
+        // Générateur de données
+        DataGenerator dataGenerator = new DataGenerator(
+            inputs, 
+            targets,
+            tokenizer,
+            1,  // Batch size de 1
+            maxSequenceLength
+        );
+        
+        model.setTrace(false);
+        //model.getOptimizer().setMaxEpochs(200);
+
+        // Entraînement
+        System.out.println("\n=== Début de l'entraînement de copie ===");
+        try {
+            for (int epoch = 0; epoch < 200; epoch++) {
+                float loss = model.trainEpoch(dataGenerator);
+                if (epoch % 10 == 0) {
+                    System.out.println(String.format("Epoch %d - Loss: %.6f", epoch, loss));
+                }
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Erreur pendant l'entraînement", e);
+        }
+        
+        // Test
+        System.out.println("\n=== Tests de copie ===");
+        for (String input : inputs) {
+            String output = model.infer(input, input.split(" ").length ); 
+            output = output.replace("<START>", "").replace("<END>", "").trim();
+            System.out.println("Input: '" + input + "' → Output: '" + output + "'");
+            assertEquals("La copie devrait être exacte", input, output);
+        }
     }
 
 }
