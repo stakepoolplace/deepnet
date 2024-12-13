@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test;
 import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.ops.transforms.Transforms;
+
 import java.util.Map;
 
 public class LayerNormTest {
@@ -117,7 +119,100 @@ public class LayerNormTest {
         // Assertions supplémentaires selon les calculs attendus
         // ...
     }
+
+    @Test
+    public void testLayerNorm() {
+        LayerNorm layerNorm = new LayerNorm(4); // dModel=4
+
+        // Créer une entrée connue
+        INDArray input = Nd4j.create(new float[][][] {
+            {
+                {1.0f, 2.0f, 3.0f, 4.0f},
+                {2.0f, 3.0f, 4.0f, 5.0f}
+            }
+        }); // [1,2,4]
+
+        // Appliquer LayerNorm
+        INDArray output = layerNorm.forward(input);
+
+        System.out.println("output " + output);
+
+        // Moyenne et variance sans correction de biais
+        INDArray mean = output.mean(true, 2);      // [1,2,1]
+        INDArray variance = output.var(false, 2);  // [1,2,1]
+
+        System.out.println("mean " + mean);
+        System.out.println("variance " + variance);
+
+        // Valeurs attendues avec variance sans correction de biais
+        INDArray expected = Nd4j.create(new float[][][] {
+            {
+                {-1.342f, -0.447f, 0.447f, 1.342f},
+                {-1.342f, -0.447f, 0.447f, 1.342f}
+            }
+        });
+
+        double epsilon = 1e-3;
+        double difference = Transforms.abs(output.sub(expected)).maxNumber().doubleValue();
+        boolean allMatch = difference < epsilon;
+
+        if (!allMatch) {
+            System.out.println("Differences: " + Transforms.abs(output.sub(expected)));
+        }
+
+        assertTrue(allMatch, "LayerNorm output should match expected values");
+
+        // Vérifier la moyenne et la variance
+        for (int i = 0; i < 2; i++) {
+            double currentMean = mean.getDouble(0, i, 0);
+            double currentVariance = variance.getDouble(0, i, 0);
+            System.out.printf("Vector %d: Mean = %.4f, Variance = %.4f%n", i, currentMean, currentVariance);
+            assertEquals(0.0, currentMean, 1e-4, "La moyenne doit être proche de 0.0");
+            assertEquals(1.0, currentVariance, 1e-4, "La variance doit être proche de 1.0");
+        }
+    }
+
+
+
+    @Test
+    public void testLayerNormCorrectlyNormalizes() {
+        int batchSize = 1;
+        int seqLength = 2;
+        int dModel = 4;
     
+        // Créer une instance de LayerNorm avec dModel=4
+        LayerNorm layerNorm = new LayerNorm(dModel);
+    
+        // Définir une entrée spécifique
+        INDArray input = Nd4j.create(new float[][][] {
+            {
+                {1.0f, 2.0f, 3.0f, 4.0f},
+                {2.0f, 3.0f, 4.0f, 5.0f}
+            }
+        }); // [1,2,4]
+    
+        // Passe forward
+        INDArray output = layerNorm.forward(input);
+    
+        // Calculer la moyenne et la variance de la sortie par vecteur
+        INDArray mean = output.mean(true, 2); // [1,2,1]
+        INDArray variance = output.var(false, 2); // [1,2,1]
+    
+        // Afficher pour diagnostic
+        System.out.println("Output: " + output);
+        System.out.println("Mean: " + mean);
+        System.out.println("Variance: " + variance);
+    
+        // Vérifier que la moyenne est proche de 0 et la variance proche de 1 pour chaque vecteur
+        for (int i = 0; i < seqLength; i++) {
+            double currentMean = mean.getDouble(0, i, 0);
+            double currentVariance = variance.getDouble(0, i, 0);
+            System.out.printf("Vector %d: Mean = %.4f, Variance = %.4f%n", i, currentMean, currentVariance);
+            assertEquals( 0.0, currentMean, 1e-4,"La moyenne doit être proche de 0.0");
+            assertEquals( 1.0, currentVariance, 1e-4,"La variance doit être proche de 1.0");
+        }
+    }
+
 
 
 }

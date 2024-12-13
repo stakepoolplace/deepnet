@@ -2,14 +2,11 @@ package RN.transformer;
 
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import org.nd4j.linalg.api.ndarray.INDArray;
-
-import RN.utils.NDArrayUtils;
 
 /**
  * Classe représentant le décodeur du modèle Transformer.
@@ -22,7 +19,7 @@ public class Decoder implements Serializable {
     protected int dModel;
     private int numHeads;
     private double dropoutRate;
-    private LinearProjection linearProjection;
+    LinearProjection linearProjection;
     private PositionalEncoding positionalEncoding;
 
     // Cache pour stocker les entrées des couches pendant la passe forward
@@ -43,7 +40,7 @@ public class Decoder implements Serializable {
         this.tokenizer = tokenizer;
         this.layers = new ArrayList<>();
         this.layerNorm = useLayerNorm ? new LayerNorm(dModel) : null;
-        this.linearProjection = new LinearProjection(dModel, tokenizer.getVocabSize());
+        this.linearProjection = new LinearProjection(dModel, tokenizer.getVocabSize(), useLayerNorm);
         this.positionalEncoding = new PositionalEncoding(dModel);
         this.forwardCache = new ArrayList<>();
 
@@ -256,6 +253,13 @@ public class Decoder implements Serializable {
             return this.encoderDecoderAttention;
         }
 
+        public void setLayerNorm(LayerNorm layerNorm) {
+            this.layerNorm1 = layerNorm;
+            this.layerNorm2 = layerNorm;
+            this.layerNorm3 = layerNorm;
+        }
+
+
         /**
          * Passe forward à travers la couche du décodeur.
          *
@@ -268,24 +272,26 @@ public class Decoder implements Serializable {
          * @return Sortie de la couche.
          */
         public INDArray forward(boolean isTraining, INDArray x, INDArray encoderOutput, INDArray lookAheadMask, INDArray cachedInput, INDArray queryPaddingMaskSource, INDArray keyPaddingMaskSource, INDArray queryPaddingMaskTarget, INDArray keyPaddingMaskTarget) {
-            
+
             // Self-attention avec masque look-ahead
-            INDArray attn1 = selfAttention.forward(x, x, x, queryPaddingMaskTarget, keyPaddingMaskTarget, lookAheadMask);
+            INDArray attn1 = selfAttention.forwardSelfAttention(x, queryPaddingMaskTarget, lookAheadMask);
+
             attn1 = dropout1.forward(isTraining, attn1);
-            
+
             x = x.add(attn1);  // Première connexion résiduelle
-    
+
             if (layerNorm1 != null) {
                 x = layerNorm1.forward(x);
             }
 
 
             // Encoder-decoder (cross) attention sans masque look-ahead
-            INDArray attn2 = encoderDecoderAttention.forward(x, encoderOutput, encoderOutput, queryPaddingMaskTarget, keyPaddingMaskSource, null);
+            INDArray attn2 = encoderDecoderAttention.forwardCrossAttention(x, encoderOutput, encoderOutput, queryPaddingMaskTarget, keyPaddingMaskSource);
+
             attn2 = dropout2.forward(isTraining, attn2);
-            
+
             x = x.add(attn2);  // Deuxième connexion résiduelle
-    
+
             if (layerNorm2 != null) {
                 x = layerNorm2.forward(x);
             }
@@ -293,10 +299,11 @@ public class Decoder implements Serializable {
 
             // Feed-forward
             INDArray ffOutput = feedForward.forward(x);
+
             ffOutput = dropout3.forward(isTraining, ffOutput);
 
             x = x.add(ffOutput);  // Troisième connexion résiduelle
-    
+
             if (layerNorm3 != null) {
                 x = layerNorm3.forward(x);
             }
@@ -416,6 +423,7 @@ public class Decoder implements Serializable {
                    (layerNorm2 != null ? layerNorm2.getNumberOfGradients() : 0) +
                    (layerNorm3 != null ? layerNorm3.getNumberOfGradients() : 0);
         }
+
     }
 
     public void setAttentionDropout(double dropout) {
@@ -442,5 +450,9 @@ public class Decoder implements Serializable {
         if (positionalEncoding != null) {
             positionalEncoding.updateScale(positionalEncodingScale);
         }
+    }
+
+    public void setLayerNorm(LayerNorm layerNorm) { 
+        this.layerNorm = layerNorm;
     }
 }

@@ -85,7 +85,7 @@ public class EncoderTest {
         INDArray value = Nd4j.randn(1, 9, 512); // [batchSize, seqLength_k, dModel]
 
         // Application de la passe forward
-        INDArray output = mha.forward(query, key, value, queryMask, keyMask, null);
+        INDArray output = mha.forwardSelfAttention(query, queryMask, null);
 
         // Inspection des poids d'attention pour les requêtes <PAD>
         mha.printAttentionWeights(

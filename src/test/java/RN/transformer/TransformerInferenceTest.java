@@ -41,6 +41,7 @@ public class TransformerInferenceTest {
         
         // Initialiser le modèle Transformer avec le Tokenizer personnalisé
         TransformerModel transformer = new TransformerModel(numLayers, dModel, numHeads, dff, dropoutRate, vocabSize, tokenizer, learningRate, warmupSteps);
+        transformer.setTrace(false);
 
         // Créer un jeu de données synthétique (entrée = cible)
         List<String> inputSentences = Arrays.asList("hello");

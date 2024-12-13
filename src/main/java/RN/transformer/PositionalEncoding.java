@@ -10,13 +10,30 @@ import org.nd4j.linalg.ops.transforms.Transforms;
 
 public class PositionalEncoding implements Serializable {
     /**
-	 * 
-	 */
-	private static final long serialVersionUID = 7621854975948659411L;
-	private final int dModel; // Dimensionnalité des embeddings
-    private INDArray encoding;
+     * 
+     */
+    private static final long serialVersionUID = 7621854975948659411L;
+    private int dModel = -1; // Dimensionnalité des embeddings
+    private INDArray encoding = null;
     private float scale = 1.0f;
-    
+
+    // encodage positionnel neutralisé
+    // public PositionalEncoding(int dModel) {
+    // // Initialisation standard
+    // this.encoding = Nd4j.zeros(1, 3, dModel);
+    // }
+
+    // public void updateScale(float scale) {
+    // // Neutraliser l'encodage positionnel
+    // this.encoding = this.encoding.mul(scale);
+    // }
+
+    // public INDArray getPositionalEncoding(long sequenceLength) {
+    // // Retourner un encodage positionnel neutralisé
+    // return this.encoding.get(NDArrayIndex.all(), NDArrayIndex.interval(0,
+    // sequenceLength), NDArrayIndex.all());
+    // }
+
     public PositionalEncoding(int dModel) {
         this.dModel = dModel;
     }
@@ -25,39 +42,34 @@ public class PositionalEncoding implements Serializable {
         if (encoding == null || encoding.size(0) != sequenceLength) {
             INDArray positions = Nd4j.arange(sequenceLength).reshape(sequenceLength, 1);
             INDArray i = Nd4j.arange(dModel).reshape(1, dModel);
-        
-            INDArray base = Nd4j.valueArrayOf(new long[]{1, dModel}, 10000.0);
+
+            INDArray base = Nd4j.valueArrayOf(new long[] { 1, dModel }, 10000.0);
             INDArray angleRates = Transforms.exp(Transforms.log(base).muli(2.0 / dModel).muli(i.neg()));
-        
+
             INDArray angles = positions.mmul(angleRates);
-        
+
             for (int pos = 0; pos < sequenceLength; pos++) {
                 for (int j = 0; j < dModel; j++) {
                     double angle = angles.getDouble(pos, j);
                     if (j % 2 == 0) {
-                        angles.putScalar(new int[]{pos, j}, Math.sin(angle));
+                        angles.putScalar(new int[] { pos, j }, Math.sin(angle));
                     } else {
-                        angles.putScalar(new int[]{pos, j}, Math.cos(angle));
+                        angles.putScalar(new int[] { pos, j }, Math.cos(angle));
                     }
                 }
             }
-            
+
             this.encoding = angles.mul(scale);
         }
-        
+
         return this.encoding;
     }
-    
+
     public void updateScale(float scale) {
         this.scale = scale;
         if (encoding != null) {
             encoding.muli(scale);
         }
     }
-    
-    
-
 
 }
-
-

@@ -64,11 +64,11 @@ public class TokenizerTest {
         int numLayers = 4;
         int dModel = embeddingSize;
         int numHeads = 2;
-        int dff = 512;
+        int dff = dModel * 4;
         int vocabSize = tokenizer.getVocabSize();
         float dropoutRate = 0.0f;
-        float initialLr = 0.001f;
-        int warmupSteps = 10;
+        float initialLr = 0.0001f;
+        int warmupSteps = 0;
 
         model = new TransformerModel(numLayers, dModel, numHeads, dff, dropoutRate, vocabSize, tokenizer, initialLr, warmupSteps);
 
@@ -381,7 +381,7 @@ public class TokenizerTest {
             "le temps est agréable",
             "quelle belle"
         );
-        int batchSize = 2;
+        int batchSize = 1;
         int sequenceLength = 7;
         mockDataGenerator = new DataGenerator(data, targets, tokenizer, batchSize, sequenceLength);
 

@@ -116,10 +116,12 @@ public class TransformerModel implements Serializable {
 
         // Initialiser le Tokenizer avec WordVectors
         if (wordVectors != null) {
+            System.out.println("wordVectors: " + wordVectors);
             this.tokenizer = new Tokenizer(wordVectors, dModel, maxSequenceLength);
             this.pretrainedEmbeddings = tokenizer.getPretrainedEmbeddings();
         } else {
             List<String> defaultVocab = Arrays.asList("<PAD>", "<UNK>", "<START>", "<END>");
+            System.out.println("defaultVocab: " + defaultVocab);
             this.tokenizer = new Tokenizer(defaultVocab, dModel, maxSequenceLength);
             this.pretrainedEmbeddings = tokenizer.getPretrainedEmbeddings();
         }
@@ -135,6 +137,11 @@ public class TransformerModel implements Serializable {
         freezeSpecialTokenEmbeddings();
     }
 
+    public TransformerModel(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, int vocabSize,
+    Tokenizer tokenizer, float initialLr, int warmupSteps) {
+        this(numLayers,dModel,numHeads,dff,dropoutRate,vocabSize,tokenizer,initialLr,warmupSteps ,true);
+    }
+
     /**
      * Nouveau constructeur compatible avec le test.
      *
@@ -147,7 +154,7 @@ public class TransformerModel implements Serializable {
      * @param tokenizer   Instance de Tokenizer personnalisée.
      */
     public TransformerModel(int numLayers, int dModel, int numHeads, int dff, double dropoutRate, int vocabSize,
-            Tokenizer tokenizer, float initialLr, int warmupSteps) {
+            Tokenizer tokenizer, float initialLr, int warmupSteps, boolean useLayerNorm) {
         this.numLayers = numLayers;
         this.dModel = dModel;
         this.numHeads = numHeads;
@@ -169,8 +176,8 @@ public class TransformerModel implements Serializable {
         }
 
         // Initialiser l'encodeur et le décodeur avec layer normalization activée
-        this.encoder = new Encoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer, true);
-        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer, true);
+        this.encoder = new Encoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer, useLayerNorm);
+        this.decoder = new Decoder(numLayers, dModel, numHeads, dff, dropoutRate, this.tokenizer, useLayerNorm);
 
         addCombinedParameters();
 
@@ -1220,6 +1227,14 @@ public class TransformerModel implements Serializable {
         // Utiliser infer avec maxLength=1 pour prédire le prochain mot
         String prediction = infer(input, 1);
         return prediction.trim();
+    }
+
+    public Decoder getDecoder() {
+        return decoder;
+    }
+
+    public Encoder getEncoder() {
+        return encoder;
     }
 
 

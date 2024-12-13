@@ -7,11 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.factory.Nd4j;
-import org.nd4j.linalg.indexing.NDArrayIndex;
-
 import RN.utils.NDArrayUtils;
 
 /**
@@ -267,8 +263,8 @@ public class Encoder implements Serializable {
             }
 
             // Attention multi-têtes auto-attention
-            INDArray attnOutput = selfAttention.forward(x, x, x, queryPaddingMask, keyPaddingMask, null); // [batchSize, seqLength, dModel]
-            
+            INDArray attnOutput = selfAttention.forwardSelfAttention(x, queryPaddingMask, null);
+
             attnOutput = dropout1.forward(isTraining, attnOutput); // Appliquer dropout
             INDArray out1 = layerNorm1 != null ? layerNorm1.forward(x.add(attnOutput)) : x.add(attnOutput); // Add & Norm [batchSize, seqLength, dModel]
 

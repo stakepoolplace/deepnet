@@ -6,6 +6,8 @@ import java.util.Map;
 import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.indexing.INDArrayIndex;
+import org.nd4j.linalg.indexing.NDArrayIndex;
 import org.nd4j.linalg.indexing.conditions.Conditions;
 import org.nd4j.linalg.ops.transforms.Transforms;
 
@@ -152,6 +154,8 @@ public class NDArrayUtils {
         return repeatedMask;
     }
 
+
+
     public static INDArray createPaddingMask(Tokenizer tokenizer, INDArray input) {
         INDArray mask = Nd4j.ones(input.shape());
         int padTokenId = tokenizer.getPadTokenId();
@@ -165,6 +169,24 @@ public class NDArrayUtils {
             }
         }
         return mask;
+    }
+
+
+    public static INDArray eye(int rows, int cols) {
+        INDArray eye = Nd4j.zeros(rows, cols);
+        int min = Math.min(rows, cols);
+        for (int i = 0; i < min; i++) {
+            eye.putScalar(new int[]{i, i}, 1.0);
+        }
+        return eye;
+    }  
+
+    public static INDArray eye(int size) {
+        return eye(size, size);
+    }
+
+    public static INDArray createNeutralMask(int batchSize, int seqLength) {
+        return Nd4j.ones(batchSize, seqLength);
     }
 
 }

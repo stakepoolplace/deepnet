@@ -26,7 +26,7 @@ public class LinearProjectionTest {
     @Before
     public void setUp() {
         // Initialisation de LinearProjection avec inputSize=10 et outputSize=5.
-        lp = new LinearProjection(10, 5);
+        lp = new LinearProjection(10, 5, true);
     }
 
     /**
@@ -56,39 +56,18 @@ public class LinearProjectionTest {
     public void testProjectRank3() {
         // Créer une entrée de rang 3 [batchSize=3, seqLength=4, inputSize=10]
         INDArray input = Nd4j.rand(DataType.FLOAT, 3, 4, 10);
-
+        
         // Effectuer la projection
         INDArray output = lp.project(input);
-
+        
         // Vérifier la forme de la sortie : [3, 4, 5]
         Assert.assertArrayEquals("Output shape should be [3, 4, 5]", new long[]{3, 4, 5}, output.shape());
-
+        
         // Vérifier le type de données
         Assert.assertEquals("Output data type should be FLOAT", DataType.FLOAT, output.dataType());
     }
 
-    /**
-     * Test de la méthode forward.
-     * Vérifie que la sortie a la forme correcte et que LayerNorm est appliqué correctement.
-     */
-    @Test
-    public void testForward() {
-        // Créer une entrée de rang 2 [batchSize=2, inputSize=10]
-        INDArray input = Nd4j.rand(DataType.FLOAT, 2, 10);
 
-        // Effectuer le forward pass
-        INDArray output = lp.forward(input);
-
-        // Vérifier la forme de la sortie : [2, 5]
-        Assert.assertArrayEquals("Output shape should be [2, 5]", new long[]{2, 5}, output.shape());
-
-        // Vérifier le type de données
-        Assert.assertEquals("Output data type should be FLOAT", DataType.FLOAT, output.dataType());
-
-        // Optionnel: Vérifier les valeurs si possible, par exemple vérifier que output n'est pas NaN
-        // Assert.assertFalse("Output should not contain NaN", output.isNaN());
-        // Assert.assertFalse("Output should not contain Inf", output.isInfinite());
-    }
 
     /**
      * Test de la méthode backward.

@@ -13,13 +13,11 @@ import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.ops.transforms.Transforms;
 
-import RN.utils.NDArrayUtils;
-
 /**
  * Classe représentant une normalisation de couche (LayerNorm).
  * Les tenseurs peuvent avoir n'importe quel rang >= 2, normalisés sur la dernière dimension (dModel).
  */
-public class LayerNorm extends Layer implements Serializable {
+public class LayerNorm implements Serializable {
     private static final long serialVersionUID = 941772045774041840L;
     private INDArray gamma, beta;
     private int dModel;
@@ -38,10 +36,6 @@ public class LayerNorm extends Layer implements Serializable {
         gamma = Nd4j.ones(DataType.FLOAT, 1, 1, dModel);
         // Initialisation de beta à des zéros
         beta = Nd4j.zeros(DataType.FLOAT, 1, 1, dModel);
-
-        // Log des formes pour vérification
-        // System.out.println("Initialized gamma shape: " + Arrays.toString(gamma.shape()));
-        // System.out.println("Initialized beta shape: " + Arrays.toString(beta.shape()));
     }
 
     /**
@@ -50,7 +44,6 @@ public class LayerNorm extends Layer implements Serializable {
      * @param x Entrée de forme [batchSize, seqLength, dModel] ou plus
      * @return Sortie normalisée de même forme
      */
-    @Override
     public INDArray forward(INDArray x) {
         if (x.isNaN().any() || x.isInfinite().any()) {
             throw new RuntimeException("LayerNorm.forward received NaN or Infinite values in input.");
@@ -60,21 +53,13 @@ public class LayerNorm extends Layer implements Serializable {
 
         // Calcul de la moyenne et de la variance sur la dernière dimension (dModel)
         INDArray mean = x.mean(true, x.rank() - 1);     // [batchSize, seqLength, 1]
-        INDArray variance = x.var(false, x.rank() - 1);  // [batchSize, seqLength, 1]
-
+        // Calculate variance and reshape to keep dimensions no corrected bias
+        INDArray variance = x.var(false, x.rank() - 1).reshape(x.size(0), x.size(1), 1); // [batchSize, seqLength, 1]
+        
         // Ajout de epsilon et calcul de l'écart-type
-        INDArray std = Transforms.sqrt(variance.add(epsilon)).reshape(x.shape()[0], x.shape()[1], 1); // [batchSize, seqLength, 1]
+        INDArray std = Transforms.sqrt(variance.add(epsilon)); // [batchSize, seqLength, 1]
 
-        if (mean.isNaN().any() || mean.isInfinite().any()) {
-            System.out.println("Mean contains NaN or Infinite values: " + mean);
-            throw new RuntimeException("NaN or Infinite values encountered in mean calculation.");
-        }
-        if (std.isNaN().any() || std.isInfinite().any()) {
-            System.out.println("Std contains NaN or Infinite values: " + std);
-            throw new RuntimeException("NaN or Infinite values encountered in standard deviation calculation.");
-        }
-
-        // Normalisation avec broadcast explicite
+        // Normalisation
         INDArray normalized = x.sub(mean).div(std); // [batchSize, seqLength, dModel]
 
         // Reshape gamma et beta pour le broadcasting correct
@@ -98,16 +83,9 @@ public class LayerNorm extends Layer implements Serializable {
      * @param gradOutput Gradient provenant de la couche suivante de même forme que l'entrée
      * @return Map contenant les gradients pour les paramètres 'gamma', 'beta' et 'input'
      */
-    @Override
     public Map<String, INDArray> backward(INDArray gradOutput) {
-
         if (gradOutput == null) {
             throw new IllegalArgumentException("gradOutput ne peut pas être null lors de la rétropropagation dans LayerNorm.");
-        }
-
-        // Vérifications de base
-        if (gradOutput.shape()[gradOutput.rank() - 1] != dModel) {
-            throw new IllegalStateException("La dernière dimension de gradOutput doit être égale à dModel.");
         }
 
         // Récupération des valeurs du forward
@@ -117,7 +95,8 @@ public class LayerNorm extends Layer implements Serializable {
 
         // Recalcul de la moyenne et de la variance comme dans le forward
         INDArray mean = input.mean(true, input.rank() - 1); // [batchSize, seqLength, 1]
-        INDArray variance = input.var(false, input.rank() - 1).reshape(batchSize, seqLength, 1); // [batchSize, seqLength, 1]
+        // INDArray variance = input.var(true, input.rank() - 1); // [batchSize, seqLength, 1]
+        INDArray variance = input.var(true, input.rank() - 1).reshape(input.size(0), input.size(1), 1); // [batchSize, seqLength, 1]
 
         INDArray std = Transforms.sqrt(variance.add(epsilon)); // [batchSize, seqLength, 1]
         INDArray stdInv = Transforms.pow(variance.add(epsilon), -0.5); // [batchSize, seqLength, 1]
@@ -126,16 +105,14 @@ public class LayerNorm extends Layer implements Serializable {
         INDArray gammaBroadcast = gamma.reshape(1, 1, dModel); // [1, 1, dModel]
         
         // Calcul des gradients pour gamma et beta avec la somme
-        INDArray gradGamma = gradOutput.mul(normalized).sum(new int[]{0, 1}).reshape(1, 1, dModel); // [1, 1, dModel]
-        INDArray gradBeta = gradOutput.sum(new int[]{0, 1}).reshape(1, 1, dModel); // [1, 1, dModel]
+        INDArray gradGamma = gradOutput.mul(normalized).sum(new int[]{0, 1}).reshape(1, 1, dModel); // [1,1,dModel]
+        INDArray gradBeta = gradOutput.sum(new int[]{0, 1}).reshape(1, 1, dModel); // [1,1,dModel]
 
         // Calcul du gradient par rapport à l'entrée
-        // Formule standard :
-        // gradInput = (gamma / std) * (gradOutput - mean(gradOutput, axis=-1, keepDims=true) - normalized * mean(gradOutput * normalized, axis=-1, keepDims=true))
         INDArray gradNormalized = gradOutput.mul(gammaBroadcast); // [batchSize, seqLength, dModel]
 
         INDArray meanGradNormalized = gradNormalized.mean(true, 2); // [batchSize, seqLength, 1]
-        INDArray meanGradNormalizedMulNormalized = gradNormalized.mul(normalized).mean(true,2); // [batchSize, seqLength, 1]
+        INDArray meanGradNormalizedMulNormalized = gradNormalized.mul(normalized).mean(true, 2); // [batchSize, seqLength, 1]
 
         INDArray gradInput = gradNormalized.div(std)
                 .sub(normalized.mul(meanGradNormalizedMulNormalized))
@@ -157,35 +134,35 @@ public class LayerNorm extends Layer implements Serializable {
 
         // Stockage des gradients
         gradients.clear(); // Assurez-vous que le map est vide avant d'ajouter
-        NDArrayUtils.addGradient(gradients, "gamma", gradGamma);
-        NDArrayUtils.addGradient(gradients, "beta", gradBeta);
-        NDArrayUtils.addGradient(gradients, "input", gradInput); // Gradient à propager vers les couches précédentes
+        gradients.put("gamma", gradGamma);
+        gradients.put("beta", gradBeta);
+        gradients.put("input", gradInput); // Gradient à propager vers les couches précédentes
 
         return gradients;
     }
 
-    /**
-     * Obtient les gradients des paramètres.
-     * 
-     * @return Liste des gradients dans l'ordre [gamma, beta]
-     */
+
+
     public List<INDArray> getGradients() {
         List<INDArray> list = new ArrayList<>();
         list.add(gradients.get("gamma"));
         list.add(gradients.get("beta"));
         if (list.contains(null)) {
-            throw new IllegalArgumentException("gradients contains null ");
+            throw new IllegalArgumentException(" gradients contains null ");
         }
-        return list;  
+        return list; 
     }
 
     /**
      * Obtient les paramètres de la normalisation de couche.
      * 
-     * @return Liste des paramètres dans l'ordre [gamma, beta]
+     * @return Map des paramètres dans l'ordre [gamma, beta]
      */
     public List<INDArray> getParameters() {
-        return Arrays.asList(gamma, beta);
+        List<INDArray> params = new ArrayList<>();
+        params.add(gamma);
+        params.add(beta);
+        return params;
     }
 
     /**
@@ -233,7 +210,14 @@ public class LayerNorm extends Layer implements Serializable {
     }
 
     public double computeLoss() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'computeLoss'");
+        return 0;        
+    }
+
+    public void setGamma(INDArray gamma) {
+        this.gamma = gamma;
+    }
+
+    public void setBeta(INDArray beta) {
+        this.beta = beta;
     }
 }

@@ -339,16 +339,16 @@ public class TransformerIntegrationTest {
         );
         
         int dModel = embeddingSize;  // 300
-        int numHeads = 6;  // Car 300/6 = 50 (entier)
+        int numHeads = 3;  // Car 300/6 = 50 (entier)
         
         tokenizer = new Tokenizer(vocabulary, embeddingSize, maxSequenceLength);
         tokenizer.initializeEmbeddings(preTrainedWordVectors);
         
         // Configuration avec dimensions cohérentes
-        int numLayers = 1;
+        int numLayers = 4;
         int dff = dModel * 4;     // 1200
         float dropoutRate = 0.1f;
-        float initialLr = 0.001f;
+        float initialLr = 0.005f;
         int warmupSteps = 0;
         int epochs = 100;
         int batchSize = 2;
@@ -383,11 +383,12 @@ public class TransformerIntegrationTest {
         }
         
         assertNotNull("Le modèle ne devrait pas être null", model);
-        String input = "le chat";
-        String prediction = model.predict(input);
+        String input = "le chat sur";
+        String prediction = model.infer(input, 2);
+        System.out.println("Prediction: " + prediction);
         assertNotNull("La prédiction ne devrait pas être null", prediction);
-        assertTrue("La prédiction devrait être soit 'sur' soit 'dans'", 
-                  prediction.equals("sur") || prediction.equals("dans"));
+        assertTrue("La prédiction devrait être soit 'le tapis'", 
+                  prediction.equals("le tapis"));
     }
 
     @Test
@@ -407,7 +408,7 @@ public class TransformerIntegrationTest {
             1,          // Une seule couche
             32,         // dModel petit mais suffisant
             1,          // Une seule tête d'attention
-            64,         // FFN modeste
+            (4 * 32),         // FFN modeste
             0.0f,       // Pas de dropout
             vocabulary.size(),
             tokenizer,
@@ -434,7 +435,7 @@ public class TransformerIntegrationTest {
         // Entraînement
         System.out.println("\n=== Début de l'entraînement de copie ===");
         try {
-            for (int epoch = 0; epoch < 200; epoch++) {
+            for (int epoch = 0; epoch < 300; epoch++) {
                 float loss = model.trainEpoch(dataGenerator);
                 if (epoch % 10 == 0) {
                     System.out.println(String.format("Epoch %d - Loss: %.6f", epoch, loss));

@@ -43,6 +43,25 @@ public class PositionwiseFeedForward implements Serializable {
         this.W2 = Nd4j.randn(ffSize, modelSize).mul(Math.sqrt(1.0 / ffSize)); // [ffSize, dModel]
         this.b2 = Nd4j.zeros(1, modelSize); // [1, dModel]
     }
+
+    // public INDArray forward(INDArray x) {
+
+    //     long batchSize = x.shape()[0];
+    //     long seqLength = x.shape()[1];
+    //     INDArray inputReshaped = x.reshape(batchSize * seqLength, dModel); 
+
+    //     // Première transformation: W1 * x + b1
+    //     INDArray z1 = inputReshaped.mmul(W1).addiRowVector(b1);
+        
+    //     // Activation: ReLU
+    //     INDArray a1 = Transforms.relu(z1, true);
+        
+    //     // Deuxième transformation: W2 * a1 + b2
+    //     INDArray z2 = a1.mmul(W2).addiRowVector(b2);
+        
+    //     return z2;
+
+    // }
     
 
     /**
@@ -66,7 +85,7 @@ public class PositionwiseFeedForward implements Serializable {
         this.reluCache = hidden.dup(); // [batchSize * seqLength, ffSize]
         
         // Activation ReLU
-        INDArray reluOutput = Transforms.relu(hidden); // [batchSize * seqLength, ffSize]
+        INDArray reluOutput = Transforms.relu(hidden, true); // [batchSize * seqLength, ffSize]
         
         // Deuxième couche linéaire
         INDArray output = reluOutput.mmul(W2).addiRowVector(b2); // [batchSize * seqLength, dModel]
@@ -191,5 +210,41 @@ public class PositionwiseFeedForward implements Serializable {
     public long getNumberOfGradients() {
         return gradients.get("W1").length() + gradients.get("b1").length() +
                gradients.get("W2").length() + gradients.get("b2").length();
+    }
+
+
+    public void setW1(INDArray w1) {
+        this.W1 = w1;
+    }
+
+
+    public void setW2(INDArray w2) {
+        this.W2 = w2;
+    }
+
+
+    public void setB1(INDArray b1) {
+        this.b1 = b1;
+    }
+
+
+    public void setB2(INDArray b2) {
+        this.b2 = b2;
+    }
+
+    public INDArray getW1() {
+        return this.W1;
+    }
+
+    public INDArray getW2() {
+        return this.W2;
+    }
+
+    public INDArray getB1() {
+        return this.b1;
+    }
+
+    public INDArray getB2() {
+        return this.b2;
     }
 }

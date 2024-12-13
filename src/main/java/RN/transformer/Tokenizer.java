@@ -11,6 +11,8 @@ import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.indexing.NDArrayIndex;
 
+import RN.utils.NDArrayUtils;
+
 public class Tokenizer implements Serializable {
     private static final long serialVersionUID = -1691008595018974489L;
     
@@ -252,6 +254,25 @@ public class Tokenizer implements Serializable {
         this.pretrainedEmbeddings.putRow(getStartTokenId(), Nd4j.zeros(1, embeddingSize));
         this.pretrainedEmbeddings.putRow(getEndTokenId(), Nd4j.zeros(1, embeddingSize));
     }
+    /**
+     * Initialise les embeddings avec une matrice identité étendue.
+     */
+    public void initializeEmbeddingEye() {
+        // Créer une matrice identité étendue de taille [vocabSize, dModel]
+        // Pour dModel=4 et vocabSize=6, cela pourrait ressembler à :
+        // [[1, 0, 0, 0],
+        //  [0, 1, 0, 0],
+        //  [0, 0, 1, 0],
+        //  [0, 0, 0, 1],
+        //  [1, 0, 0, 0],
+        //  [0, 1, 0, 0]]
+        INDArray eye = NDArrayUtils.eye(embeddingSize, embeddingSize);
+        INDArray extendedEye = Nd4j.zeros(vocabSize, embeddingSize);
+        for(int i = 0; i < vocabSize; i++) {
+            extendedEye.putRow(i, eye.getRow(i % embeddingSize));
+        }
+        this.pretrainedEmbeddings = extendedEye;
+    }
 
     // Calcul du vecteur moyen pour les WordVectors
     private INDArray calculateMeanVector(WordVectors wordVectors) {
@@ -380,6 +401,10 @@ public class Tokenizer implements Serializable {
     public INDArray getPretrainedEmbeddings() {
         return pretrainedEmbeddings;
     }
+
+    public INDArray getWeights() {
+        return pretrainedEmbeddings;
+    }
     
     public void setPretrainedEmbeddings(INDArray embeddings) {
         this.pretrainedEmbeddings = embeddings;
@@ -436,6 +461,10 @@ public class Tokenizer implements Serializable {
 
     public String idToToken(int id) {
         return idToToken.getOrDefault(id, "<UNK>");
+    }
+
+    public int getTokenId(String string) {
+        return tokenToId.getOrDefault(string, getUnkTokenId());
     }
 
 }
