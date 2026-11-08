@@ -1258,10 +1258,150 @@ public class TransformerModel implements Serializable {
         if (!isTrained()) {
             throw new IllegalStateException("Le modèle doit être entraîné avant de faire des prédictions");
         }
-        
+
         // Utiliser infer avec maxLength=1 pour prédire le prochain mot
         String prediction = infer(input, 1);
         return prediction.trim();
+    }
+
+    /**
+     * Génère du texte par échantillonnage (au lieu de l'argmax glouton de
+     * {@link #infer(String, int)}). Indispensable pour obtenir des sorties
+     * variées : avec un argmax pur, un modèle incertain répète le token le
+     * plus probable ("le le le...").
+     *
+     * @param input      Texte d'entrée (prompt).
+     * @param maxNewTokens Nombre maximum de tokens à générer.
+     * @param temperature  Température du softmax (&gt;0). 1.0 = inchangé,
+     *                     &lt;1 = plus déterministe, &gt;1 = plus créatif.
+     * @param topK       Ne conserve que les topK logits avant softmax (0 = désactivé).
+     * @param seed       Graine pour la reproductibilité du tirage.
+     * @return Texte généré (sans le token de début).
+     */
+    public String generate(String input, int maxNewTokens, double temperature, int topK, long seed) {
+        if (!isTrained) {
+            throw new IllegalStateException("Le modèle doit être entraîné avant de générer du texte.");
+        }
+        if (temperature <= 0) {
+            throw new IllegalArgumentException("La température doit être strictement positive.");
+        }
+        java.util.Random rng = new java.util.Random(seed);
+
+        List<String> promptTokens = tokenizer.tokenize(input);
+        List<Integer> promptTokenIds = tokenizer.tokensToIds(promptTokens);
+        if (promptTokenIds.isEmpty() || promptTokenIds.get(0) != tokenizer.getStartTokenId()) {
+            promptTokenIds.add(0, tokenizer.getStartTokenId());
+        }
+
+        INDArray data = Nd4j.create(DataType.INT, 1, promptTokenIds.size());
+        for (int j = 0; j < promptTokenIds.size(); j++) {
+            data.putScalar(new int[] { 0, j }, promptTokenIds.get(j));
+        }
+
+        Batch encoderBatch = new Batch(data, null, tokenizer);
+        INDArray encodedPrompt = encoder.encode(false, encoderBatch);
+        INDArray encoderInputTokens = encoderBatch.getData();
+
+        List<Integer> outputIds = new ArrayList<>();
+        outputIds.add(tokenizer.getStartTokenId());
+
+        INDArray queryPaddingMaskFromSource = NDArrayUtils.createQueryPaddingMask(tokenizer, encoderInputTokens);
+        INDArray keyPaddingMaskFromSource = NDArrayUtils.createKeyPaddingMask(tokenizer, encoderInputTokens);
+
+        for (int i = 0; i < maxNewTokens; i++) {
+            INDArray decoderInputIds = Nd4j.create(DataType.INT, 1, outputIds.size());
+            for (int j = 0; j < outputIds.size(); j++) {
+                decoderInputIds.putScalar(new int[] { 0, j }, outputIds.get(j));
+            }
+            Batch decoderBatch = new Batch(decoderInputIds, null, tokenizer);
+            INDArray queryPaddingMaskFromTarget = NDArrayUtils.createQueryPaddingMask(tokenizer, decoderInputIds);
+            INDArray keyPaddingMaskFromTarget = NDArrayUtils.createKeyPaddingMask(tokenizer, decoderInputIds);
+            INDArray lookAheadMask = NDArrayUtils.createLookAheadMask((int) decoderInputIds.shape()[0],
+                    (int) decoderInputIds.shape()[1]);
+
+            INDArray logits = decoder.decode(false,
+                    encodedPrompt,
+                    tokenizer.lookupEmbeddings(decoderInputIds),
+                    decoderBatch,
+                    lookAheadMask,
+                    queryPaddingMaskFromSource,
+                    keyPaddingMaskFromSource,
+                    queryPaddingMaskFromTarget,
+                    keyPaddingMaskFromTarget);
+            updateLastAttentionScores();
+
+            int lastPosition = (int) logits.shape()[1] - 1;
+            INDArray lastTokenLogits = logits.get(
+                    NDArrayIndex.point(0),
+                    NDArrayIndex.point(lastPosition),
+                    NDArrayIndex.all()).dup();
+
+            // Température puis softmax
+            INDArray scaled = lastTokenLogits.div(temperature);
+            INDArray probs = Transforms.softmax(scaled);
+
+            // Masquer les tokens spéciaux sauf <END> (PAD/UNK/START interdits)
+            INDArray specialTokenMask = Nd4j.ones(probs.shape());
+            specialTokenMask.putScalar(new int[] { tokenizer.getPadTokenId() }, 0);
+            specialTokenMask.putScalar(new int[] { tokenizer.getUnkTokenId() }, 0);
+            specialTokenMask.putScalar(new int[] { tokenizer.getStartTokenId() }, 0);
+            probs = probs.mul(specialTokenMask);
+
+            // Top-k : ne garder que les k meilleurs, renormaliser
+            int vocabSize = (int) probs.length();
+            if (topK > 0 && topK < vocabSize) {
+                double[] topVals = new double[topK];
+                java.util.Arrays.fill(topVals, Double.NEGATIVE_INFINITY);
+                for (int v = 0; v < vocabSize; v++) {
+                    double p = probs.getDouble(v);
+                    for (int r = 0; r < topK; r++) {
+                        if (p > topVals[r]) {
+                            for (int s = topK - 1; s > r; s--) {
+                                topVals[s] = topVals[s - 1];
+                            }
+                            topVals[r] = p;
+                            break;
+                        }
+                    }
+                }
+                double cutoff = topVals[topK - 1];
+                for (int v = 0; v < vocabSize; v++) {
+                    if (probs.getDouble(v) < cutoff) {
+                        probs.putScalar(v, 0.0);
+                    }
+                }
+                double sum = probs.sumNumber().doubleValue();
+                if (sum > 0) {
+                    probs.divi(sum);
+                }
+            } else {
+                double sum = probs.sumNumber().doubleValue();
+                if (sum > 0) {
+                    probs.divi(sum);
+                }
+            }
+
+            // Tirage selon la distribution (reproductible via seed)
+            double r = rng.nextDouble();
+            double cumulative = 0.0;
+            int predictedTokenId = tokenizer.getEndTokenId();
+            for (int v = 0; v < vocabSize; v++) {
+                cumulative += probs.getDouble(v);
+                if (r < cumulative) {
+                    predictedTokenId = v;
+                    break;
+                }
+            }
+
+            if (predictedTokenId == tokenizer.getEndTokenId()) {
+                break;
+            }
+            outputIds.add(predictedTokenId);
+            tokenizer.updateFrequency(predictedTokenId);
+        }
+
+        List<Integer> generatedTokenIds = outputIds.subList(1, outputIds.size());
+        return tokenizer.idsToTokens(generatedTokenIds);
     }
 
     public Decoder getDecoder() {
