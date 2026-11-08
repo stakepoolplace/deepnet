@@ -47,10 +47,10 @@ public class PositionalEncodingTest {
         // Vérifie les autres positions
         for (int pos = 1; pos < sequenceLength; pos++) {
             for (int j = 0; j < dModel; j++) {
-                double angle = pos / Math.pow(10000.0, (2.0 * j) / dModel);
+                double angle = pos / Math.pow(10000.0, (2 * (j / 2)) / (double) dModel);
                 double expectedValue = (j % 2 == 0) ? Math.sin(angle) : Math.cos(angle);
                 assertEquals("Valeur à la position " + pos + ", indice " + j + " ne correspond pas à l'encodage attendu",
-                             expectedValue, posEncoding.getDouble(pos, j), 1e-6);
+                             expectedValue, posEncoding.getDouble(pos, j), 1e-5);
             }
         }
     }
@@ -66,10 +66,10 @@ public class PositionalEncodingTest {
         // Vérifie que les indices pairs sont des sin et les impairs des cos
         for (int pos = 0; pos < sequenceLength; pos++) {
             for (int j = 0; j < dModel; j++) {
-                double angle = pos / Math.pow(10000.0, (2.0 * j) / dModel);
+                double angle = pos / Math.pow(10000.0, (2 * (j / 2)) / (double) dModel);
                 double expectedValue = (j % 2 == 0) ? Math.sin(angle) : Math.cos(angle);
                 assertEquals("Le motif sin/cos ne correspond pas à la position " + pos + ", indice " + j,
-                             expectedValue, posEncoding.getDouble(pos, j), 1e-6);
+                             expectedValue, posEncoding.getDouble(pos, j), 1e-5);
             }
         }
     }

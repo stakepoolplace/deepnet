@@ -91,32 +91,17 @@ public class Encoder implements Serializable {
      * @param gradOutput Gradient provenant de la couche suivante.
      */
     public Map<String, INDArray> backward(Map<String, INDArray> gradOutput) {
-        // Récupérer gradAttentionOutputConcat
-        INDArray gradAttentionOutputConcatND = gradOutput.get("gradAttentionOutputConcat"); // [batchSize, numHeads, seqLength, depth]
+        // Gradient par rapport à la sortie finale de l'encodeur
+        // [batchSize, seqLength, dModel], fourni par extractEncoderGradients
+        // (= dL/dK + dL/dV de la cross-attention du décodeur).
+        INDArray gradEncoderOutput = gradOutput.get("gradEncoderOutput");
 
-        if (gradAttentionOutputConcatND == null) {
-            throw new IllegalStateException("gradAttentionOutputConcat est null. Assurez-vous que MultiHeadAttention.backward retourne correctement ce gradient.");
+        if (gradEncoderOutput == null) {
+            throw new IllegalStateException("gradEncoderOutput est null. Assurez-vous que extractEncoderGradients fournit le gradient par rapport à la sortie de l'encodeur.");
         }
-
-        // Permuter les axes [batchSize, numHeads, seqLength, depth] en [batchSize, seqLength, numHeads, depth]
-        INDArray gradPermuted = gradAttentionOutputConcatND.permute(0, 2, 1, 3); // [batchSize, seqLength, numHeads, depth]
-
-        // Calculer dynamiquement les dimensions
-        int batchSize = (int) gradPermuted.size(0);
-        int seqLength = (int) gradPermuted.size(1);
-        int numHeads = layers.get(0).getNumHeads();
-        int depth = dModel / numHeads;
-
-        // Vérifier que dModel est divisible par numHeads
-        if (dModel != numHeads * depth) {
-            throw new IllegalStateException("dModel doit être divisible par numHeads. dModel=" + dModel + ", numHeads=" + numHeads);
-        }
-
-        // Reshaper en [batchSize, seqLength, numHeads * depth] == [batchSize, seqLength, dModel]
-        INDArray gradOutputForLayerNorm = gradPermuted.reshape(batchSize, seqLength, numHeads * depth); // [batchSize, seqLength, dModel]
 
         // Backpropager à travers la normalisation de couche finale
-        Map<String, INDArray> gradientsFromLayerNorm = layerNorm != null ? layerNorm.backward(gradOutputForLayerNorm) : new HashMap<>();
+        Map<String, INDArray> gradientsFromLayerNorm = layerNorm != null ? layerNorm.backward(gradEncoderOutput) : new HashMap<>();
 
         // Obtenir le gradient à passer aux couches de l'encodeur
         INDArray gradInput = gradientsFromLayerNorm.get("input");
@@ -302,11 +287,15 @@ public class Encoder implements Serializable {
 
             // Backward à travers le premier Add & Norm (Self-Attention)
             Map<String, INDArray> gradSelfAttentionMap = selfAttention.backward(gradAddNorm1); // {'input': grad_attn}
-            INDArray gradSelfAttention = gradSelfAttentionMap.get("input"); // [batchSize, seqLength, dModel]
-            gradSelfAttention = dropout1.backward(gradSelfAttention); // [batchSize, seqLength, dModel]
+            // dL/dx via l'attention = somme sur Q, K et V (x alimente les trois)
+            INDArray gradAttnBranch = gradSelfAttentionMap.get("gradInputQ")
+                    .add(gradSelfAttentionMap.get("gradInputK"))
+                    .add(gradSelfAttentionMap.get("gradInputV")); // [batchSize, seqLength, dModel]
+            gradAttnBranch = dropout1.backward(gradAttnBranch); // [batchSize, seqLength, dModel]
 
-            // Gradient à propager vers les couches précédentes
-            return gradSelfAttention;
+            // Gradient à propager vers les couches précédentes :
+            // connexion résiduelle (gradAddNorm1) + branche attention
+            return gradAddNorm1.add(gradAttnBranch);
         }
 
 

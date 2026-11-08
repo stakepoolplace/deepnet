@@ -41,10 +41,13 @@ public class PositionalEncoding implements Serializable {
     public INDArray getPositionalEncoding(long sequenceLength) {
         if (encoding == null || encoding.size(0) != sequenceLength) {
             INDArray positions = Nd4j.arange(sequenceLength).reshape(sequenceLength, 1);
-            INDArray i = Nd4j.arange(dModel).reshape(1, dModel);
+            // Formule standard "Attention Is All You Need" : les paires (sin, cos)
+            // partagent le meme taux -> exposant 2*floor(j/2)/dModel
+            INDArray dimIndex = Nd4j.arange(dModel).reshape(1, dModel);
+            INDArray pairIndex = Transforms.floor(dimIndex.div(2.0));
 
             INDArray base = Nd4j.valueArrayOf(new long[] { 1, dModel }, 10000.0);
-            INDArray angleRates = Transforms.exp(Transforms.log(base).muli(2.0 / dModel).muli(i.neg()));
+            INDArray angleRates = Transforms.exp(Transforms.log(base).muli(2.0 / dModel).muli(pairIndex.neg()));
 
             INDArray angles = positions.mmul(angleRates);
 

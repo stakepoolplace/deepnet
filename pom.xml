@@ -22,11 +22,20 @@
 		<!-- Deeplearning4j core -->
 
 
-		<!-- ND4J backend. Vous devez choisir un backend. Ici, c'est pour CPUs. -->
+		<!-- ND4J backend GPU (CUDA 11.6). UN SEUL backend à la fois : le CPU
+		     (nd4j-native-platform) est désactivé quand celui-ci est actif. -->
 		<dependency>
 			<groupId>org.nd4j</groupId>
-			<artifactId>nd4j-native-platform</artifactId>
+			<artifactId>nd4j-cuda-11.6-platform</artifactId>
 			<version>1.0.0-M2.1</version>
+		</dependency>
+		<!-- Binaires CUDA redistribués (libcudart, cublas, ...) : indispensables
+		     car aucun toolkit CUDA n'est installé sur le système. -->
+		<dependency>
+			<groupId>org.bytedeco</groupId>
+			<artifactId>cuda</artifactId>
+			<version>11.6-8.3-1.5.7</version>
+			<classifier>linux-x86_64-redist</classifier>
 		</dependency>
 		<dependency>
 			<groupId>org.deeplearning4j</groupId>
@@ -153,6 +162,13 @@
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-engine</artifactId>
+            <version>5.7.0</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- JUnit Vintage Engine : exécute les tests JUnit 4 via la plateforme JUnit 5 -->
+        <dependency>
+            <groupId>org.junit.vintage</groupId>
+            <artifactId>junit-vintage-engine</artifactId>
             <version>5.7.0</version>
             <scope>test</scope>
         </dependency>

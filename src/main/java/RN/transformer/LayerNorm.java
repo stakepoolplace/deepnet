@@ -94,9 +94,9 @@ public class LayerNorm implements Serializable {
         long seqLength = input.size(1);
 
         // Recalcul de la moyenne et de la variance comme dans le forward
+        // (variance NON corrigée, comme dans forward : var(false, ...))
         INDArray mean = input.mean(true, input.rank() - 1); // [batchSize, seqLength, 1]
-        // INDArray variance = input.var(true, input.rank() - 1); // [batchSize, seqLength, 1]
-        INDArray variance = input.var(true, input.rank() - 1).reshape(input.size(0), input.size(1), 1); // [batchSize, seqLength, 1]
+        INDArray variance = input.var(false, input.rank() - 1).reshape(input.size(0), input.size(1), 1); // [batchSize, seqLength, 1]
 
         INDArray std = Transforms.sqrt(variance.add(epsilon)); // [batchSize, seqLength, 1]
         INDArray stdInv = Transforms.pow(variance.add(epsilon), -0.5); // [batchSize, seqLength, 1]
@@ -114,9 +114,12 @@ public class LayerNorm implements Serializable {
         INDArray meanGradNormalized = gradNormalized.mean(true, 2); // [batchSize, seqLength, 1]
         INDArray meanGradNormalizedMulNormalized = gradNormalized.mul(normalized).mean(true, 2); // [batchSize, seqLength, 1]
 
-        INDArray gradInput = gradNormalized.div(std)
+        // dL/dx = (1/std) * [g - mean(g) - xhat * mean(g * xhat)]
+        // où g = gamma * dL/dy. TOUT le crochet est divisé par std.
+        INDArray gradInput = gradNormalized
+                .sub(meanGradNormalized)
                 .sub(normalized.mul(meanGradNormalizedMulNormalized))
-                .sub(meanGradNormalized);
+                .div(std);
 
         // Vérification des gradients
         if (gradGamma.isNaN().any() || gradGamma.isInfinite().any()) {

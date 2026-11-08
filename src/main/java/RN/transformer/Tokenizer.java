@@ -152,29 +152,35 @@ public class Tokenizer implements Serializable {
      *
      * @param gradOutput Les gradients de la perte par rapport aux embeddings [batchSize, seqLength, dModel].
      */
-    public void backward(INDArray gradOutput) {
+    /**
+     * Rétropropagation vers les embeddings : accumule, pour chaque position,
+     * le gradient sur la ligne d'embedding du token présent à cette position.
+     * Les IDs de tokens doivent être fournis explicitement (un même tokenizer
+     * sert l'encodeur ET le décodeur, avec des séquences différentes : un
+     * cache partagé "derniers IDs" attribuerait les gradients aux mauvais tokens).
+     */
+    public void backward(INDArray gradOutput, INDArray tokenIdsBatch) {
         // Vérifier la forme de gradOutput
         if (gradOutput.rank() != 3 || gradOutput.size(2) != embeddingSize) {
             throw new IllegalArgumentException("gradOutput doit être de forme [batchSize, seqLength, dModel].");
         }
-    
+        if (tokenIdsBatch.rank() != 2 || tokenIdsBatch.size(0) != gradOutput.size(0)
+                || tokenIdsBatch.size(1) != gradOutput.size(1)) {
+            throw new IllegalArgumentException("tokenIdsBatch doit être de forme [batchSize, seqLength] assortie à gradOutput.");
+        }
+
         int batchSize = (int) gradOutput.size(0);
         int seqLength = (int) gradOutput.size(1);
-        
+        int[] tokenIds = tokenIdsBatch.reshape(batchSize * seqLength).toIntVector();
+
         // Itérer sur chaque élément du batch et de la séquence
         for (int b = 0; b < batchSize; b++) {
             for (int s = 0; s < seqLength; s++) {
-                // Calculer l'index global dans lastForwardTokenIds
-                int index = b * seqLength + s;
-                if (index >= lastForwardTokenIds.size()) {
-                    // Gestion des cas où la séquence est plus longue que lastForwardTokenIds
-                    continue;
-                }
-                int tokenId = lastForwardTokenIds.get(index);
-                
+                int tokenId = tokenIds[b * seqLength + s];
+
                 // Récupérer le gradient pour ce token
                 INDArray gradForToken = gradOutput.get(NDArrayIndex.point(b), NDArrayIndex.point(s), NDArrayIndex.all());
-        
+
                 // Accumuler le gradient dans embeddingGradients
                 embeddingGradients.getRow(tokenId).addi(gradForToken);
             }

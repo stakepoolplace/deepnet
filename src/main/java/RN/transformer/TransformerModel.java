@@ -200,7 +200,7 @@ public class TransformerModel implements Serializable {
      * @param gradOutput Les gradients de la perte par rapport aux sorties du
      *                   décodeur.
      */
-    public void backward(INDArray gradOutput) {
+    public void backward(INDArray gradOutput, INDArray encoderInputIds, INDArray decoderInputIds) {
         // Rétropropagation à travers le décodeur
         Map<String, INDArray> decoderGradients = decoder.backward(gradOutput);
 
@@ -208,17 +208,25 @@ public class TransformerModel implements Serializable {
         // decoderGradients
         Map<String, INDArray> encoderGradients = extractEncoderGradients(decoderGradients);
 
+        // Gradients vers les embeddings d'entrée du décodeur (matrice partagée
+        // avec l'encodeur : on accumule, pas de remise à zéro entre les deux).
+        INDArray decoderInputGradients = decoderGradients.get("input");
+        if (decoderInputGradients == null) {
+            throw new IllegalStateException("Le gradient d'entrée du décodeur est introuvable.");
+        }
+        tokenizer.backward(decoderInputGradients, decoderInputIds);
+
         // Rétropropagation à travers l'encodeur
         Map<String, INDArray> encoderBackwardGradients = encoder.backward(encoderGradients);
 
-        // Récupérer 'gradEmbeddings' et le passer au Tokenizer
+        // Récupérer 'gradEmbeddings' et les passer au Tokenizer (cumul avec le décodeur)
         INDArray gradEmbeddings = encoderBackwardGradients.get("gradEmbeddings");
         if (gradEmbeddings == null) {
             throw new IllegalStateException("Les gradients des embeddings sont absents.");
         }
 
         // Rétropropagation à travers le tokenizer (embeddings)
-        tokenizer.backward(gradEmbeddings); // gradEmbeddings doit être de forme [batchSize, seqLength, dModel]
+        tokenizer.backward(gradEmbeddings, encoderInputIds);
     }
 
     /**
@@ -257,19 +265,33 @@ public class TransformerModel implements Serializable {
                 // Encoder les données du batch
                 INDArray encoded = encoder.encode(true, batch);
 
-                // Créer les masques nécessaires
+                // Teacher forcing standard : le décodeur reçoit la cible décalée
+                // (sans le dernier token) et prédit la cible décalée (sans le premier
+                // token <START>). Sans cela, l'inférence auto-régressive (qui génère
+                // les positions 0, 1, ... à partir de [START], [START, y1], ...)
+                // ne correspond à aucun calcul fait pendant l'entraînement.
+                // (Repli sur l'ancien comportement si la cible est dégénérée.)
+                int tgtLen = (int) target.shape()[1];
+                boolean shifted = tgtLen >= 2;
+                INDArray decoderInputIds = shifted
+                        ? target.get(NDArrayIndex.all(), NDArrayIndex.interval(0, tgtLen - 1)) : target;
+                INDArray lossTarget = shifted
+                        ? target.get(NDArrayIndex.all(), NDArrayIndex.interval(1, tgtLen)) : target;
+                Batch decoderBatch = shifted ? new Batch(decoderInputIds, null, tokenizer) : batch;
+                int decLen = (int) decoderInputIds.shape()[1];
+
+                // Créer les masques nécessaires (côté décodeur : longueur decLen)
                 INDArray queryPaddingMaskFromSource = NDArrayUtils.createQueryPaddingMask(tokenizer, input);
                 INDArray keyPaddingMaskFromSource = NDArrayUtils.createKeyPaddingMask(tokenizer, input);
-                INDArray queryPaddingMaskFromTarget = NDArrayUtils.createQueryPaddingMask(tokenizer, target);
-                INDArray keyPaddingMaskFromTarget = NDArrayUtils.createKeyPaddingMask(tokenizer, target);
-                INDArray lookAheadMask = NDArrayUtils.createLookAheadMask((int)target.shape()[0], 
-                                                                         (int)target.shape()[1]);
+                INDArray queryPaddingMaskFromTarget = NDArrayUtils.createQueryPaddingMask(tokenizer, decoderInputIds);
+                INDArray keyPaddingMaskFromTarget = NDArrayUtils.createKeyPaddingMask(tokenizer, decoderInputIds);
+                INDArray lookAheadMask = NDArrayUtils.createLookAheadMask((int)target.shape()[0], decLen);
 
                 // Décoder les données encodées avec les masques
-                INDArray decodedOutput = decoder.decode(true, 
-                                                      encoded, 
-                                                      encoded, 
-                                                      batch,
+                INDArray decodedOutput = decoder.decode(true,
+                                                      encoded,
+                                                      encoded,
+                                                      decoderBatch,
                                                       lookAheadMask,
                                                       queryPaddingMaskFromSource,
                                                       keyPaddingMaskFromSource,
@@ -284,20 +306,20 @@ public class TransformerModel implements Serializable {
                     traceAttentionInEncoderAndDecoder(input, target);
                 }
 
-                // Calculer la perte et les gradients
+                // Calculer la perte et les gradients (contre la cible décalée)
                 List<INDArray> decodedLogits = Arrays.asList(decodedOutput);
-                Pair<Float, INDArray> lossAndGradients = calculateCrossEntropyLossAndGradient(decodedLogits, target);
+                Pair<Float, INDArray> lossAndGradients = calculateCrossEntropyLossAndGradient(decodedLogits, lossTarget);
                 float loss = lossAndGradients.getLeft();
                 INDArray initialGradients = lossAndGradients.getRight();
 
                 totalLoss += loss;
-                totalTokens += target.sumNumber().intValue(); // Total de tokens cibles pour normaliser la perte
+                totalTokens += lossTarget.sumNumber().intValue(); // Total de tokens cibles pour normaliser la perte
 
                 // Afficher la perte pour ce batch
                 System.out.println("Perte pour ce batch: " + loss);
 
-                // Rétropropagation
-                backward(initialGradients);
+                // Rétropropagation (avec les IDs pour attribuer les gradients d'embeddings)
+                backward(initialGradients, input, decoderInputIds);
 
                 // Collecter tous les gradients
                 collectCombinedGradients();
@@ -393,19 +415,29 @@ public class TransformerModel implements Serializable {
             // Encoder les données du batch
             INDArray encoded = encoder.encode(true, batch);
 
-            // Créer les masques nécessaires
+            // Teacher forcing standard : voir train() pour l'explication.
+            // (Repli sur l'ancien comportement si la cible est dégénérée.)
+            int tgtLenEp = (int) target.shape()[1];
+            boolean shiftedEp = tgtLenEp >= 2;
+            INDArray decoderInputIdsEp = shiftedEp
+                    ? target.get(NDArrayIndex.all(), NDArrayIndex.interval(0, tgtLenEp - 1)) : target;
+            INDArray lossTargetEp = shiftedEp
+                    ? target.get(NDArrayIndex.all(), NDArrayIndex.interval(1, tgtLenEp)) : target;
+            Batch decoderBatchEp = shiftedEp ? new Batch(decoderInputIdsEp, null, tokenizer) : batch;
+            int decLenEp = (int) decoderInputIdsEp.shape()[1];
+
+            // Créer les masques nécessaires (côté décodeur : longueur decLen)
             INDArray queryPaddingMaskFromSource = NDArrayUtils.createQueryPaddingMask(tokenizer, input);
             INDArray keyPaddingMaskFromSource = NDArrayUtils.createKeyPaddingMask(tokenizer, input);
-            INDArray queryPaddingMaskFromTarget = NDArrayUtils.createQueryPaddingMask(tokenizer, target);
-            INDArray keyPaddingMaskFromTarget = NDArrayUtils.createKeyPaddingMask(tokenizer, target);
-            INDArray lookAheadMask = NDArrayUtils.createLookAheadMask((int)target.shape()[0], 
-                                                                     (int)target.shape()[1]);
+            INDArray queryPaddingMaskFromTarget = NDArrayUtils.createQueryPaddingMask(tokenizer, decoderInputIdsEp);
+            INDArray keyPaddingMaskFromTarget = NDArrayUtils.createKeyPaddingMask(tokenizer, decoderInputIdsEp);
+            INDArray lookAheadMask = NDArrayUtils.createLookAheadMask((int)target.shape()[0], decLenEp);
 
             // Décoder les données encodées avec les masques
             INDArray decodedOutput = decoder.decode(true, 
                                                   encoded, 
                                                   encoded, 
-                                                  batch,
+                                                  decoderBatchEp,
                                                   lookAheadMask,
                                                   queryPaddingMaskFromSource,
                                                   keyPaddingMaskFromSource,
@@ -420,20 +452,20 @@ public class TransformerModel implements Serializable {
                 traceAttentionInEncoderAndDecoder(input, target);
             }
 
-            // Calculer la perte et les gradients
+            // Calculer la perte et les gradients (contre la cible décalée)
             List<INDArray> decodedLogits = Arrays.asList(decodedOutput);
-            Pair<Float, INDArray> lossAndGradients = calculateCrossEntropyLossAndGradient(decodedLogits, target);
+            Pair<Float, INDArray> lossAndGradients = calculateCrossEntropyLossAndGradient(decodedLogits, lossTargetEp);
             float loss = lossAndGradients.getLeft();
             INDArray initialGradients = lossAndGradients.getRight();
 
             totalLoss += loss;
-            totalTokens += target.sumNumber().intValue(); // Total de tokens cibles pour normaliser la perte
+            totalTokens += lossTargetEp.sumNumber().intValue(); // Total de tokens cibles pour normaliser la perte
 
             // Afficher la perte pour le monitoring
             //System.out.println("Perte pour ce batch: " + loss);
 
-            // Backward pass
-            backward(initialGradients);
+            // Backward pass (avec les IDs pour attribuer les gradients d'embeddings)
+            backward(initialGradients, input, decoderInputIdsEp);
 
             // Collecter tous les gradients
             collectCombinedGradients();
@@ -582,21 +614,19 @@ public class TransformerModel implements Serializable {
     private Map<String, INDArray> extractEncoderGradients(Map<String, INDArray> decoderGradients) {
         Map<String, INDArray> encoderGradients = new HashMap<>();
 
-        // Extrayez les gradients pertinents
-        INDArray gradAttentionOutputConcat = decoderGradients.get("gradAttentionOutputConcat");
-        INDArray gradInputQ = decoderGradients.get("gradInputQ");
-        INDArray gradInputK = decoderGradients.get("gradInputK");
-        INDArray gradInputV = decoderGradients.get("gradInputV");
+        // Le gradient par rapport à la sortie de l'encodeur est la somme des
+        // gradients des clés et des valeurs de la cross-attention (l'encodeur
+        // alimente les deux). DecoderLayer.backward garantit que gradInputK/V
+        // sont ceux de la cross-attention (pas écrasés par la self-attention).
+        INDArray gradK = decoderGradients.get("gradInputK");
+        INDArray gradV = decoderGradients.get("gradInputV");
 
-        if (gradAttentionOutputConcat == null || gradInputQ == null || gradInputK == null || gradInputV == null) {
-            throw new IllegalStateException("Un ou plusieurs gradients ncessaires sont null.");
+        if (gradK == null || gradV == null) {
+            throw new IllegalStateException("Un ou plusieurs gradients nécessaires sont null.");
         }
 
-        // Ajoutez les gradients au Map
-        encoderGradients.put("gradAttentionOutputConcat", gradAttentionOutputConcat);
-        encoderGradients.put("gradInputQ", gradInputQ);
-        encoderGradients.put("gradInputK", gradInputK);
-        encoderGradients.put("gradInputV", gradInputV);
+        // dL/d(encoderOutput) = dL/dK + dL/dV
+        encoderGradients.put("gradEncoderOutput", gradK.add(gradV));
 
         return encoderGradients;
     }
@@ -900,8 +930,13 @@ public class TransformerModel implements Serializable {
         System.out.println("Tokenisation du prompt: " + promptTokens);
         System.out.println("IDs des tokens du prompt: " + promptTokenIds);
         
-        // Ajouter le token de début si nécessaire
-        promptTokenIds.add(0, tokenizer.getStartTokenId());
+        // Ajouter le token de début si nécessaire (tokenize() l'inclut déjà :
+        // ne pas le dupliquer, sinon l'entrée d'inférence est décalée d'une
+        // position par rapport à l'entraînement et le positional encoding
+        // la rend hors-distribution).
+        if (promptTokenIds.isEmpty() || promptTokenIds.get(0) != tokenizer.getStartTokenId()) {
+            promptTokenIds.add(0, tokenizer.getStartTokenId());
+        }
 
         // Convertir la liste en INDArray [1, seqLength]
         INDArray data = Nd4j.create(DataType.INT, 1, promptTokenIds.size());

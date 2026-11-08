@@ -235,6 +235,9 @@ public class MultiHeadAttention implements Serializable {
         // Dimensions
         int batchSize = (int) gradOutput.shape()[0];
         int seqLength = (int) gradOutput.shape()[1];
+        // Longueur des clés/valeurs : égale à seqLength en self-attention,
+        // potentiellement différente en cross-attention (requêtes vs mémoire)
+        int seqLengthK = (this.inputK != null) ? (int) this.inputK.shape()[1] : seqLength;
         int numHeads = this.numHeads;
         int depth = this.depth;
         int dModel = this.dModel; // Assurez-vous que dModel = numHeads * depth
@@ -249,10 +252,10 @@ public class MultiHeadAttention implements Serializable {
         // System.out.println("gradOutput shape: " + gradOutput.shapeInfoToString());
 
         // Step 1: Compute gradients for Wo
-        // attentionOutputConcat has shape [batchSize, seqLength, numHeads * depth]
-        INDArray attentionOutputConcat = this.attentionOutput.permute(0, 2, 1) // [batchSize, numHeads * depth,
-                                                                               // seqLength]
-                .reshape(batchSize * seqLength, numHeads * depth); // [batchSize * seqLength, numHeads * depth]
+        // attentionOutput (attentionConcat du forward) est déjà [batchSize, seqLength, numHeads * depth]
+        // avec la ligne (b * seqLength + t) = têtes concaténées en (b, t) : simple mise à plat, SANS
+        // permutation (une permutation ici mélangerait batch/seqLength et fausserait gradWo).
+        INDArray attentionOutputConcat = this.attentionOutput.reshape(batchSize * seqLength, numHeads * depth); // [batchSize * seqLength, numHeads * depth]
 
         // Reshape gradOutput to [batchSize * seqLength, dModel]
         INDArray gradOutputReshaped = gradOutput.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength,
@@ -283,8 +286,8 @@ public class MultiHeadAttention implements Serializable {
         // attentionOutput = attentionWeights.mmul(V)
         // gradAttentionWeights = gradAttentionOutputConcat.mmul(V^T)
         // gradV = attentionWeights^T.mmul(gradAttentionOutputConcat)
-        INDArray gradAttentionWeights = Nd4j.create(batchSize, numHeads, seqLength, seqLength); // [batchSize, numHeads,
-                                                                                                // seqLength, seqLength]
+        INDArray gradAttentionWeights = Nd4j.create(batchSize, numHeads, seqLength, seqLengthK); // [batchSize, numHeads,
+                                                                                                // seqLength_q, seqLength_k]
         for (int b = 0; b < batchSize; b++) {
             for (int h = 0; h < numHeads; h++) {
                 // Extract [seqLength, depth] from gradAttentionOutputConcatND
@@ -319,7 +322,7 @@ public class MultiHeadAttention implements Serializable {
         // gradAttentionWeights.shapeInfoToString());
 
         // Compute gradV
-        INDArray gradV = Nd4j.create(batchSize, numHeads, seqLength, depth); // [batchSize, numHeads, seqLength, depth]
+        INDArray gradV = Nd4j.create(batchSize, numHeads, seqLengthK, depth); // [batchSize, numHeads, seqLength_k, depth]
         for (int b = 0; b < batchSize; b++) {
             for (int h = 0; h < numHeads; h++) {
                 // Extract [seqLength, seqLength] from attentionWeights^T
@@ -397,7 +400,7 @@ public class MultiHeadAttention implements Serializable {
         // System.out.println("gradQ shape: " + gradQ.shapeInfoToString());
 
         // Compute gradK
-        INDArray gradK = Nd4j.create(batchSize, numHeads, seqLength, depth); // [batchSize, numHeads, seqLength, depth]
+        INDArray gradK = Nd4j.create(batchSize, numHeads, seqLengthK, depth); // [batchSize, numHeads, seqLength_k, depth]
         for (int b = 0; b < batchSize; b++) {
             for (int h = 0; h < numHeads; h++) {
                 // Extract [seqLength, seqLength] from gradScores transpose
@@ -433,7 +436,7 @@ public class MultiHeadAttention implements Serializable {
         // Reshape gradQ and gradK from [batchSize, numHeads, seqLength, depth] to
         // [batchSize * seqLength, numHeads * depth]
         INDArray gradQReshaped = gradQ.reshape(batchSize * seqLength, numHeads * depth); // [1, 300]
-        INDArray gradKReshaped = gradK.reshape(batchSize * seqLength, numHeads * depth); // [1, 300]
+        INDArray gradKReshaped = gradK.reshape(batchSize * seqLengthK, numHeads * depth);
 
         // Step 7: Compute gradients for Wq, Wk, Wv
         // gradWq = inputQ^T * gradQReshaped [dModel, batchSize * seqLength] mmul
@@ -445,17 +448,18 @@ public class MultiHeadAttention implements Serializable {
 
         // gradWk = inputK^T * gradKReshaped [dModel, batchSize * seqLength] mmul
         // [batchSize * seqLength, numHeads * depth] = [dModel, numHeads * depth]
-        INDArray inputKReshaped = this.inputK.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength, dModel]
+        INDArray inputKReshaped = this.inputK.reshape(batchSize * seqLengthK, dModel); // [batchSize * seqLength_k, dModel]
         INDArray gradWk = inputKReshaped.transpose().mmul(gradKReshaped); // [dModel, numHeads * depth]
         NDArrayUtils.addGradient(gradients, "Wk", gradWk);
         // System.out.println("gradWk shape: " + gradWk.shapeInfoToString());
 
-        // gradWv = inputV^T * gradVReshaped [dModel, batchSize * seqLength] mmul
-        // [batchSize * seqLength, numHeads * depth] = [dModel, numHeads * depth]
-        // Reshape gradV from [batchSize, numHeads, depth, seqLength] to [batchSize *
-        // seqLength, numHeads * depth]
-        INDArray gradVReshaped = gradV.permute(0, 1, 3, 2).reshape(batchSize * seqLength, numHeads * depth); // [1, 300]
-        INDArray inputVReshaped = this.inputV.reshape(batchSize * seqLength, dModel); // [batchSize * seqLength, dModel]
+        // gradWv = inputV^T * gradVReshaped [dModel, batchSize * seqLength_k] mmul
+        // [batchSize * seqLength_k, numHeads * depth] = [dModel, numHeads * depth]
+        // Reshape direct (sans permutation) : gradV est déjà [batchSize, numHeads, seqLength_k, depth]
+        // en mémoire contiguë, la mise à plat donne les lignes [batchSize * seqLength_k, numHeads * depth]
+        // dans le même ordre que l'attentionConcat du forward.
+        INDArray gradVReshaped = gradV.reshape(batchSize * seqLengthK, numHeads * depth);
+        INDArray inputVReshaped = this.inputV.reshape(batchSize * seqLengthK, dModel); // [batchSize * seqLength_k, dModel]
         INDArray gradWv = inputVReshaped.transpose().mmul(gradVReshaped); // [dModel, numHeads * depth]
         NDArrayUtils.addGradient(gradients, "Wv", gradWv);
         // System.out.println("gradWv shape: " + gradWv.shapeInfoToString());
@@ -473,17 +477,17 @@ public class MultiHeadAttention implements Serializable {
 
         // // For gradInputK
         INDArray gradKPermuted = gradK.permute(0, 2, 1, 3);
-        gradKReshaped = gradKPermuted.reshape(batchSize * seqLength, numHeads * depth);
+        gradKReshaped = gradKPermuted.reshape(batchSize * seqLengthK, numHeads * depth);
         gradInputK = gradKReshaped.mmul(this.Wk.transpose());
-        gradInputK = gradInputK.reshape(batchSize, seqLength, dModel);
+        gradInputK = gradInputK.reshape(batchSize, seqLengthK, dModel);
         NDArrayUtils.addGradient(gradients, "gradInputK", gradInputK);
         // System.out.println("gradInputK shape: " + gradInputK.shapeInfoToString());
 
         // // For gradInputV
-        INDArray gradVPermuted = gradV.permute(0, 2, 3, 1); // Adjusted permutation for gradV
-        gradVReshaped = gradVPermuted.reshape(batchSize * seqLength, numHeads * depth);
+        INDArray gradVPermuted = gradV.permute(0, 2, 1, 3); // [batchSize, seqLength_k, numHeads, depth]
+        gradVReshaped = gradVPermuted.reshape(batchSize * seqLengthK, numHeads * depth);
         gradInputV = gradVReshaped.mmul(this.Wv.transpose());
-        gradInputV = gradInputV.reshape(batchSize, seqLength, dModel);
+        gradInputV = gradInputV.reshape(batchSize, seqLengthK, dModel);
         NDArrayUtils.addGradient(gradients, "gradInputV", gradInputV);
         // System.out.println("gradInputV shape: " + gradInputV.shapeInfoToString());
 

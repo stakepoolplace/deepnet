@@ -321,29 +321,61 @@ public class Decoder implements Serializable {
         public Map<String, INDArray> backward(Map<String, INDArray> gradOutput, INDArray cachedInput) {
             Map<String, INDArray> gradients = new HashMap<>();
 
-            // Backpropager à travers LayerNorm3
-            Map<String, INDArray> gradLayerNorm3 = layerNorm3 != null ? layerNorm3.backward(gradOutput.get("input")) : gradOutput;
+            // dL/d(sortie de couche) : 'input' est le gradient par rapport à
+            // l'entrée du bloc résiduel suivant (ou aux logits pour la dernière couche)
+            INDArray gOut = gradOutput.get("input");
+
+            // Backpropager à travers LayerNorm3 : g3 = dL/d(x2 + ff)
+            Map<String, INDArray> gradLayerNorm3 = layerNorm3 != null ? layerNorm3.backward(gOut) : gradOutput;
             gradients.putAll(gradLayerNorm3);
+            INDArray g3 = gradLayerNorm3.get("input");
 
             // Backpropager à travers FeedForward
-            Map<String, INDArray> gradFeedForward = feedForward.backward(gradLayerNorm3.get("input"));
+            Map<String, INDArray> gradFeedForward = feedForward.backward(g3);
             gradients.putAll(gradFeedForward);
 
-            // Backpropager à travers LayerNorm2
-            Map<String, INDArray> gradLayerNorm2 = layerNorm2 != null ? layerNorm2.backward(gradFeedForward.get("input")) : gradFeedForward;
-            gradients.putAll(gradLayerNorm2);
+            // Connexion résiduelle 3 : dL/dx2 = g3 (skip) + dL/dx2 via FF
+            INDArray dFF = dropout3.backward(gradFeedForward.get("input"));
+            INDArray dx2 = g3.add(dFF);
 
-            // Backpropager à travers EncoderDecoderAttention
-            Map<String, INDArray> gradEncoderDecoderAttention = encoderDecoderAttention.backward(gradLayerNorm2.get("input"));
+            // Backpropager à travers LayerNorm2 : g2 = dL/d(x1 + attn2)
+            Map<String, INDArray> gradLayerNorm2 = layerNorm2 != null ? layerNorm2.backward(dx2) : gradOutput;
+            gradients.putAll(gradLayerNorm2);
+            INDArray g2 = gradLayerNorm2.get("input");
+
+            // Backpropager à travers EncoderDecoderAttention (cross-attention)
+            Map<String, INDArray> gradEncoderDecoderAttention = encoderDecoderAttention.backward(g2);
+            // Sauvegarder les gradients vers l'encodeur AVANT tout écrasement :
+            // l'encodeur alimente K et V, son gradient est gradInputK + gradInputV
+            INDArray gradToEncoderK = gradEncoderDecoderAttention.get("gradInputK");
+            INDArray gradToEncoderV = gradEncoderDecoderAttention.get("gradInputV");
             gradients.putAll(gradEncoderDecoderAttention);
 
-            // Backpropager à travers LayerNorm1
-            Map<String, INDArray> gradLayerNorm1 = layerNorm1 != null ? layerNorm1.backward(gradEncoderDecoderAttention.get("input")) : gradEncoderDecoderAttention;
-            gradients.putAll(gradLayerNorm1);
+            // Connexion résiduelle 2 : dL/dx1 = g2 (skip) + dL/dx1 via cross-attention (côté Q)
+            INDArray dCrossQ = dropout2.backward(gradEncoderDecoderAttention.get("gradInputQ"));
+            INDArray dx1 = g2.add(dCrossQ);
 
-            // Backpropager à travers SelfAttention
-            Map<String, INDArray> gradSelfAttention = selfAttention.backward(gradLayerNorm1.get("input"));
+            // Backpropager à travers LayerNorm1 : g1 = dL/d(x + attn1)
+            Map<String, INDArray> gradLayerNorm1 = layerNorm1 != null ? layerNorm1.backward(dx1) : gradOutput;
+            gradients.putAll(gradLayerNorm1);
+            INDArray g1 = gradLayerNorm1.get("input");
+
+            // Backpropager à travers SelfAttention : x alimente Q, K et V
+            Map<String, INDArray> gradSelfAttention = selfAttention.backward(g1);
+            INDArray dSelfBranch = gradSelfAttention.get("gradInputQ")
+                    .add(gradSelfAttention.get("gradInputK"))
+                    .add(gradSelfAttention.get("gradInputV"));
+            dSelfBranch = dropout1.backward(dSelfBranch);
+
+            // Connexion résiduelle 1 : dL/dx = g1 (skip) + dL/dx via self-attention
+            INDArray dx = g1.add(dSelfBranch);
             gradients.putAll(gradSelfAttention);
+
+            // Restaurer les gradients vers l'encodeur (écrasés par la self-attention
+            // qui utilise les mêmes clés) et chaîner le gradient d'entrée
+            gradients.put("gradInputK", gradToEncoderK);
+            gradients.put("gradInputV", gradToEncoderV);
+            gradients.put("input", dx);
 
             return gradients;
         }

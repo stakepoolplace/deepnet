@@ -1,8 +1,5 @@
 package RN.transformer;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
 import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.BeforeAll;
@@ -85,8 +82,8 @@ public class MultiHeadAttentionTest {
     
         // Assert que gradScores est égal à expectedGradScores avec une tolérance
         // Assert que gradScores est égal à expectedGradScores avec une tolérance
-        assertTrue("gradScores should match the expected gradients.",
-                   expectedGradScores.equalsWithEps(gradScores, 1e-6));    }
+        assertTrue(expectedGradScores.equalsWithEps(gradScores, 1e-6),
+                   "gradScores should match the expected gradients.");    }
     
 
     @Test
@@ -221,10 +218,10 @@ public class MultiHeadAttentionTest {
         Map<String, INDArray> gradients = mha.backward(gradOutput);
 
         // Vérifications
-        assertTrue("Gradient Wq ne doit pas être zéro.", Math.abs(gradients.get("Wq").sumNumber().doubleValue()) > 1e-6);
-        assertTrue("Gradient Wk ne doit pas être zéro.", Math.abs(gradients.get("Wk").sumNumber().doubleValue()) > 1e-6);
-        assertTrue("Gradient Wv ne doit pas être zéro.", Math.abs(gradients.get("Wv").sumNumber().doubleValue()) > 1e-6);
-        assertTrue("Gradient Wo ne doit pas être zéro.", Math.abs(gradients.get("Wo").sumNumber().doubleValue()) > 1e-6);
+        assertTrue(Math.abs(gradients.get("Wq").sumNumber().doubleValue()) > 1e-6, "Gradient Wq ne doit pas être zéro.");
+        assertTrue(Math.abs(gradients.get("Wk").sumNumber().doubleValue()) > 1e-6, "Gradient Wk ne doit pas être zéro.");
+        assertTrue(Math.abs(gradients.get("Wv").sumNumber().doubleValue()) > 1e-6, "Gradient Wv ne doit pas être zéro.");
+        assertTrue(Math.abs(gradients.get("Wo").sumNumber().doubleValue()) > 1e-6, "Gradient Wo ne doit pas être zéro.");
     }
 
     @Test
