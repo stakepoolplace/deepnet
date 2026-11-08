@@ -214,7 +214,10 @@ public class MultiHeadAttention implements Serializable {
     public Map<String, INDArray> backward(INDArray gradOutput) {
 
         validateGradOutput(gradOutput);
-        gradOutput = clip(gradOutput, -1, 1);
+        // NOTE : pas de clip par valeur ici. Un ancien clip(gradOutput,-1,1)
+        // biaisait les gradients dès que |grad|>1 (cas courant en Pre-LN) et
+        // faisait échouer le gradient-check ; l'explosion est déjà contenue
+        // par le clipping de norme globale dans train()/trainEpoch().
 
         // Vrifications d'état
         if (this.attentionOutput == null || this.Q == null || this.K == null || this.V == null) {

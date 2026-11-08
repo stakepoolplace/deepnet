@@ -247,16 +247,18 @@ public class Encoder implements Serializable {
                 throw new IllegalArgumentException("keyPaddingMask doit être de rang 4 [batchSize, 1, 1, seqLength], mais a la forme: " + java.util.Arrays.toString(keyPaddingMask.shape()));
             }
 
-            // Attention multi-têtes auto-attention
-            INDArray attnOutput = selfAttention.forwardSelfAttention(x, queryPaddingMask, null);
+            // Bloc 1 (Pre-LN) : x + Dropout(Attention(LN1(x)))
+            INDArray nx = layerNorm1 != null ? layerNorm1.forward(x) : x;
+            INDArray attnOutput = selfAttention.forwardSelfAttention(nx, queryPaddingMask, null);
 
             attnOutput = dropout1.forward(isTraining, attnOutput); // Appliquer dropout
-            INDArray out1 = layerNorm1 != null ? layerNorm1.forward(x.add(attnOutput)) : x.add(attnOutput); // Add & Norm [batchSize, seqLength, dModel]
+            INDArray out1 = x.add(attnOutput); // Connexion résiduelle directe
 
-            // Feed-forward
-            INDArray ffOutput = feedForward.forward(out1); // [batchSize, seqLength, dModel]
+            // Bloc 2 (Pre-LN) : out1 + Dropout(FF(LN2(out1)))
+            INDArray nOut1 = layerNorm2 != null ? layerNorm2.forward(out1) : out1;
+            INDArray ffOutput = feedForward.forward(nOut1); // [batchSize, seqLength, dModel]
             ffOutput = dropout2.forward(isTraining, ffOutput); // Appliquer dropout
-            INDArray out2 = layerNorm2 != null ? layerNorm2.forward(out1.add(ffOutput)) : out1.add(ffOutput); // Add & Norm [batchSize, seqLength, dModel]
+            INDArray out2 = out1.add(ffOutput); // Connexion résiduelle directe
 
             return out2;
         }
@@ -268,34 +270,28 @@ public class Encoder implements Serializable {
          * @return Gradient à propager vers la couche précédente [batchSize, seqLength, dModel].
          */
         public INDArray backward(INDArray gradOutput) {
-            // Backward à travers la deuxième normalisation de couche
-            Map<String, INDArray> gradLayerNorm2 = layerNorm2 != null ? layerNorm2.backward(gradOutput) : new HashMap<>(); // {'input': grad_out1}
-            INDArray gradAddNorm2 = gradLayerNorm2.get("input"); // [batchSize, seqLength, dModel]
+            // Bloc 2 (Pre-LN) : out2 = out1 + drop(FF(LN2(out1)))
+            INDArray dFF = dropout2.backward(gradOutput); // dL/d(FF(LN2(out1)))
+            Map<String, INDArray> gradFeedForwardMap = feedForward.backward(dFF); // dL/d(LN2(out1))
+            INDArray dNOut1 = gradFeedForwardMap.get("input");
+            INDArray dOut1ViaFF = layerNorm2 != null
+                    ? layerNorm2.backward(dNOut1).get("input") // dL/d(out1) via FF
+                    : dNOut1;
+            // Connexion résiduelle : dL/d(out1) = skip + voie FF
+            INDArray gradOut1 = gradOutput.add(dOut1ViaFF); // [batchSize, seqLength, dModel]
 
-            // Backward à travers le deuxième Add & Norm (FeedForward)
-            Map<String, INDArray> gradFeedForwardMap = feedForward.backward(gradAddNorm2); // {'input': grad_ff}
-            INDArray gradFeedForward = gradFeedForwardMap.get("input"); // [batchSize, seqLength, dModel]
-            gradFeedForward = dropout2.backward(gradFeedForward); // [batchSize, seqLength, dModel]
-
-
-            // Gradient après FeedForward
-            INDArray gradOut1 = gradAddNorm2.add(gradFeedForward); // [batchSize, seqLength, dModel]
-
-            // Backward à travers la première normalisation de couche
-            Map<String, INDArray> gradLayerNorm1 = layerNorm1 != null ? layerNorm1.backward(gradOut1) : new HashMap<>(); // {'input': grad_attn}
-            INDArray gradAddNorm1 = gradLayerNorm1.get("input"); // [batchSize, seqLength, dModel]
-
-            // Backward à travers le premier Add & Norm (Self-Attention)
-            Map<String, INDArray> gradSelfAttentionMap = selfAttention.backward(gradAddNorm1); // {'input': grad_attn}
-            // dL/dx via l'attention = somme sur Q, K et V (x alimente les trois)
-            INDArray gradAttnBranch = gradSelfAttentionMap.get("gradInputQ")
+            // Bloc 1 (Pre-LN) : out1 = x + drop(Attn(LN1(x)))
+            Map<String, INDArray> gradSelfAttentionMap = selfAttention.backward(dropout1.backward(gradOut1));
+            // x alimente Q, K et V via LN1 : dL/d(LN1(x)) = somme sur Q, K et V
+            INDArray dNx = gradSelfAttentionMap.get("gradInputQ")
                     .add(gradSelfAttentionMap.get("gradInputK"))
                     .add(gradSelfAttentionMap.get("gradInputV")); // [batchSize, seqLength, dModel]
-            gradAttnBranch = dropout1.backward(gradAttnBranch); // [batchSize, seqLength, dModel]
+            INDArray dXViaAttn = layerNorm1 != null
+                    ? layerNorm1.backward(dNx).get("input") // dL/dx via attention
+                    : dNx;
 
-            // Gradient à propager vers les couches précédentes :
-            // connexion résiduelle (gradAddNorm1) + branche attention
-            return gradAddNorm1.add(gradAttnBranch);
+            // Connexion résiduelle : dL/dx = skip + voie attention
+            return gradOut1.add(dXViaAttn);
         }
 
 

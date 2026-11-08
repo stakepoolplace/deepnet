@@ -312,8 +312,11 @@ public class TransformerModel implements Serializable {
                 float loss = lossAndGradients.getLeft();
                 INDArray initialGradients = lossAndGradients.getRight();
 
-                totalLoss += loss;
-                totalTokens += lossTarget.sumNumber().intValue(); // Total de tokens cibles pour normaliser la perte
+                // Nombre de tokens supervisés (non-PAD, EOS inclus) pour la moyenne pondérée
+                int validCount = (int) lossTarget.neq(tokenizer.getPadTokenId()).castTo(DataType.FLOAT).sumNumber().longValue();
+
+                totalLoss += loss * validCount;
+                totalTokens += validCount; // Nombre de tokens valides (non-PAD), pas la somme des IDs
 
                 // Afficher la perte pour ce batch
                 System.out.println("Perte pour ce batch: " + loss);
@@ -330,15 +333,16 @@ public class TransformerModel implements Serializable {
                 // Clip gradients
                 clipGradients(combinedGradients, 0.5f); // Exemple avec maxNorm = 0.5
 
-                // Mettre à jour les poids du modèle via l'optimiseur
+                // Mettre à jour les poids du modèle via l'optimiseur.
+                // (La matrice d'embeddings fait partie de combinedParameters et
+                // est mise à jour par Adam ici même : l'ancien appel SGD
+                // supplémentaire tokenizer.applyGradients() appliquait les mêmes
+                // gradients UNE DEUXIÈME FOIS et a été supprimé.)
                 optimizer.update(combinedParameters, combinedGradients);
-
-                // Appliquer les gradients aux embeddings
-                tokenizer.applyGradients(optimizer.getLearningRate());
 
             }
 
-            // Calculer la perte moyenne pour l'epoch
+            // Calculer la perte moyenne pour l'epoch (moyenne pondérée par batch)
             averageLoss = totalLoss / totalTokens;
             System.out.println("Epoch " + (epoch + 1) + " / " + epochNum + " completed with average loss: " + averageLoss);
 
@@ -458,8 +462,10 @@ public class TransformerModel implements Serializable {
             float loss = lossAndGradients.getLeft();
             INDArray initialGradients = lossAndGradients.getRight();
 
-            totalLoss += loss;
-            totalTokens += lossTargetEp.sumNumber().intValue(); // Total de tokens cibles pour normaliser la perte
+            // Nombre de tokens supervisés (non-PAD, EOS inclus) pour la moyenne pondérée
+            int validCountEp = (int) lossTargetEp.neq(tokenizer.getPadTokenId()).castTo(DataType.FLOAT).sumNumber().longValue();
+            totalLoss += loss * validCountEp;
+            totalTokens += validCountEp;
 
             // Afficher la perte pour le monitoring
             //System.out.println("Perte pour ce batch: " + loss);
@@ -476,11 +482,9 @@ public class TransformerModel implements Serializable {
             // Clip gradients
             clipGradients(combinedGradients, 0.5f); // Exemple avec maxNorm = 0.5
 
-            // Mettre à jour les poids du modèle via l'optimiseur
+            // Mettre à jour les poids du modèle via l'optimiseur (les embeddings
+            // sont dans combinedParameters : pas de second update SGD, cf. train()).
             optimizer.update(combinedParameters, combinedGradients);
-
-            // Appliquer les gradients aux embeddings
-            tokenizer.applyGradients(optimizer.getLearningRate());
         }
 
         // Calculer la perte moyenne
@@ -534,8 +538,12 @@ public class TransformerModel implements Serializable {
     }
 
     private void clipGradients(List<INDArray> gradients, double maxNorm) {
+        boolean debug = Boolean.getBoolean("deepnet.debug.grads");
         for (INDArray grad : gradients) {
             double norm = grad.norm2Number().doubleValue();
+            if (debug) {
+                System.out.println("GRADNORM norm=" + norm + " shape=" + Arrays.toString(grad.shape()));
+            }
             if (norm > maxNorm) {
                 grad.divi(norm).muli(maxNorm);
             }
@@ -575,15 +583,17 @@ public class TransformerModel implements Serializable {
     protected Pair<Float, INDArray> calculateCrossEntropyLossAndGradient(List<INDArray> logits, INDArray target) {
         INDArray logitsTensor = logits.get(0);
         
-        // Convertir chaque masque en FLOAT avant la multiplication
-        INDArray padMask = target.neq(tokenizer.getPadTokenId()).castTo(DataType.FLOAT);
-        INDArray startMask = target.neq(tokenizer.getStartTokenId()).castTo(DataType.FLOAT);
-        INDArray endMask = target.neq(tokenizer.getEndTokenId()).castTo(DataType.FLOAT);
-        
-        // Combiner les masques après conversion
-        INDArray validTokensMask = padMask.mul(startMask).mul(endMask);
-        
-        // Reste du code inchangé...
+        // Masque moderne : seul <PAD> est exclu de la supervision. <END> (EOS)
+        // DOIT être prédit (apprendre quand s'arrêter), contrairement à
+        // l'ancien masquage qui l'excluait et privait le modèle (~25 % du
+        // signal sur séquences courtes) de la fin de séquence.
+        INDArray validTokensMask = target.neq(tokenizer.getPadTokenId()).castTo(DataType.FLOAT);
+
+        // Softmax sur les logits BRUTS (l'ancien code multipliait les logits
+        // par le masque avant softmax, ce qui faussait la distribution :
+        // un logit forcé à 0 obtient prob ~1/V et pollue le dénominateur).
+        INDArray probabilities = NDArrayUtils.softmax(logitsTensor, -1);
+
         INDArray targetOneHot = Nd4j.zeros(DataType.FLOAT, target.shape()[0], target.shape()[1], logitsTensor.shape()[2]);
         for (int b = 0; b < target.shape()[0]; b++) {
             for (int i = 0; i < target.shape()[1]; i++) {
@@ -593,10 +603,7 @@ public class TransformerModel implements Serializable {
                 }
             }
         }
-        
-        INDArray logits_masked = logitsTensor.mul(validTokensMask.reshape(validTokensMask.shape()[0], validTokensMask.shape()[1], 1));
-        INDArray probabilities = NDArrayUtils.softmax(logits_masked, -1);
-        
+
         INDArray crossEntropy = targetOneHot.mul(Transforms.log(probabilities.add(1e-10))).sum(2).mul(-1);
         float loss = crossEntropy.mul(validTokensMask).sumNumber().floatValue() / validTokensMask.sumNumber().floatValue();
         
@@ -686,14 +693,17 @@ public class TransformerModel implements Serializable {
     }
 
     /**
-     * Gèle les embeddings des tokens spéciaux, en évitant de geler <UNK> s'il a des
-     * valeurs calculées.
+     * Gèle les embeddings des tokens spéciaux. Pratique moderne (GPT-2, etc.) :
+     * seul &lt;PAD&gt; est forcé à zéro (il ne porte aucun signal) ; &lt;START&gt;
+     * et &lt;END&gt; gardent leur initialisation et restent entraînables car ils
+     * portent un signal indispensable (début de séquence côté décodeur,
+     * prédiction de fin de séquence). Les mettre à zéro rendait la première
+     * position du décodeur purement positionnelle et coupait le conditionnement.
      */
     public void freezeSpecialTokenEmbeddings() {
-        int[] specialTokenIds = { tokenizer.getPadTokenId(), tokenizer.getStartTokenId(), tokenizer.getEndTokenId(),
-                tokenizer.getUnkTokenId() };
+        int[] zeroedTokenIds = { tokenizer.getPadTokenId(), tokenizer.getUnkTokenId() };
 
-        for (int tokenId : specialTokenIds) {
+        for (int tokenId : zeroedTokenIds) {
             if (tokenId == tokenizer.getUnkTokenId()) {
                 // Vérifier si <UNK> a des valeurs calculées
                 if (!tokenizer.hasCalculatedEmbedding(tokenId)) {

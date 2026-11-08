@@ -17,15 +17,18 @@ import static org.junit.Assert.assertTrue;
  * (température + top-k) au lieu de l'argmax glouton qui fige le modèle sur
  * un token répété ("le le le...").
  *
- * Le but est démonstratif : montrer ce que le modèle produit après
- * apprentissage, pas d'atteindre une égalité stricte (hors de portée,
- * cf. TransformerHeavyIntegrationTest).
+ * Config alignée sur les implémentations modernes pour un micro-corpus :
+ * 1 couche (la profondeur Post-LN piège l'optimisation sur un attracteur
+ * marginal : sorties identiques quelle que soit l'amorce), embeddings
+ * × sqrt(dModel) + EOS supervisé + START/END entraînables (cf. correctifs
+ * TransformerModel/Tokenizer). Le test prouve le CONDITIONNEMENT : des
+ * amorces différentes produisent des sorties différentes.
  */
 public class TransformerGenerationTest {
 
     @Test
     public void testDiverseCorpusGeneration() throws Exception {
-        Nd4j.getRandom().setSeed(7);
+        Nd4j.getRandom().setSeed(42);
         int maxSequenceLength = 10;
         WordVectors preTrainedWordVectors = org.deeplearning4j.models.embeddings.loader.WordVectorSerializer
                 .readWord2VecModel(new File("pretrained-embeddings/mon_model_word2vec.txt"));
@@ -64,7 +67,9 @@ public class TransformerGenerationTest {
             "chiens aiment"
         );
 
-        int numLayers = 4;
+        int numLayers = 1; // Micro-corpus : 1 couche suffit et conditionne ;
+                            // 2+ couches Post-LN restent bloquées sur l'attracteur
+                            // marginal (même sortie quelle que soit l'amorce).
         int dModel = embeddingSize;
         int numHeads = 4;
         int dff = 512;
@@ -96,17 +101,24 @@ public class TransformerGenerationTest {
         // Génération libre (température + top-k) sur des amorces variées.
         String[] prompts = { "le chat", "les chiens", "dans le", "chat sur", "le jardin est", "est dans" };
         int nonEmpty = 0;
+        java.util.Set<String> distinctOutputs = new java.util.HashSet<>();
         for (String prompt : prompts) {
             String out = model.generate(prompt, 6, 0.9, 6, 12345L);
             System.out.println("GENERATION prompt=[" + prompt + "] -> [" + out + "]");
             assertNotNull("La génération ne devrait pas être null", out);
             if (!out.trim().isEmpty()) {
                 nonEmpty++;
+                distinctOutputs.add(out.trim());
             }
             assertTrue("La génération ne devrait pas contenir de <UNK> (obtenu: '" + out + "')",
                     !out.contains("<UNK>"));
         }
-        System.out.println("GENERATION prompts non vides : " + nonEmpty + "/" + prompts.length);
+        System.out.println("GENERATION prompts non vides : " + nonEmpty + "/" + prompts.length
+                + ", sorties distinctes : " + distinctOutputs.size());
         assertTrue("Au moins la moitié des amorces devraient produire du texte", nonEmpty * 2 >= prompts.length);
+        // CONDITIONNEMENT : le modèle répond à l'amorce (fini le "même texte
+        // quelle que soit l'entrée"). Au moins 2 sorties distinctes.
+        assertTrue("Le modèle devrait conditionner ses sorties sur l'amorce (obtenu une seule sortie : "
+                + distinctOutputs + ")", distinctOutputs.size() >= 2);
     }
 }

@@ -131,7 +131,13 @@ public class Tokenizer implements Serializable {
         lastForwardTokenIds = Arrays.stream(tokenIds).boxed().collect(Collectors.toList());
         
         // Récupérer les embeddings: [batchSize * seqLength, dModel]
-        INDArray batchEmbeddings = getPretrainedEmbeddings().getRows(tokenIds); 
+        INDArray batchEmbeddings = getPretrainedEmbeddings().getRows(tokenIds);
+
+        // Mise à l'échelle "Attention Is All You Need" §3.4 : les embeddings
+        // appris (word2vec ~1e-3) sont multipliés par sqrt(dModel) avant
+        // addition du positional encoding, sinon le signal de contenu est
+        // noyé et l'attention reste uniforme (modèle sourd à l'amorce).
+        batchEmbeddings = batchEmbeddings.mul(getEmbeddingScale());
         
         // Reshaper en [batchSize, seqLength, dModel]
         batchEmbeddings = batchEmbeddings.reshape(batchSize, seqLength, embeddingSize);
@@ -141,6 +147,15 @@ public class Tokenizer implements Serializable {
         // System.out.println("Occurrences de 'chat' dans ce batch: " + chatCount);
 
         return batchEmbeddings;
+    }
+
+    /**
+     * Facteur d'échelle des embeddings ("Attention Is All You Need" §3.4).
+     * Appliqué dans {@link #lookupEmbeddings} et symétriquement dans
+     * {@link #backward} via la dérivation en chaîne.
+     */
+    public double getEmbeddingScale() {
+        return Math.sqrt(embeddingSize);
     }
 
     public Integer tokenToId(String token){
@@ -178,8 +193,11 @@ public class Tokenizer implements Serializable {
             for (int s = 0; s < seqLength; s++) {
                 int tokenId = tokenIds[b * seqLength + s];
 
-                // Récupérer le gradient pour ce token
+                // Récupérer le gradient pour ce token. lookupEmbeddings() multiplie
+                // les embeddings par getEmbeddingScale() : la règle de dérivation
+                // en chaîne impose le même facteur ici (dL/dTable = dL/dScalé × s).
                 INDArray gradForToken = gradOutput.get(NDArrayIndex.point(b), NDArrayIndex.point(s), NDArrayIndex.all());
+                gradForToken = gradForToken.mul(getEmbeddingScale());
 
                 // Accumuler le gradient dans embeddingGradients
                 embeddingGradients.getRow(tokenId).addi(gradForToken);
@@ -234,8 +252,13 @@ public class Tokenizer implements Serializable {
         // Initialiser les embeddings des tokens spéciaux
         pretrainedEmbeddings.putRow(getPadTokenId(), Nd4j.zeros(embeddingSize)); // <PAD> est généralement un vecteur nul
         pretrainedEmbeddings.putRow(getUnkTokenId(), meanVector);
-        pretrainedEmbeddings.putRow(getStartTokenId(), meanVector.add(Nd4j.randn(1, embeddingSize).mul(0.1)));
-        pretrainedEmbeddings.putRow(getEndTokenId(), meanVector.add(Nd4j.randn(1, embeddingSize).mul(0.1)));
+        // <START>/<END> = moyenne + bruit ASSORTI au contenu. L'ancien bruit
+        // randn*0.1 avait une norme (~1.7) 50x supérieure aux embeddings word2vec
+        // (~0.03) : une fois dés-zeroïsés, ils saturaient l'attention en one-hot
+        // et tuaient tout gradient. std ~2e-3 = std des coords word2vec.
+        double specialNoiseStd = 0.002;
+        pretrainedEmbeddings.putRow(getStartTokenId(), meanVector.add(Nd4j.randn(1, embeddingSize).mul(specialNoiseStd)));
+        pretrainedEmbeddings.putRow(getEndTokenId(), meanVector.add(Nd4j.randn(1, embeddingSize).mul(specialNoiseStd)));
         
         // Copier les embeddings pour les autres tokens
         for (Map.Entry<String, Integer> entry : tokenToId.entrySet()) {

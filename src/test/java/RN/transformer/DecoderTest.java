@@ -415,17 +415,17 @@ public class DecoderTest {
 
 
         // Logits de référence après LayerNorm finale et projection linéaire.
-        // Régénérés depuis la passe forward vérifiée (les anciennes valeurs
-        // avaient été calculées à la main SANS le positional encoding que
-        // Decoder.decode() ajoute aux embeddings, avec en plus des erreurs
-        // d'arrondi manuel > tolérance). Traçabilité : chaque étape
-        // (self-attention + masques, résiduels, LN1/LN2/LN3, cross-attention,
-        // FFN 2I/4I + ReLU, projection eye) a été vérifiée à la main.
+        // Régénérés après le correctif "embeddings × sqrt(dModel)" (Vaswani
+        // §3.4) : les embeddings eye sont multipliés par 2.0 (dModel=4), d'où
+        // des magnitudes différentes mais le même motif argmax par position
+        // (2, 0, 3). Vérifié : 12/18 valeurs changent, indices 4-5 à 0.0
+        // inchangés (projection eye), aucun NaN.
+        // MAJ Pre-LN : motif argmax toujours (2, 0, 3), magnitudes ajustées.
         INDArray expectedLogitsManualCorrect = Nd4j.create(new double[][][] {
             {
-                { -1.271044, -0.130985, 1.533015, -0.130985, 0.0, 0.0 }, // <START>
-                { 1.694372, -0.662068, -0.797170, -0.235134, 0.0, 0.0 }, // <PAD>
-                { 0.628242, -1.038368, -0.900152, 1.310278, 0.0, 0.0 }  // <END>
+                { -0.781604, -0.468101, 1.717806, -0.468101, 0.0, 0.0 }, // <START>
+                { 1.729669, -0.573032, -0.652389, -0.504248, 0.0, 0.0 }, // <PAD>
+                { -0.095100, -0.861623, -0.702931, 1.659654, 0.0, 0.0 }  // <END>
             }
         }); // [1,3,6]
     

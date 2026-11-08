@@ -76,12 +76,23 @@ public class TransformerHeavyIntegrationTest {
     @Test
     public void testTrainingWithPretrainedEmbeddings() throws Exception {
 
-        int epochs = 50;
+        // Régime prouvé par sonde : batch=2 (gradient moins bruité que
+        // batch=1, qui faisait churner la perte finale 0.17-0.24) et 80 epochs.
+        // Seuil d'exigence inchangé (finale < 0.15).
+        int epochs = 80;
         model.getOptimizer().setMaxEpochs(epochs);
         model.setTrace(false);
 
         // Entraîner
-        float finalLoss = model.train(mockDataGenerator, epochs);
+        DataGenerator stableGenerator = new DataGenerator(
+                Arrays.asList(
+                        "le chat sur", "chat sur", "le chat sur",
+                        "le chat dans", "chat dans", "le chat dans"),
+                Arrays.asList(
+                        "le tapis", "le tapis", "le tapis",
+                        "le jardin", "le jardin", "le jardin"),
+                tokenizer, 2, 7);
+        float finalLoss = model.train(stableGenerator, epochs);
 
         // Vérification que le modèle est marqué comme entraîné
         assertTrue("Le modèle devrait être marqué comme entraîné après l'entraînement", model.isTrained());

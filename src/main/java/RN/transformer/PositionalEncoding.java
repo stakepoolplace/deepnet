@@ -70,9 +70,10 @@ public class PositionalEncoding implements Serializable {
 
     public void updateScale(float scale) {
         this.scale = scale;
-        if (encoding != null) {
-            encoding.muli(scale);
-        }
+        // Invalider le cache pour forcer le recalcul avec la nouvelle échelle
+        // (l'ancien code multipliait le cache en place : deux appels avec la
+        // même valeur appliquaient l'échelle deux fois).
+        this.encoding = null;
     }
 
 }
