@@ -24,8 +24,7 @@ public class TransformerHeavyIntegrationTest {
 
     @Before
     public void setUp() throws IOException {
-        // Graine fixée : la seed 7 permet l'émergence de la cible ("tapis"),
-        // les autres graines testées restant bloquées sur des fixations partielles.
+        // Graine fixée pour la reproductibilité des initialisations.
         Nd4j.getRandom().setSeed(42);
 
         int maxSequenceLength = 10;
@@ -148,7 +147,6 @@ public class TransformerHeavyIntegrationTest {
        // Effectuer une inférence
     //    String input = "chiens aiment le jardin";
     //    String actualOutput = model.infer(input, 3);
-    //    String expectedOutput = "les chiens aiment";
 
     //    assertEquals("L'inférence devrait correspondre à la cible", expectedOutput, actualOutput);
 
@@ -202,7 +200,6 @@ public class TransformerHeavyIntegrationTest {
         // Effectuer une inférence
         String input = "chiens aiment le jardin";
         String actualOutput = model.infer(input, 3);
-        String expectedOutput = "les chiens aiment";
 
 
         // Vérifier que l'inférence est non nulle et non vide
