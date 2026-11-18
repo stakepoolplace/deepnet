@@ -309,7 +309,7 @@ public class Tokenizer implements Serializable {
         int count = 0;
         Collection<String> words = wordVectors.vocab().words();
         for (String word : words) {
-            sum.addi(wordVectors.getWordVectorMatrix(word));
+            sum.addi(wordVectors.getWordVectorMatrix(word).reshape(embeddingSize));
             count++;
         }
         return sum.div(count);
