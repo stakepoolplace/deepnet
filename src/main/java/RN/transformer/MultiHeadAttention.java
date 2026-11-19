@@ -438,8 +438,12 @@ public class MultiHeadAttention implements Serializable {
         // Step 6: Reshape gradQ and gradK for Wq and Wk gradients
         // Reshape gradQ and gradK from [batchSize, numHeads, seqLength, depth] to
         // [batchSize * seqLength, numHeads * depth]
-        INDArray gradQReshaped = gradQ.reshape(batchSize * seqLength, numHeads * depth); // [1, 300]
-        INDArray gradKReshaped = gradK.reshape(batchSize * seqLengthK, numHeads * depth);
+        // CORRECTION : gradQ/gradK/gradV sont en [batch, têtes, seq, profondeur] ; il faut permuter
+        // en [batch, seq, têtes, profondeur] AVANT d'aplatir en [batch*seq, têtes*profondeur], sinon
+        // les lignes mélangent têtes et positions (gradient des poids faux dès que têtes > 1).
+        // Les gradients d'ENTRÉE (step 8) permutaient déjà correctement.
+        INDArray gradQReshaped = gradQ.permute(0, 2, 1, 3).reshape(batchSize * seqLength, numHeads * depth);
+        INDArray gradKReshaped = gradK.permute(0, 2, 1, 3).reshape(batchSize * seqLengthK, numHeads * depth);
 
         // Step 7: Compute gradients for Wq, Wk, Wv
         // gradWq = inputQ^T * gradQReshaped [dModel, batchSize * seqLength] mmul
@@ -458,10 +462,8 @@ public class MultiHeadAttention implements Serializable {
 
         // gradWv = inputV^T * gradVReshaped [dModel, batchSize * seqLength_k] mmul
         // [batchSize * seqLength_k, numHeads * depth] = [dModel, numHeads * depth]
-        // Reshape direct (sans permutation) : gradV est déjà [batchSize, numHeads, seqLength_k, depth]
-        // en mémoire contiguë, la mise à plat donne les lignes [batchSize * seqLength_k, numHeads * depth]
-        // dans le même ordre que l'attentionConcat du forward.
-        INDArray gradVReshaped = gradV.reshape(batchSize * seqLengthK, numHeads * depth);
+        // (voir correction ci-dessus : permutation têtes/séquence nécessaire avant l'aplatissement)
+        INDArray gradVReshaped = gradV.permute(0, 2, 1, 3).reshape(batchSize * seqLengthK, numHeads * depth);
         INDArray inputVReshaped = this.inputV.reshape(batchSize * seqLengthK, dModel); // [batchSize * seqLength_k, dModel]
         INDArray gradWv = inputVReshaped.transpose().mmul(gradVReshaped); // [dModel, numHeads * depth]
         NDArrayUtils.addGradient(gradients, "Wv", gradWv);

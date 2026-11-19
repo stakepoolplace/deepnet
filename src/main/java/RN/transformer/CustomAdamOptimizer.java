@@ -28,6 +28,92 @@ public class CustomAdamOptimizer implements Serializable {
     private int maxEpochs = -1;
     private float learningRate;
 
+    // Planning de taux d'apprentissage configurable (LEGACY = comportement historique)
+    public enum Schedule { LEGACY, CONSTANT, LINEAR, COSINE }
+    private Schedule schedule = Schedule.LEGACY;
+    private int scheduleStartStep = 0;
+    private int scheduleWarmup = 0;
+    private int scheduleTotalSteps = 1;
+    private float scheduleMinRatio = 0f;
+
+    /**
+     * Active un planning explicite : montée linéaire sur warmupSteps puis décroissance
+     * (cosinus ou linéaire) de peakLr vers peakLr*minRatio sur totalSteps. Le planning
+     * est compté à partir du pas COURANT (reprise d'un checkpoint : on repart de peakLr,
+     * pas de la fin de l'ancien planning). Non sérialisé dans les checkpoints : à
+     * reconfigurer à chaque reprise.
+     */
+    public void configureSchedule(Schedule schedule, float peakLr, int warmupSteps, int totalSteps, float minRatio) {
+        if (totalSteps < 1 || minRatio < 0 || minRatio > 1) {
+            throw new IllegalArgumentException("totalSteps >= 1 et 0 <= minRatio <= 1 requis");
+        }
+        this.schedule = schedule;
+        this.initialLr = peakLr;
+        this.scheduleWarmup = warmupSteps;
+        this.scheduleTotalSteps = totalSteps;
+        this.scheduleMinRatio = minRatio;
+        this.scheduleStartStep = currentStep;
+        this.learningRate = learningRateAt(currentStep);
+    }
+
+    /** Taux d'apprentissage du planning explicite au pas absolu donné. */
+    float learningRateAt(int absoluteStep) {
+        int t = Math.max(0, absoluteStep - scheduleStartStep);
+        if (scheduleWarmup > 0 && t < scheduleWarmup) {
+            return initialLr * (t + 1f) / scheduleWarmup;
+        }
+        if (schedule == Schedule.CONSTANT) {
+            return initialLr;
+        }
+        float span = Math.max(1, scheduleTotalSteps - scheduleWarmup);
+        float prog = Math.min(1f, Math.max(0f, (t - scheduleWarmup) / span));
+        float floor = initialLr * scheduleMinRatio;
+        if (schedule == Schedule.LINEAR) {
+            return floor + (initialLr - floor) * (1f - prog);
+        }
+        return floor + (initialLr - floor) * 0.5f * (1f + (float) Math.cos(Math.PI * prog));
+    }
+
+    public Schedule getSchedule() {
+        return schedule;
+    }
+
+    /** Diagnostic d'un pas d'Adam : normes par paramètre (gradient reçu, paramètre avant, mise à jour appliquée). */
+    public static class StepDiagnostics {
+        public int step;
+        public float learningRate;
+        public double[] gradNorm, paramNorm, updateNorm;
+        public long[][] shapes;
+        /** Plancher du dénominateur : un biais initialisé à 0 a une norme ~0, ce qui rendrait le ratio absurde. */
+        public static final double RATIO_FLOOR = 0.1;
+
+        /** Plus grand ratio ||mise à jour|| / ||paramètre|| du pas et l'indice du paramètre concerné. */
+        public double maxUpdateRatio() {
+            double m = 0;
+            for (int i = 0; i < updateNorm.length; i++) {
+                m = Math.max(m, updateNorm[i] / Math.max(RATIO_FLOOR, paramNorm[i]));
+            }
+            return m;
+        }
+
+        public int argMaxUpdateRatio() {
+            double m = -1;
+            int k = 0;
+            for (int i = 0; i < updateNorm.length; i++) {
+                double r = updateNorm[i] / Math.max(RATIO_FLOOR, paramNorm[i]);
+                if (r > m) { m = r; k = i; }
+            }
+            return k;
+        }
+    }
+
+    private transient java.util.function.Consumer<StepDiagnostics> diagnostics;
+
+    /** Reçoit un StepDiagnostics à chaque update (coût : quelques normes par paramètre) ; null pour désactiver. */
+    public void setDiagnostics(java.util.function.Consumer<StepDiagnostics> d) {
+        this.diagnostics = d;
+    }
+
     // États pour chaque paramètre
     private List<AdamState> states;
 
@@ -131,6 +217,16 @@ public class CustomAdamOptimizer implements Serializable {
         }
     
         currentStep++;
+        StepDiagnostics diag = null;
+        if (diagnostics != null) {
+            diag = new StepDiagnostics();
+            diag.step = currentStep;
+            diag.learningRate = learningRate;
+            diag.gradNorm = new double[params.size()];
+            diag.paramNorm = new double[params.size()];
+            diag.updateNorm = new double[params.size()];
+            diag.shapes = new long[params.size()][];
+        }
         // System.out.println("Current Step: " + currentStep);
         // System.out.println("Learning Rate: " + learningRate);
     
@@ -163,6 +259,13 @@ public class CustomAdamOptimizer implements Serializable {
             // System.out.println("vHat " + i + ": " + vHat);
             // System.out.println("Step " + i + ": " + step);
         
+            if (diag != null) {
+                diag.gradNorm[i] = grad.norm2Number().doubleValue();
+                diag.paramNorm[i] = param.norm2Number().doubleValue();
+                diag.updateNorm[i] = step.norm2Number().doubleValue();
+                diag.shapes[i] = param.shape();
+            }
+
             // Mise à jour du paramètre
             param.subi(step);
         
@@ -170,6 +273,10 @@ public class CustomAdamOptimizer implements Serializable {
             // System.out.println("Paramètre " + i + " après mise à jour: " + param);
         }
     
+        if (diag != null) {
+            diagnostics.accept(diag);
+        }
+
         // Mettre à jour le taux d'apprentissage si nécessaire
         calculateLearningRate();
     }
@@ -179,6 +286,10 @@ public class CustomAdamOptimizer implements Serializable {
 
     // Calcul du taux d'apprentissage avec warmup et décroissance
     float calculateLearningRate() {
+        if (schedule != Schedule.LEGACY) {
+            this.learningRate = learningRateAt(currentStep);
+            return this.learningRate;
+        }
         float step = Math.max(1.0f, (float) currentStep);  // Commencer à 1 pour éviter la division par zéro
 
         // Learning rate de base

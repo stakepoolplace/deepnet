@@ -318,6 +318,17 @@ public class TransformerModel implements Serializable {
                 totalLoss += loss * validCount;
                 totalTokens += validCount; // Nombre de tokens valides (non-PAD), pas la somme des IDs
 
+                // Cohérence perte/gradient : la perte retournée est une MOYENNE par token, alors que
+                // (probs - onehot) est le gradient de la SOMME. En mode MEAN_PER_TOKEN le gradient est
+                // divisé par le nombre de tokens supervisés : gradient exact de la perte rapportée,
+                // d'échelle indépendante de la taille du batch.
+                if (lossNormalization == LossNormalization.MEAN_PER_TOKEN) {
+                    initialGradients.divi(Math.max(1, validCount));
+                }
+                if (batchLossRecorder != null) {
+                    batchLossRecorder.accept(loss);
+                }
+
                 // Afficher la perte pour ce batch
                 System.out.println("Perte pour ce batch: " + loss);
 
@@ -331,7 +342,7 @@ public class TransformerModel implements Serializable {
                 // logGradientForToken("chat");
 
                 // Clip gradients
-                clipGradients(combinedGradients, 0.5f); // Exemple avec maxNorm = 0.5
+                applyGradientClipping();
 
                 // Mettre à jour les poids du modèle via l'optimiseur.
                 // (La matrice d'embeddings fait partie de combinedParameters et
@@ -480,7 +491,7 @@ public class TransformerModel implements Serializable {
             // logGradientForToken("chat");
 
             // Clip gradients
-            clipGradients(combinedGradients, 0.5f); // Exemple avec maxNorm = 0.5
+            applyGradientClipping();
 
             // Mettre à jour les poids du modèle via l'optimiseur (les embeddings
             // sont dans combinedParameters : pas de second update SGD, cf. train()).
@@ -535,6 +546,141 @@ public class TransformerModel implements Serializable {
         if (gradChat.sumNumber().doubleValue() == 0.0) {
             System.out.println("Gradient pour '" + token + "' est 0");
         }
+    }
+
+    /** Normalisation du gradient de perte. */
+    public enum LossNormalization {
+        /** Historique : gradient de la SOMME des pertes par token (échelle ∝ nombre de tokens du batch). */
+        SUM,
+        /** Gradient de la MOYENNE par token (cohérent avec la perte rapportée). */
+        MEAN_PER_TOKEN
+    }
+
+    private LossNormalization lossNormalization = LossNormalization.SUM;
+    private java.util.function.DoubleConsumer batchLossRecorder;
+
+    public void setLossNormalization(LossNormalization n) {
+        this.lossNormalization = n;
+    }
+
+    public LossNormalization getLossNormalization() {
+        return lossNormalization;
+    }
+
+    /** Reçoit la perte de chaque batch d'entraînement (diagnostic) ; null pour désactiver. */
+    public void setBatchLossRecorder(java.util.function.DoubleConsumer r) {
+        this.batchLossRecorder = r;
+    }
+
+    /** Stratégie de clipping des gradients. */
+    public enum ClipMode {
+        /** Comportement historique : chaque tenseur est borné individuellement. */
+        PER_TENSOR,
+        /** Norme globale (concaténation de tous les gradients) : préserve la direction du gradient. */
+        GLOBAL_NORM
+    }
+
+    private ClipMode clipMode = ClipMode.PER_TENSOR;
+    private double clipMaxNorm = 0.5;
+
+    /** Configure le clipping (défaut : PER_TENSOR, 0.5 = comportement historique). */
+    public void setGradientClipping(ClipMode mode, double maxNorm) {
+        if (maxNorm <= 0) {
+            throw new IllegalArgumentException("maxNorm doit être > 0");
+        }
+        this.clipMode = mode;
+        this.clipMaxNorm = maxNorm;
+    }
+
+    public ClipMode getClipMode() {
+        return clipMode;
+    }
+
+    public double getClipMaxNorm() {
+        return clipMaxNorm;
+    }
+
+    /** Applique le clipping configuré à combinedGradients. Retourne la norme globale avant clipping. */
+    double applyGradientClipping() {
+        double n = clipGradients(combinedGradients, clipMode, clipMaxNorm);
+        lastGlobalGradNorm = n;
+        if (gradNormRecorder != null) {
+            gradNormRecorder.accept(n);
+        }
+        return n;
+    }
+
+    private double lastGlobalGradNorm = 0;
+    private java.util.function.DoubleConsumer gradNormRecorder;
+
+    /** Norme globale du dernier gradient (avant clipping). */
+    public double getLastGlobalGradNorm() {
+        return lastGlobalGradNorm;
+    }
+
+    /** Reçoit la norme globale de chaque pas (diagnostic) ; null pour désactiver. */
+    public void setGradNormRecorder(java.util.function.DoubleConsumer recorder) {
+        this.gradNormRecorder = recorder;
+    }
+
+    /** Clipping réutilisable et testable ; retourne la norme globale avant clipping. */
+    static double clipGradients(List<INDArray> gradients, ClipMode mode, double maxNorm) {
+        double sq = 0;
+        for (INDArray g : gradients) {
+            double n = g.norm2Number().doubleValue();
+            sq += n * n;
+        }
+        double global = Math.sqrt(sq);
+        if (mode == ClipMode.GLOBAL_NORM) {
+            if (global > maxNorm) {
+                double scale = maxNorm / global;
+                for (INDArray g : gradients) {
+                    g.muli(scale);
+                }
+            }
+        } else {
+            for (INDArray g : gradients) {
+                double n = g.norm2Number().doubleValue();
+                if (n > maxNorm) {
+                    g.divi(n).muli(maxNorm);
+                }
+            }
+        }
+        return global;
+    }
+
+    /**
+     * Perte moyenne par token supervisé (non-PAD, END inclus) SANS mise à jour des poids,
+     * dropout désactivé, mêmes masques et même décalage de cible que train().
+     * Sert à la validation / à l'early stopping.
+     */
+    public float evaluateLoss(DataGenerator dataGenerator) {
+        dataGenerator.reset();
+        double totalLoss = 0;
+        long totalTokens = 0;
+        while (dataGenerator.hasNextBatch()) {
+            Batch batch = dataGenerator.getNextBatch();
+            INDArray input = batch.getData();
+            INDArray target = batch.getTarget();
+            INDArray encoded = encoder.encode(false, batch);
+            int tgtLen = (int) target.shape()[1];
+            INDArray decoderInputIds = target.get(NDArrayIndex.all(), NDArrayIndex.interval(0, tgtLen - 1));
+            INDArray lossTarget = target.get(NDArrayIndex.all(), NDArrayIndex.interval(1, tgtLen));
+            Batch decoderBatch = new Batch(decoderInputIds, null, tokenizer);
+            int decLen = (int) decoderInputIds.shape()[1];
+            INDArray logits = decoder.decode(false, encoded, encoded, decoderBatch,
+                    NDArrayUtils.createLookAheadMask((int) target.shape()[0], decLen),
+                    NDArrayUtils.createQueryPaddingMask(tokenizer, input),
+                    NDArrayUtils.createKeyPaddingMask(tokenizer, input),
+                    NDArrayUtils.createQueryPaddingMask(tokenizer, decoderInputIds),
+                    NDArrayUtils.createKeyPaddingMask(tokenizer, decoderInputIds));
+            float loss = calculateCrossEntropyLossAndGradient(Arrays.asList(logits), lossTarget).getLeft();
+            long valid = lossTarget.neq(tokenizer.getPadTokenId()).castTo(DataType.FLOAT).sumNumber().longValue();
+            totalLoss += (double) loss * valid;
+            totalTokens += valid;
+        }
+        dataGenerator.reset();
+        return (float) (totalLoss / Math.max(1, totalTokens));
     }
 
     private void clipGradients(List<INDArray> gradients, double maxNorm) {

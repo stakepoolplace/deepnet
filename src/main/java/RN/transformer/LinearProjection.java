@@ -151,8 +151,17 @@ public class LinearProjection implements Serializable {
         // Gradients pour les biais
         INDArray gradBias = gradOutput.sum(0).reshape(1, gradOutput.size(1)); // [1, outputSize]
     
-        // Gradients pour les poids
-        INDArray gradWeights = input.transpose().mmul(gradOutput); // [dModel, outputSize]
+        // Gradients pour les poids : le forward multiplie par `scaled` (= normalisé*gamma + beta quand la
+        // LayerNorm est active), PAS par l'entrée brute. Utiliser l'entrée brute n'était exact que pour
+        // gamma=1 et beta=0 (état initial).
+        INDArray scaledForWeights = input;
+        if (useLayerNorm) {
+            INDArray m0 = input.mean(1).reshape(input.size(0), 1);
+            INDArray v0 = input.var(false, 1).reshape(input.size(0), 1);
+            INDArray n0 = input.sub(m0).mul(Transforms.pow(v0.add(epsilon), -0.5));
+            scaledForWeights = n0.mul(gamma).add(beta);
+        }
+        INDArray gradWeights = scaledForWeights.transpose().mmul(gradOutput); // [dModel, outputSize]
     
         // Gradients pour LayerNorm
         INDArray gradGamma = null;
@@ -175,8 +184,13 @@ public class LinearProjection implements Serializable {
             gradNormalized = gradScaled.mul(gamma); // [batchSize * seqLength, dModel]
         
             // Calcul des gradients pour l'entrée
-            INDArray sumGradNormInput = gradNormalized.mul(normalized).sum(1).reshape(input.size(0), 1); // [batchSize * seqLength, 1]
-            INDArray gradInput = gradNormalized.mul(stdInv).sub(normalized.mul(sumGradNormInput).mul(stdInv)); // [batchSize * seqLength, dModel]
+            // dL/dx = stdInv * [g - mean(g) - xhat * mean(g * xhat)]  (moyennes sur dModel ; la version
+            // précédente utilisait une SOMME et omettait le terme -mean(g))
+            INDArray meanG = gradNormalized.mean(1).reshape(input.size(0), 1);
+            INDArray meanGX = gradNormalized.mul(normalized).mean(1).reshape(input.size(0), 1);
+            INDArray gradInput = gradNormalized.subColumnVector(meanG)
+                    .sub(normalized.mulColumnVector(meanGX))
+                    .mulColumnVector(stdInv); // [batchSize * seqLength, dModel]
         
             // Remettre les formes d'origine si nécessaire
             if (reshaped) {
