@@ -42,7 +42,7 @@ public class NextWordExperiment2Test {
 
     private static TransformerModel build() {
         Nd4j.getRandom().setSeed(42);
-        tok = new Tokenizer(NextWordProtocol.vocabulary(), 64, NextWordProtocol.MAX_LEN);
+        tok = new Tokenizer(vocabC(), 64, maxLenC());
         TransformerModel m = new TransformerModel(2, 64, 4, 256, 0.0, tok.getVocabSize(), tok, 0.001f, 50);
         m.getOptimizer().setMaxEpochs(Integer.MAX_VALUE);
         return m;
@@ -51,10 +51,22 @@ public class NextWordExperiment2Test {
     private static DataGenerator gen(List<Item> items) {
         List<String> in = new ArrayList<>(), out = new ArrayList<>();
         for (Item it : items) { in.add(it.prefix); out.add(it.continuation); }
-        return new DataGenerator(in, out, tok, 16, NextWordProtocol.MAX_LEN);
+        return new DataGenerator(in, out, tok, 16, maxLenC());
     }
 
     private static String prop(String k, String d) { return System.getProperty(k, d); }
+
+    // ---- interrupteur de corpus : -Dnw2.corpus=v1 (défaut, inchangé) | v2 (accords + sémantique)
+    private static boolean v2() { return "v2".equals(System.getProperty("nw2.corpus", "v1")); }
+    private static List<String> vocabC() { return v2() ? CorpusV2.vocabulary() : NextWordProtocol.vocabulary(); }
+    private static int maxLenC() { return v2() ? CorpusV2.MAX_LEN : NextWordProtocol.MAX_LEN; }
+    private static List<Item> valItemsC() { return v2() ? CorpusV2.validationItems() : NextWordProtocol.validationItems(); }
+    private static List<Item> trainItemsC() { return v2() ? CorpusV2.trainItems() : NextWordProtocol.trainItems(); }
+    private static List<Item> testFinalItemsC() { return v2() ? CorpusV2.testFinalItems() : NextWordProtocol.testFinalItems(); }
+    private static Set<String> forbiddenC() { return v2() ? CorpusV2.forbiddenForTraining() : NextWordProtocol.forbiddenForTraining(); }
+    private static NextWordProtocol.Sample dynamicC(long seed, int epoch, Set<String> forb) {
+        return v2() ? CorpusV2.dynamicSample(seed, epoch, 200, 3, forb) : NextWordProtocol.dynamicSample(seed, epoch, 200, 3, forb);
+    }
 
     private static double median(List<Double> l) {
         List<Double> c = new ArrayList<>(l);
@@ -66,7 +78,7 @@ public class NextWordExperiment2Test {
     public void experiment() throws Exception {
         String mode = System.getProperty("nw2.mode");
         Assume.assumeTrue("désactivé (-Dnw2.mode=train|final)", mode != null);
-        if ("train".equals(mode)) train(); else finalReport();
+        if ("train".equals(mode)) train(); else if (v2()) finalReportV2(); else finalReport();
     }
 
     // ================================================================== train
@@ -112,12 +124,12 @@ public class NextWordExperiment2Test {
             }
         });
 
-        List<Item> val = NextWordProtocol.validationItems();
+        List<Item> val = valItemsC();
         DataGenerator valGen = gen(val);
-        DataGenerator fixedGen = gen(NextWordProtocol.trainItems());
+        DataGenerator fixedGen = gen(trainItemsC());
         int fixedTokens = 0;
-        for (Item it : NextWordProtocol.trainItems()) fixedTokens += NextWordProtocol.tokenCount(it);
-        Set<String> forbidden = NextWordProtocol.forbiddenForTraining();
+        for (Item it : trainItemsC()) fixedTokens += v2() ? CorpusV2.tokenCount(it) : NextWordProtocol.tokenCount(it);
+        Set<String> forbidden = forbiddenC();
 
         EarlyStopping best = new EarlyStopping(Integer.MAX_VALUE, 0.0);
         long totalTokens = 0;
@@ -131,7 +143,7 @@ public class NextWordExperiment2Test {
                 int tokens = fixedTokens;
                 DataGenerator g = fixedGen;
                 if (dynamic) {
-                    NextWordProtocol.Sample sm = NextWordProtocol.dynamicSample(42, e, 200, 3, forbidden);
+                    NextWordProtocol.Sample sm = dynamicC(42, e, forbidden);
                     g = gen(sm.items);
                     tokens = sm.supervisedTokens;
                 }
@@ -160,7 +172,15 @@ public class NextWordExperiment2Test {
                         m.saveState(new File(dir, "best.ser").getAbsolutePath());
                     }
                     if (e % 10 == 0) {
-                        valValid = String.valueOf(NextWordProtocol.evaluate(m, tok, val, "val").validity());
+                        if (v2()) {
+                            CorpusV2.EvalV2 r2 = CorpusV2.evaluate(m, tok, val, "val");
+                            valValid = String.valueOf(r2.l3 / (double) r2.n);
+                            try (PrintWriter lv = new PrintWriter(new FileWriter(new File(dir, "levels.csv"), true))) {
+                                lv.println(e + "," + r2.l1 + "," + r2.l2 + "," + r2.l3 + "," + r2.n + "," + r2.firstViolations);
+                            }
+                        } else {
+                            valValid = String.valueOf(NextWordProtocol.evaluate(m, tok, val, "val").validity());
+                        }
                     }
                 }
                 String line = String.format(java.util.Locale.ROOT, "%d,%.5f,%s,%s,%d,%.3e,%.4f,%.4f,%.4f,\"%s\",%d,%.3f",
@@ -238,6 +258,70 @@ public class NextWordExperiment2Test {
                 ci[0] >= 0.9 ? "ATTEINT (borne basse >= 90%)" : (w.validity() >= 0.9
                         ? "estimation >= 90% mais NON prouvé (borne basse < 90%)" : "NON atteint")));
         Files.write(new File(DIR + "/report-final.txt").toPath(), rep.toString().getBytes());
+    }
+
+    // ================================================================== final (corpus v2)
+    private void finalReportV2() throws Exception {
+        String[] arms = prop("nw2.arms", "").split(",");
+        Assume.assumeTrue("nw2.arms requis", arms.length > 0 && !arms[0].isEmpty());
+        String out = DIR + "/v2-final";
+        new File(out).mkdirs();
+        StringBuilder rep = new StringBuilder();
+        List<String> names = new ArrayList<>();
+        List<TransformerModel> models = new ArrayList<>();
+        for (String a : arms) {
+            String[] kv = a.split("=");
+            TransformerModel m = build();
+            if (!"INIT".equals(kv[1])) {
+                File copy = new File(out + "/historical-" + kv[0] + ".ser");
+                Files.copy(new File(kv[1]).toPath(), copy.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                m.loadState(copy.getAbsolutePath());
+            } else {
+                m.setTrained(true); // référence : modèle non entraîné
+            }
+            names.add(kv[0]);
+            models.add(m);
+        }
+        double[] floor = CorpusV2.populationLossFloor(20000, 123);
+        log(rep, String.format("CORPUS V2 : plancher théorique de la perte = %.4f ± %.4f", floor[0], floor[1]));
+        List<Item> val = CorpusV2.validationItems();
+        List<CorpusV2.EvalV2> valRes = new ArrayList<>();
+        int winner = -1;
+        for (int i = 0; i < models.size(); i++) {
+            CorpusV2.EvalV2 r = CorpusV2.evaluate(models.get(i), tok, val, names.get(i) + " VALIDATION");
+            valRes.add(r);
+            log(rep, r.toString());
+            if (!"INIT".equals(arms[i].split("=")[1]) && (winner < 0 || r.nll < valRes.get(winner).nll - 1e-9)) winner = i;
+        }
+        String sel = "GAGNANT sélectionné sur VALIDATION seule (perte de validation minimale, hors référence INIT) : " + names.get(winner);
+        log(rep, sel);
+        Files.write(new File(out + "/selection.txt").toPath(), sel.getBytes()); // avant toute lecture de TEST-FINAL
+
+        List<Item> tf = CorpusV2.testFinalItems();
+        List<CorpusV2.EvalV2> tfRes = new ArrayList<>();
+        for (int i = 0; i < models.size(); i++) {
+            CorpusV2.EvalV2 r = CorpusV2.evaluate(models.get(i), tok, tf, names.get(i) + " TEST-FINAL");
+            tfRes.add(r);
+            log(rep, r.toString());
+        }
+        for (int i = 0; i < tfRes.size(); i++) {
+            for (int j = i + 1; j < tfRes.size(); j++) {
+                int better = 0, worse = 0;
+                for (int k = 0; k < tf.size(); k++) {
+                    if (tfRes.get(j).l3Flags[k] && !tfRes.get(i).l3Flags[k]) better++;
+                    if (!tfRes.get(j).l3Flags[k] && tfRes.get(i).l3Flags[k]) worse++;
+                }
+                log(rep, String.format("%s vs %s (TEST-FINAL apparié, N3) : meilleur sur %d, pire sur %d, p(signes)=%.4f",
+                        names.get(j), names.get(i), better, worse, NextWordProtocol.signTestP(better, worse)));
+            }
+        }
+        CorpusV2.EvalV2 w = tfRes.get(winner);
+        double[] ci = NextWordProtocol.wilson(w.l3, w.n);
+        log(rep, String.format("VERDICT objectif 90%% au niveau N3 (gagnant %s, sélectionné sur validation) : %.1f%%, IC95 %.1f–%.1f%% -> %s",
+                names.get(winner), 100.0 * w.l3 / w.n, 100 * ci[0], 100 * ci[1],
+                ci[0] >= 0.9 ? "ATTEINT (borne basse >= 90%)" : (w.l3 / (double) w.n >= 0.9
+                        ? "estimation >= 90% mais NON prouvé" : "NON atteint")));
+        Files.write(new File(out + "/report-final.txt").toPath(), rep.toString().getBytes());
     }
 
     private static void log(StringBuilder rep, String line) {
