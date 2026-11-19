@@ -782,7 +782,22 @@ public class TransformerModel implements Serializable {
 
             // Sauvegarder l'état d'entraînement
             oos.writeBoolean(isTrained);
+
+            // Fin de flux (ajouts rétrocompatibles) : vocabulaire + moments d'Adam,
+            // indispensables pour reprendre un entraînement CUMULATIF sans rupture.
+            oos.writeObject(vocabularyByIdForCheckpoint());
+            optimizer.writeMoments(oos);
         }
+    }
+
+    /** Vocabulaire ordonné par identifiant (vérifie la compatibilité d'un checkpoint). */
+    private ArrayList<String> vocabularyByIdForCheckpoint() {
+        Map<Integer, String> m = tokenizer.getIdToTokenMap();
+        ArrayList<String> out = new ArrayList<>();
+        for (int id : new java.util.TreeSet<>(m.keySet())) {
+            out.add(m.get(id));
+        }
+        return out;
     }
 
     /**
@@ -798,9 +813,13 @@ public class TransformerModel implements Serializable {
 
             this.readObject(ois);
 
-            // Charger l'état de l'encodeur et du décodeur
-            this.encoder = (Encoder) ois.readObject();
-            this.decoder = (Decoder) ois.readObject();
+            // Les copies sérialisées de l'encodeur/décodeur sont lues pour respecter le
+            // format mais NON adoptées : combinedParameters (cible des mises à jour
+            // d'Adam) référence les tableaux de l'encodeur/décodeur VIVANTS ; les
+            // remplacer ferait entraîner des poids que le modèle n'utilise plus.
+            // Les poids sont restaurés plus bas par assign() sur combinedParameters.
+            ois.readObject(); // encodeur sérialisé (ignoré)
+            ois.readObject(); // décodeur sérialisé (ignoré)
 
             // Charger l'état de l'optimiseur
             int currentStep = (int) ois.readObject();
@@ -819,6 +838,18 @@ public class TransformerModel implements Serializable {
 
             // Charger l'état d'entraînement
             this.isTrained = ois.readBoolean();
+
+            // Ajouts récents : absents des anciens checkpoints (moments Adam remis à zéro).
+            try {
+                @SuppressWarnings("unchecked")
+                ArrayList<String> savedVocab = (ArrayList<String>) ois.readObject();
+                if (!savedVocab.equals(vocabularyByIdForCheckpoint())) {
+                    throw new IOException("Checkpoint incompatible : le vocabulaire sauvegardé diffère de celui du modèle.");
+                }
+                optimizer.readMoments(ois);
+            } catch (java.io.EOFException | java.io.OptionalDataException legacy) {
+                System.out.println("Checkpoint ancien format : moments Adam non restaurés (remis à zéro).");
+            }
         }
     }
 

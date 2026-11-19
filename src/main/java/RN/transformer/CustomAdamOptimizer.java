@@ -94,6 +94,32 @@ public class CustomAdamOptimizer implements Serializable {
         }
     }
 
+    /** Écrit les moments d'Adam (m, v) de chaque paramètre. */
+    public void writeMoments(ObjectOutputStream oos) throws IOException {
+        oos.writeInt(states.size());
+        for (AdamState st : states) {
+            oos.writeObject(st.m);
+            oos.writeObject(st.v);
+        }
+    }
+
+    /** Relit les moments d'Adam ; refuse un checkpoint dont les formes ne correspondent pas. */
+    public void readMoments(ObjectInputStream ois) throws IOException, ClassNotFoundException {
+        int n = ois.readInt();
+        if (n != states.size()) {
+            throw new IOException("Checkpoint incompatible : " + n + " états Adam, " + states.size() + " attendus.");
+        }
+        for (int i = 0; i < n; i++) {
+            INDArray m = (INDArray) ois.readObject();
+            INDArray v = (INDArray) ois.readObject();
+            if (!java.util.Arrays.equals(m.shape(), states.get(i).m.shape())) {
+                throw new IOException("Checkpoint incompatible : forme Adam différente pour le paramètre " + i);
+            }
+            states.get(i).m.assign(m);
+            states.get(i).v.assign(v);
+        }
+    }
+
     // Méthode pour mettre à jour les paramètres
     public void update(List<INDArray> params, List<INDArray> grads) {
         if (params.size() != grads.size()) {
